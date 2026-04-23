@@ -1,0 +1,10 @@
+{
+  "name": "vivaldi-custom-vertical-tabs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Custom Sidebery-inspired vertical tabs for Vivaldi",
+  "scripts": {
+    "build": "node build/build.mjs",
+    "watch": "node build/build.mjs --watch"
+  }
+}

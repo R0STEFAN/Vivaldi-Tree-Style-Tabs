@@ -1,196 +1,162 @@
-# Tree Style Vertical Tabs for Vivaldi
+# TreeTabsVivaldi
 
-Full custom vertical tab sidebar rendered directly inside Vivaldi UI, Tree tabs with parent/child relationships
+TreeTabsVivaldi is a custom Vivaldi browser UI mod that adds a Sidebery-inspired vertical tree tab panel to the left side of the browser window.
 
+It is not a browser extension. It is a `custom.js` UI modification loaded into Vivaldi's `window.html`.
 
-This mod is a `custom.js`-based Vivaldi UI modification. It is injected directly into Vivaldi's `window.html` and does not use an iframe wrapper.
+## What It Does
 
-## What You Need
+- Adds a vertical tab panel with a Sidebery-like visual style.
+- Supports hierarchical tree tabs with nested parent/child relations.
+- Persists tree structure and collapsed/expanded state across browser restarts.
+- Synchronizes with native Vivaldi workspaces.
+- Keeps the native tab order aligned with the custom tree order.
+- Supports pinned tabs, tab renaming, tab colors, mute/unmute, duplicate, close actions, and custom context menus.
+- Supports multi-select and drag-and-drop between tree levels.
+- Supports moving tabs or whole trees to another workspace or a new window.
+- Supports saving a tree as a Vivaldi bookmarks folder and restoring it later.
+- Supports Vivaldi native tiling from the custom multi-selection.
+- Supports a pinned/auto-hide panel mode and resizable panel width.
+- Hides itself during fullscreen video/browser fullscreen.
 
-- A working Vivaldi installation
-- Access to the Vivaldi application files
-- The file [`custom.js`](./custom.js)
-- Permission to edit `window.html`
+## Project Structure
 
-## Important Notes Before Installation
-
-- Make a backup of `window.html` before editing it.
-- After most Vivaldi updates, the application version folder may change. If that happens, you may need to copy the mod again and re-add the script tag.
-- This mod changes the browser UI, not website content.
-- If Vivaldi is running while you edit the files, fully restart it after installation.
-
-## Installation Overview
-
-The installation is the same on every OS:
-
-1. Find Vivaldi's `window.html`
-2. Copy `custom.js` into the same folder as `window.html`
-3. Add a script tag for `custom.js` near the end of `window.html`
-4. Save the file
-5. Restart Vivaldi
-
-Use this script tag:
-
-```html
-<script src="custom.js"></script>
+```text
+vivaldi-mod/
+  src/              Source modules
+  build/            Custom bundler
+  dist/custom.js    Built Vivaldi mod bundle
+  package.json      Build scripts
 ```
 
-Place it before the closing `</body>` tag in `window.html`.
+The source code is modular, but the final output is a single file:
 
-Example:
-
-```html
-  ...
-  <script src="bundle.js"></script>
-  <script src="custom.js"></script>
-</body>
+```text
+dist/custom.js
 ```
 
-## Windows Installation
+## Install Ready Build
 
-Typical Vivaldi paths:
-
-- `C:\Program Files\Vivaldi\Application\<version>\resources\vivaldi\window.html`
-- `C:\Users\<YourUser>\AppData\Local\Vivaldi\Application\<version>\resources\vivaldi\window.html`
-
-Steps:
+Use this if you only want to install the already built mod.
 
 1. Close Vivaldi.
-2. Open the Vivaldi application folder.
-3. Go to `Application\<version>\resources\vivaldi\`.
-4. Back up `window.html`.
-5. Copy [`custom.js`](./custom.js) into that same `vivaldi` folder.
-6. Open `window.html` in a text editor.
-7. Add:
 
-```html
-<script src="custom.js"></script>
+2. Locate Vivaldi's browser UI resources directory.
+
+Common locations:
+
+```text
+Linux stable:
+/opt/vivaldi/resources/vivaldi
+
+Linux snapshot:
+/opt/vivaldi-snapshot/resources/vivaldi
+
+Windows:
+%LOCALAPPDATA%\Vivaldi\Application\<version>\resources\vivaldi
+
+macOS:
+/Applications/Vivaldi.app/Contents/Frameworks/Vivaldi Framework.framework/Versions/<version>/Resources/vivaldi
 ```
 
-8. Save the file.
-9. Start Vivaldi again.
-
-If Vivaldi was installed in `Program Files`, you may need administrator rights to save the file.
-
-## Linux Installation
-
-Typical Vivaldi paths:
-
-- `/opt/vivaldi/resources/vivaldi/window.html`
-- `/usr/share/vivaldi/resources/vivaldi/window.html`
-- `/opt/vivaldi-snapshot/resources/vivaldi/window.html`
-
-Steps:
-
-1. Close Vivaldi.
-2. Open the Vivaldi resources directory.
 3. Back up `window.html`.
-4. Copy [`custom.js`](./custom.js) into the same `vivaldi` folder.
-5. Edit `window.html`.
-6. Add:
 
-```html
-<script src="custom.js"></script>
-```
-
-7. Save the file.
-8. Restart Vivaldi.
-
-You may need elevated permissions depending on how Vivaldi was installed.
-
-Example:
+Example on Linux:
 
 ```bash
-sudo cp custom.js /opt/vivaldi/resources/vivaldi/
-sudo nano /opt/vivaldi/resources/vivaldi/window.html
+sudo cp /opt/vivaldi/resources/vivaldi/window.html /opt/vivaldi/resources/vivaldi/window.html.bak
 ```
 
-## macOS Installation
+4. Copy the built bundle:
 
-Typical Vivaldi path:
+```bash
+sudo cp dist/custom.js /opt/vivaldi/resources/vivaldi/custom.js
+```
 
-- `/Applications/Vivaldi.app/Contents/Frameworks/Vivaldi Framework.framework/Versions/Current/Resources/vivaldi/window.html`
-
-Steps:
-
-1. Close Vivaldi.
-2. In Finder, open `Applications`.
-3. Right-click `Vivaldi.app` and choose `Show Package Contents`.
-4. Navigate to:
-   `Contents/Frameworks/Vivaldi Framework.framework/Versions/Current/Resources/vivaldi/`
-5. Back up `window.html`.
-6. Copy [`custom.js`](./custom.js) into the same folder.
-7. Open `window.html` in a text editor.
-8. Add:
+5. Add the script to `window.html` before the closing `</body>` tag if it is not already there:
 
 ```html
 <script src="custom.js"></script>
 ```
 
-9. Save the file.
-10. Reopen Vivaldi.
+6. Start Vivaldi.
 
-Depending on your system setup, macOS may ask for administrator credentials.
+After every Vivaldi update, the application resources folder may be replaced. If the mod disappears, repeat the copy/injection steps.
 
-## How to Verify the Mod Loaded
+## Developer Setup
 
-After restarting Vivaldi, check the following:
+Install dependencies:
 
-- the custom vertical sidebar appears
-- the sidebar reacts to hover/autohide behavior
-- the workspace selector is visible
-- tab tree behavior is available
-- the new tab button and tab actions work from the custom panel
+```bash
+cd vivaldi-mod
+npm install
+```
 
-If the mod does not load:
+Build once:
 
-1. Make sure `custom.js` is in the same folder as `window.html`
-2. Make sure the script tag was added correctly
-3. Make sure the script tag is inside `<body>` and before `</body>`
-4. Restart Vivaldi completely
-5. Recheck the installation path after a browser update
+```bash
+npm run build
+```
 
-## Key Features
+Watch source files and rebuild automatically:
 
-- Full custom vertical tab sidebar rendered directly inside Vivaldi UI
-- Sidebar height and offsets adapt to Vivaldi UI layout changes
-- Automatic layout adaptation for bookmark bar visibility
-- Automatic layout adaptation for status bar visibility and mode
-- Theme-aware styling based on Vivaldi theme colors
-- Works with both dark and light Vivaldi themes
-- Autohide mode and pinned mode
-- Resizable sidebar width with saved state between browser restarts
-- Search panel for filtering tabs
-- Custom workspaces with:
-  - workspace switching
-  - workspace creation
-  - workspace editing
-  - workspace deletion
-  - moving tabs between workspaces
-- Tree tabs with parent/child relationships
-- Collapse and expand controls for trees
-- Collapse all trees in the current workspace
-- Persistent tree structure and collapsed state across restarts
-- Pinned tabs displayed in a compact icon grid
-- Drag and drop for:
-  - regular tabs
-  - trees
-  - multi-selected tabs
-  - moving tabs into and out of trees
-- Multi-selection with keyboard modifiers
-- Multi-selection synced with Vivaldi's native tab selection model
-- Support for selecting multiple tabs for Vivaldi's native Tile/Grid tab layout feature
-- Custom tab context menu
-- Move tabs to another workspace from the context menu
-- Rename tabs with double click
-- Internal Vivaldi pages handled with custom labels and icons
-- New tabs open to Vivaldi Start Page
-- Tree-aware movement of tabs across custom workspaces
-- Loading and muted-state indicators on tab icons
-- Hover tooltip with tab title and URL
+```bash
+npm run watch
+```
 
-## Maintenance
+The build command writes:
 
-- Keep a backup of your modified `window.html`
-- Recheck the install path after every major Vivaldi update
-- If Vivaldi replaces the version folder, repeat the installation in the new folder
+```text
+vivaldi-mod/dist/custom.js
+```
+
+## Developer Copy Workflow
+
+For local development on Linux stable Vivaldi:
+
+```bash
+cd vivaldi-mod
+npm run build
+
+VIVALDI_DIR="/opt/vivaldi/resources/vivaldi"
+sudo cp dist/custom.js "$VIVALDI_DIR/custom.js"
+```
+
+If `window.html` does not already include the mod script, add it once:
+
+```bash
+VIVALDI_DIR="/opt/vivaldi/resources/vivaldi"
+grep -q 'custom.js' "$VIVALDI_DIR/window.html" || \
+  sudo sed -i 's#</body>#  <script src="custom.js"></script>\n</body>#' "$VIVALDI_DIR/window.html"
+```
+
+Then restart Vivaldi.
+
+For Vivaldi Snapshot, change the path:
+
+```bash
+VIVALDI_DIR="/opt/vivaldi-snapshot/resources/vivaldi"
+```
+
+## Recommended Vivaldi Settings
+
+The mod is designed to replace the native tab strip visually. You can keep the native tab strip enabled while testing, but for normal use it is recommended to hide or move the native tab bar through Vivaldi settings.
+
+Native Vivaldi workspaces remain supported and are used by the custom panel.
+
+## Important Notes
+
+- This mod relies on Vivaldi-specific browser APIs and some internal runtime behavior.
+- A Vivaldi update can break parts of the integration, especially workspace, tiling, or window-moving features.
+- Always keep a backup of the original `window.html`.
+- This project is intended for users who are comfortable modifying Vivaldi's application files.
+
+## Build Output
+
+The repository should commit source files and may optionally include the latest `dist/custom.js` build for direct installation.
+
+To regenerate the bundle:
+
+```bash
+npm run build
+```
