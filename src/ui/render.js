@@ -530,6 +530,7 @@ function createSidebarRenderer(options) {
   const enteringNodes = new WeakSet()
   const pendingEnterNodes = new Set()
   let pointerDrag = null
+  let autoScrollRafId = 0
   let suppressClick = false
   let contextMenu = null
   let latestState = null
@@ -1067,6 +1068,96 @@ function createSidebarRenderer(options) {
     ghost.style.transform = `translate(${Math.round(clientX - rect.left + 12)}px, ${Math.round(clientY - rect.top + 10)}px)`
   }
 
+  function stopDragAutoScroll() {
+    if (autoScrollRafId) {
+      window.cancelAnimationFrame(autoScrollRafId)
+      autoScrollRafId = 0
+    }
+    if (pointerDrag) {
+      pointerDrag.autoScrollVelocity = 0
+      pointerDrag.lastPointerX = null
+      pointerDrag.lastPointerY = null
+    }
+  }
+
+  function applyDragAutoScroll() {
+    if (!pointerDrag || !pointerDrag.dragging) {
+      stopDragAutoScroll()
+      return
+    }
+
+    const currentShell = ensureShell()
+    const list = currentShell.tabList
+    const velocity = Number(pointerDrag.autoScrollVelocity) || 0
+    if (!list || Math.abs(velocity) < 0.1) {
+      autoScrollRafId = 0
+      return
+    }
+
+    const previousScrollTop = list.scrollTop
+    const maxScrollTop = Math.max(0, list.scrollHeight - list.clientHeight)
+    const nextScrollTop = Math.max(0, Math.min(maxScrollTop, previousScrollTop + velocity))
+    if (Math.abs(nextScrollTop - previousScrollTop) < 0.1) {
+      autoScrollRafId = 0
+      return
+    }
+
+    list.scrollTop = nextScrollTop
+
+    const pointerX = Number(pointerDrag.lastPointerX)
+    const pointerY = Number(pointerDrag.lastPointerY)
+    if (Number.isFinite(pointerX) && Number.isFinite(pointerY)) {
+      updateDragGhost(pointerX, pointerY)
+      const drop = resolveDropTarget(pointerX, pointerY)
+      if (drop && onUpdateDropTarget) {
+        onUpdateDropTarget(drop.tabId, drop.position)
+      } else if (onUpdateDropTarget) {
+        onUpdateDropTarget(null, null)
+      }
+    }
+
+    autoScrollRafId = window.requestAnimationFrame(applyDragAutoScroll)
+  }
+
+  function updateDragAutoScroll(clientX, clientY) {
+    const currentShell = ensureShell()
+    const list = currentShell.tabList
+    if (!pointerDrag || !list) return
+
+    pointerDrag.lastPointerX = clientX
+    pointerDrag.lastPointerY = clientY
+
+    const rect = list.getBoundingClientRect()
+    const withinHorizontalBounds = clientX >= rect.left && clientX <= rect.right
+    const withinVerticalBounds = clientY >= rect.top && clientY <= rect.bottom
+
+    if (!withinHorizontalBounds || !withinVerticalBounds) {
+      stopDragAutoScroll()
+      return
+    }
+
+    const edgeDistance = 40
+    let velocity = 0
+
+    if (clientY < rect.top + edgeDistance) {
+      const progress = 1 - ((clientY - rect.top) / edgeDistance)
+      velocity = -Math.max(4, progress * 18)
+    } else if (clientY > rect.bottom - edgeDistance) {
+      const progress = 1 - ((rect.bottom - clientY) / edgeDistance)
+      velocity = Math.max(4, progress * 18)
+    }
+
+    pointerDrag.autoScrollVelocity = velocity
+    if (Math.abs(velocity) < 0.1) {
+      stopDragAutoScroll()
+      return
+    }
+
+    if (!autoScrollRafId) {
+      autoScrollRafId = window.requestAnimationFrame(applyDragAutoScroll)
+    }
+  }
+
   function showDragGhost(tabId, clientX, clientY) {
     const currentShell = ensureShell()
     const ghost = currentShell.dragGhost
@@ -1122,6 +1213,7 @@ function createSidebarRenderer(options) {
 
   function finishPointerDrag(clientX, clientY, allowExternalDrop = true) {
     if (!pointerDrag) return
+    stopDragAutoScroll()
 
     const drop = pointerDrag.dragging ? resolveDropTarget(clientX, clientY) : null
     if (pointerDrag.dragging && drop && onCommitDrop) {
@@ -1317,6 +1409,9 @@ function createSidebarRenderer(options) {
       startX: event.clientX,
       startY: event.clientY,
       dragging: false,
+      autoScrollVelocity: 0,
+      lastPointerX: null,
+      lastPointerY: null,
     }
 
     if (typeof tabButton.setPointerCapture === 'function') {
@@ -1346,6 +1441,7 @@ function createSidebarRenderer(options) {
 
     if (!pointerDrag.dragging) return
     updateDragGhost(event.clientX, event.clientY)
+    updateDragAutoScroll(event.clientX, event.clientY)
 
     const drop = resolveDropTarget(event.clientX, event.clientY)
     if (drop && onUpdateDropTarget) {
@@ -1399,6 +1495,7 @@ function createSidebarRenderer(options) {
     if (event.key === 'Escape' && pointerDrag) {
       event.preventDefault()
       suppressClick = false
+      stopDragAutoScroll()
       finishPointerDrag(-1, -1, false)
       return
     }
@@ -1588,6 +1685,7 @@ function createSidebarRenderer(options) {
 
     dispose() {
       eventController.abort()
+      stopDragAutoScroll()
       pointerDrag = null
       hideDragGhost()
       contextMenu = null
