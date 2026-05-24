@@ -853,8 +853,8 @@ body.svb-is-resizing {
   border: 1px solid transparent;
   border-radius: var(--svb-radius);
   color: var(--svb-text-strong);
-  background: var(--svb-panel);
-  box-shadow: 0 1px 1px 0 rgba(0, 0, 0, 0.12);
+  background: transparent;
+  box-shadow: none;
   cursor: pointer;
   text-align: left;
 }
