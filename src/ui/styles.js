@@ -730,6 +730,12 @@ body.svb-is-resizing {
   line-height: 14px;
   color: var(--svb-accent);
   background: var(--svb-accent-soft);
+  cursor: pointer;
+  user-select: none;
+}
+
+#svb-root .svb-tab__badge:hover {
+  background: color-mix(in srgb, var(--svb-accent) 28%, transparent);
 }
 
 #svb-root .svb-tab__close {

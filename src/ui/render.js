@@ -307,6 +307,16 @@ function syncTabLeadIcon(lead, tab) {
   return fallback
 }
 
+function renderTabBadge(tab) {
+  if (tab.muted) {
+    return `<span class="svb-tab__badge" data-role="toggle-mute" data-tab-id="${tab.id}" title="Unmute tab">Muted</span>`
+  }
+  if (tab.audible) {
+    return `<span class="svb-tab__badge" data-role="toggle-mute" data-tab-id="${tab.id}" title="Mute tab">Audio</span>`
+  }
+  return ''
+}
+
 function syncTabContent(content, tab, editing) {
   if (editing) {
     let input = findDirectChild(content, '.svb-tab__title-input')
@@ -337,12 +347,7 @@ function syncTabContent(content, tab, editing) {
     titleNode.textContent = tab.title
   }
 
-  const mediaHtml = tab.muted
-    ? '<span class="svb-tab__badge">Muted</span>'
-    : tab.audible
-      ? '<span class="svb-tab__badge">Audio</span>'
-      : ''
-  syncOptionalDirectChild(content, '.svb-tab__badge', mediaHtml, null)
+  syncOptionalDirectChild(content, '.svb-tab__badge', renderTabBadge(tab), null)
 }
 
 function getTabVisualStyle(tab) {
@@ -415,11 +420,7 @@ function renderTab(tab, compact, canClose, item, editing, visualState) {
       ? `<img class="svb-tab__favicon" src="${escapeHtml(tab.favIconUrl)}" alt="">`
       : `<span class="svb-tab__favicon svb-tab__favicon--fallback"></span>`
 
-  const media = tab.muted
-    ? `<span class="svb-tab__badge">Muted</span>`
-    : tab.audible
-      ? `<span class="svb-tab__badge">Audio</span>`
-      : ''
+  const media = renderTabBadge(tab)
 
   const hasClose = !compact && canClose
   const hasAdd = !compact
@@ -513,7 +514,7 @@ function createNodeFromHtml(html) {
 }
 
 function createSidebarRenderer(options) {
-  const { root, onActivateTab, onCloseTab, onCreateTab, onCreateChildTab, onRenameTab, onTogglePinned, onToggleCollapse, onCollapseAll, onSelectTab, onOpenContextMenu, onContextMenuAction, onStartDrag, onUpdateDropTarget, onCommitDrop, onCommitExternalDrop, onClearDrag } = options
+  const { root, onActivateTab, onCloseTab, onCreateTab, onCreateChildTab, onRenameTab, onTogglePinned, onToggleMute, onToggleCollapse, onCollapseAll, onSelectTab, onOpenContextMenu, onContextMenuAction, onStartDrag, onUpdateDropTarget, onCommitDrop, onCommitExternalDrop, onClearDrag } = options
   let pendingScrollToActive = false
   let pendingScrollSourceTabId = null
   let currentVisibleIds = []
@@ -1297,8 +1298,15 @@ function createSidebarRenderer(options) {
     const target = event.target.closest('[data-role]')
     if (!target) return
 
-    const role = target.getAttribute('data-role')
+    const role = target.dataset.role
     const tabId = Number(target.getAttribute('data-tab-id'))
+
+    if (role === 'toggle-mute' && Number.isFinite(tabId)) {
+      event.preventDefault()
+      event.stopPropagation()
+      if (onToggleMute) onToggleMute(tabId)
+      return
+    }
 
     if (role === 'activate-tab' && Number.isFinite(tabId)) {
       if (editingTabId === tabId) return
@@ -1359,7 +1367,7 @@ function createSidebarRenderer(options) {
   root.addEventListener('dblclick', event => {
     const input = event.target.closest('[data-role="rename-input"]')
     if (input) return
-    if (event.target.closest('[data-role="close-tab"], [data-role="toggle-collapse"], [data-role="create-child-tab"]')) return
+    if (event.target.closest('[data-role="close-tab"], [data-role="toggle-collapse"], [data-role="create-child-tab"], [data-role="toggle-mute"]')) return
 
     const tabButton = event.target.closest('.svb-tab[data-tab-id]:not(.is-compact)')
     if (!tabButton) return
@@ -1375,7 +1383,7 @@ function createSidebarRenderer(options) {
   root.addEventListener('pointerdown', event => {
     if (event.button === 1) {
       const tabButton = event.target.closest('.svb-tab[data-tab-id]')
-      if (!tabButton || event.target.closest('[data-role="close-tab"], [data-role="toggle-collapse"], [data-role="create-child-tab"], [data-role="rename-input"]')) return
+      if (!tabButton || event.target.closest('[data-role="close-tab"], [data-role="toggle-collapse"], [data-role="create-child-tab"], [data-role="rename-input"], [data-role="toggle-mute"]')) return
       if (tabButton.classList.contains('svb-pinned-tab')) return
 
       const tabId = Number(tabButton.getAttribute('data-tab-id'))
@@ -1390,7 +1398,7 @@ function createSidebarRenderer(options) {
     if (event.button !== 0) return
     if (event.target.closest('.svb-menu')) return
     if (event.target.closest('[data-role="rename-input"]')) return
-    if (event.target.closest('[data-role="close-tab"], [data-role="toggle-collapse"], [data-role="create-child-tab"]')) return
+    if (event.target.closest('[data-role="close-tab"], [data-role="toggle-collapse"], [data-role="create-child-tab"], [data-role="toggle-mute"]')) return
 
     const tabButton = event.target.closest('.svb-tab[data-tab-id]:not(.is-compact)')
     if (tabButton) {

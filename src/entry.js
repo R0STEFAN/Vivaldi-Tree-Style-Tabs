@@ -91,6 +91,10 @@ async function main() {
     onCreateChildTab: id => store.createChildTab(id),
     onRenameTab: (id, title) => { void store.renameTab(id, title) },
     onTogglePinned: () => panelStore.togglePinned(),
+    onToggleMute: id => {
+      const selectedIds = selectionStore.getState().selectedIds || []
+      void store.toggleMutedForSelection(id, selectedIds)
+    },
     onToggleCollapse: id => { void store.toggleCollapsed(id) },
     onCollapseAll: () => { void store.collapseAll() },
     onOpenContextMenu: id => {
