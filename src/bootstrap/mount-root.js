@@ -15,6 +15,10 @@ function mountRoot(id) {
   ensureStyleTag()
 
   const host = document.querySelector('#browser > #main > .inner')
+    || document.querySelector('#main > .inner')
+    || document.querySelector('.inner.active')
+    || document.querySelector('#main')
+
   if (!host) {
     return null
   }

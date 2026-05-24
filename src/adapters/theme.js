@@ -58,6 +58,12 @@ function createThemeAdapter(root) {
 
   function resolveThemeValues() {
     const b = browserStyle()
+    const isUnified = browserEl.classList.contains('unified-ui') || browserEl.classList.contains('unified-ui-transparent')
+    const isTransparent = browserEl.classList.contains('unified-ui-transparent')
+    const isAccOnTabs = browserEl.classList.contains('color-behind-tabs-on')
+    const isTransparentTabs = browserEl.classList.contains('ui-transparent-tabs')
+    const isTransparentTabbar = browserEl.classList.contains('transparent-tabbar')
+
     const tabbarWrapper = document.querySelector('.tabbar-wrapper')
     const panelGroup = document.querySelector('.panel-group')
     const tabsSubcontainer = document.querySelector('#tabs-subcontainer')
@@ -82,8 +88,10 @@ function createThemeAdapter(root) {
     const highlightBg = readCssVar(b, '--colorHighlightBg')
     const radius = readCssVar(b, '--radius') || readCssVar(b, '--radiusHalf')
     const currentRadius = readCssVar(b, '--currentRadius')
+    const windowBg = readCssVar(b, '--colorWindowBg')
 
     const panelBg = firstUsable([
+      isUnified && !isTransparent && windowBg,
       tabbarWrapperStyle && tabbarWrapperStyle.backgroundColor,
       panelStyle && panelStyle.backgroundColor,
       subcontainerStyle && subcontainerStyle.backgroundColor,
@@ -93,6 +101,7 @@ function createThemeAdapter(root) {
     ], '#232629')
 
     const panelBorder = firstUsable([
+      isUnified && 'transparent',
       colorBorderSubtle,
       tabbarWrapperStyle && tabbarWrapperStyle.borderColor,
       accentBgDarker,
@@ -108,10 +117,11 @@ function createThemeAdapter(root) {
 
     const tabBg = firstUsable([
       nativeTabStyle && nativeTabStyle.backgroundColor,
-      panelBg,
+      isUnified ? 'transparent' : panelBg,
     ], panelBg)
 
     const tabHoverBg = firstUsable([
+      isUnified && readCssVar(b, '--colorBgAlphaHeavy'),
       readCssVar(b, '--colorBgInverser'),
       readCssVar(b, '--colorBgIntense'),
       'rgba(255,255,255,0.08)',
@@ -119,6 +129,7 @@ function createThemeAdapter(root) {
 
     const activeTabBg = firstUsable([
       activeTabStyle && activeTabStyle.backgroundColor,
+      isUnified && readCssVar(b, '--colorBgAlphaHeavier'),
       accentBgDark,
       tabBg,
     ], tabBg)
@@ -151,6 +162,11 @@ function createThemeAdapter(root) {
       activeTabFg,
       accent,
       radiusValue,
+      isUnified,
+      isTransparent,
+      isAccOnTabs,
+      isTransparentTabs,
+      isTransparentTabbar,
     }
   }
 
@@ -158,7 +174,7 @@ function createThemeAdapter(root) {
     const vars = resolveThemeValues()
     const style = root.style
 
-    setVar(style, '--svb-theme-panel-bg', vars.panelBg)
+    setVar(style, '--svb-theme-panel-bg', vars.isTransparent ? 'transparent' : vars.panelBg)
     setVar(style, '--svb-theme-panel-border', vars.panelBorder)
     setVar(style, '--svb-theme-panel-fg', vars.panelFg)
     setVar(style, '--svb-theme-tab-bg', vars.tabBg)
@@ -167,7 +183,14 @@ function createThemeAdapter(root) {
     setVar(style, '--svb-theme-tab-active-fg', vars.activeTabFg)
     setVar(style, '--svb-theme-accent', vars.accent)
     setVar(style, '--svb-theme-radius', vars.radiusValue)
+
+    root.classList.toggle('is-unified', vars.isUnified)
+    root.classList.toggle('is-transparent', vars.isTransparent)
+    root.classList.toggle('is-acc-on-tabs', vars.isAccOnTabs)
+    root.classList.toggle('is-transparent-tabs', vars.isTransparentTabs)
+    root.classList.toggle('is-transparent-tabbar', vars.isTransparentTabbar)
   }
+
 
   function start() {
     apply()

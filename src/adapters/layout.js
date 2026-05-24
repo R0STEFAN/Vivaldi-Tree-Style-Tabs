@@ -38,23 +38,27 @@ function createLayoutAdapter(options) {
   }
 
   function apply() {
-    if (!host || !root || !trigger || !dragShield) return
+    if (!root || !trigger || !dragShield) return
 
-    if (!host.classList.contains('svb-layout-host')) {
-      host.classList.add('svb-layout-host')
+    // Re-verify host in case it was moved or changed
+    const currentHost = host || document.querySelector('.svb-layout-host')
+    if (!currentHost) return
+
+    if (!currentHost.classList.contains('svb-layout-host')) {
+      currentHost.classList.add('svb-layout-host')
     }
 
-    if (host.style.getPropertyValue('--svb-sidebar-width') !== `${currentWidth}px`) {
-      host.style.setProperty('--svb-sidebar-width', `${currentWidth}px`)
+    if (currentHost.style.getPropertyValue('--svb-sidebar-width') !== `${currentWidth}px`) {
+      currentHost.style.setProperty('--svb-sidebar-width', `${currentWidth}px`)
     }
 
     if (root.style.width !== `${getRenderedWidth()}px`) {
       root.style.width = `${getRenderedWidth()}px`
     }
 
-    host.classList.toggle('svb-mode-docked', currentPinned)
-    host.classList.toggle('svb-mode-overlay', !currentPinned)
-    host.classList.toggle('svb-is-fullscreen', fullscreen)
+    currentHost.classList.toggle('svb-mode-docked', currentPinned)
+    currentHost.classList.toggle('svb-mode-overlay', !currentPinned)
+    currentHost.classList.toggle('svb-is-fullscreen', fullscreen)
     root.classList.toggle('is-revealed', !fullscreen && (currentPinned || revealed))
     trigger.classList.toggle('is-enabled', !fullscreen && !currentPinned)
     dragShield.classList.toggle('is-active', !fullscreen && Boolean(dragState))
@@ -91,11 +95,12 @@ function createLayoutAdapter(options) {
 
   function startDragging(event) {
     const handle = event.target.closest('.svb-resize-handle')
-    if (!handle || !host) return
+    const currentHost = host || document.querySelector('.svb-layout-host')
+    if (!handle || !currentHost) return
 
     event.preventDefault()
 
-    const hostRect = host.getBoundingClientRect()
+    const hostRect = currentHost.getBoundingClientRect()
     const onPointerMove = moveEvent => {
       dragState.previewWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(moveEvent.clientX - hostRect.left)))
       apply()

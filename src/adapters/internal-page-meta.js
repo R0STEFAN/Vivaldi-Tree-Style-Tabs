@@ -33,8 +33,20 @@ function isSettingsUrl(url) {
 }
 
 function getInternalPageTitle(url) {
-  if (isStartPageUrl(url)) return 'Start Page'
-  if (isSettingsUrl(url)) return 'Налаштування'
+  if (isStartPageUrl(url)) {
+    const startPageMsg = typeof chrome !== 'undefined' && chrome.i18n && chrome.i18n.getMessage('IDS_START_PAGE_TITLE')
+    return startPageMsg || 'Start Page'
+  }
+  if (isSettingsUrl(url)) {
+    const settingsMsg = typeof chrome !== 'undefined' && chrome.i18n && chrome.i18n.getMessage('IDS_SETTINGS_TITLE')
+    if (settingsMsg) return settingsMsg
+
+    // Fallback based on browser language
+    const lang = (typeof navigator !== 'undefined' && navigator.language) || 'en'
+    if (lang.startsWith('uk')) return 'Налаштування'
+    if (lang.startsWith('ru')) return 'Настройки'
+    return 'Settings'
+  }
   return ''
 }
 

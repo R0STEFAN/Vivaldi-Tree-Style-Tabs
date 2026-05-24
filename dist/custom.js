@@ -33,20 +33,20 @@ module.exports = { waitForBrowser }
     },
     "ui/styles.js": function(require, module, exports) {
 const STYLE_TEXT = `
-#browser > #main > .inner.svb-layout-host.svb-mode-docked {
-  padding-left: var(--svb-sidebar-width, 300px);
+.svb-layout-host.svb-mode-docked {
+  padding-left: var(--svb-sidebar-width, 300px) !important;
 }
 
-#browser > #main > .inner.svb-layout-host.svb-is-fullscreen {
+.svb-layout-host.svb-is-fullscreen {
   padding-left: 0 !important;
 }
 
-#browser > #main > .inner.svb-layout-host.svb-mode-overlay {
-  padding-left: 0;
+.svb-layout-host.svb-mode-overlay {
+  padding-left: 0 !important;
 }
 
-#browser > #main > .inner.svb-layout-host.svb-mode-docked #webview-container ~ .StatusInfo {
-  left: calc(var(--svb-sidebar-width, 300px) + 6px);
+.svb-layout-host.svb-mode-docked #webview-container ~ .StatusInfo {
+  left: calc(var(--svb-sidebar-width, 300px) + 6px) !important;
 }
 
 #svb-root.svb-shell {
@@ -64,7 +64,7 @@ const STYLE_TEXT = `
   --svb-radius: var(--svb-theme-radius, 5px);
   --svb-gap: 2px;
   --svb-tree-indent: 14px;
-  --svb-guide-opacity: 0.18;
+  --svb-guide-opacity: 0.35;
   --svb-d-swift: 100ms;
   --svb-d-fast: 120ms;
   --svb-d-norm: 200ms;
@@ -84,6 +84,18 @@ const STYLE_TEXT = `
   transition:
     transform var(--svb-d-norm) var(--svb-ease-out),
     opacity var(--svb-d-fast) linear;
+}
+
+#svb-root.svb-shell.is-transparent .svb-frame {
+  backdrop-filter: var(--backgroundBlur, var(--unifiedBlur, blur(20px)));
+  background-color: transparent;
+}
+
+#svb-root.svb-shell.is-unified .svb-frame {
+  border-right: 1px solid var(--svb-border);
+  border-left: 0;
+  border-top: 0;
+  border-bottom: 0;
 }
 
 #svb-root.svb-shell.is-menu-open {
@@ -107,13 +119,19 @@ body.svb-is-resizing {
   transform: translateX(0);
 }
 
+.svb-layout-host.svb-mode-overlay #svb-root.svb-shell .svb-frame {
+  background-color: var(--colorBg, var(--svb-bg)) !important;
+  backdrop-filter: none !important;
+  background-image: none !important;
+}
+
 #svb-root-trigger.svb-edge-trigger {
   position: absolute;
   top: 0;
   left: 0;
   bottom: 0;
   width: 8px;
-  z-index: 1;
+  z-index: 2;
   display: none;
   pointer-events: auto;
 }
@@ -151,11 +169,11 @@ body.svb-is-resizing {
 #svb-root .svb-resize-handle {
   position: absolute;
   top: 0;
-  right: -3px;
+  right: -5px;
   bottom: 0;
-  width: 8px;
+  width: 10px;
   cursor: ew-resize;
-  z-index: 20;
+  z-index: 200;
 }
 
 #svb-root .svb-drag-ghost {
@@ -373,7 +391,7 @@ body.svb-is-resizing {
   display: flex;
   flex-wrap: wrap;
   gap: var(--svb-gap);
-  padding: 0 0 11px;
+  padding: 0 2px 11px;
   position: relative;
 }
 
@@ -441,15 +459,15 @@ body.svb-is-resizing {
 
 #svb-root .svb-tab__guide {
   position: absolute;
-  width: 1px;
+  width: 1.75px;
   opacity: var(--svb-guide-opacity);
-  background: color-mix(in srgb, var(--svb-text) 90%, transparent);
+  background: var(--svb-accent);
 }
 
 #svb-root .svb-tab__guide--branch {
-  top: 0;
-  left: calc(var(--svb-tree-indent) * 0.5);
-  height: calc(var(--svb-guide-branch-size) * 32px - 2px);
+  top: 32px;
+  left: calc(var(--svb-tree-indent) * 0.5 - 0.375px);
+  height: calc((var(--svb-guide-branch-size) - 1) * 32px - 2px);
 }
 
 #svb-root .svb-tab__body {
@@ -466,39 +484,24 @@ body.svb-is-resizing {
   z-index: 1;
 }
 
-#svb-root .svb-tab.is-dragging {
-  opacity: 0.72;
+#svb-root.is-transparent-tabs .svb-tab:not(.is-active):not(.is-selected) .svb-tab__body {
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
-#svb-root .svb-tab:hover .svb-tab__body {
-  background: var(--svb-panel-hover);
-}
-
-#svb-root .svb-tab.is-colored .svb-tab__body {
-  border-color: color-mix(in srgb, var(--svb-tab-color) 34%, var(--svb-border));
-  background: color-mix(in srgb, var(--svb-tab-color) 14%, var(--svb-panel));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--svb-tab-color) 14%, transparent);
-}
-
-#svb-root .svb-tab.is-colored:hover .svb-tab__body {
-  background: color-mix(in srgb, var(--svb-tab-color) 18%, var(--svb-panel-hover));
-}
-
-#svb-root .svb-tab.is-tiled .svb-tab__body {
-  border-color: color-mix(in srgb, var(--svb-tile-accent, var(--svb-accent)) 30%, var(--svb-border));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--svb-tile-accent, var(--svb-accent)) 18%, transparent);
-}
-
-#svb-root .svb-tab.is-selected .svb-tab__body {
-  border-color: color-mix(in srgb, var(--svb-accent) 35%, transparent);
-  background: color-mix(in srgb, var(--svb-accent) 12%, var(--svb-panel));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--svb-accent) 28%, transparent);
+#svb-root.is-transparent-tabs .svb-tab:not(.is-active):not(.is-selected):hover .svb-tab__body {
+  background: var(--svb-panel-hover) !important;
 }
 
 #svb-root .svb-tab.is-active .svb-tab__body {
   border-color: transparent;
-  background: var(--svb-panel-active);
+  background: var(--colorAccentBg, var(--svb-panel-active));
+  color: var(--colorAccentFg, var(--svb-text-strong));
   box-shadow: 0 1px 4px -1px rgba(0, 0, 0, 0.45), inset 0 0 0 1px color-mix(in srgb, var(--svb-text-strong) 10%, transparent);
+}
+
+#svb-root .svb-tab.is-active .svb-tab__title {
+  color: inherit;
 }
 
 #svb-root .svb-tab.is-colored.is-active .svb-tab__body {
@@ -900,11 +903,10 @@ body.svb-is-resizing {
   max-width: 320px;
   padding: 5px;
   border: 1px solid var(--svb-border, rgba(255, 255, 255, 0.12));
-  border-radius: 8px;
   border-radius: calc(var(--svb-radius, 5px) + 3px);
   color: var(--svb-text, #d8d8d8);
-  background: #202327;
-  background: color-mix(in srgb, var(--svb-bg, #232629) 94%, black);
+  background: var(--colorBg, #202327) !important;
+  backdrop-filter: none !important;
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.42), 0 2px 6px rgba(0, 0, 0, 0.24);
 }
 
@@ -1085,6 +1087,10 @@ function mountRoot(id) {
   ensureStyleTag()
 
   const host = document.querySelector('#browser > #main > .inner')
+    || document.querySelector('#main > .inner')
+    || document.querySelector('.inner.active')
+    || document.querySelector('#main')
+
   if (!host) {
     return null
   }
@@ -2153,8 +2159,20 @@ function isSettingsUrl(url) {
 }
 
 function getInternalPageTitle(url) {
-  if (isStartPageUrl(url)) return 'Start Page'
-  if (isSettingsUrl(url)) return 'Налаштування'
+  if (isStartPageUrl(url)) {
+    const startPageMsg = typeof chrome !== 'undefined' && chrome.i18n && chrome.i18n.getMessage('IDS_START_PAGE_TITLE')
+    return startPageMsg || 'Start Page'
+  }
+  if (isSettingsUrl(url)) {
+    const settingsMsg = typeof chrome !== 'undefined' && chrome.i18n && chrome.i18n.getMessage('IDS_SETTINGS_TITLE')
+    if (settingsMsg) return settingsMsg
+
+    // Fallback based on browser language
+    const lang = (typeof navigator !== 'undefined' && navigator.language) || 'en'
+    if (lang.startsWith('uk')) return 'Налаштування'
+    if (lang.startsWith('ru')) return 'Настройки'
+    return 'Settings'
+  }
   return ''
 }
 
@@ -5570,6 +5588,12 @@ function createThemeAdapter(root) {
 
   function resolveThemeValues() {
     const b = browserStyle()
+    const isUnified = browserEl.classList.contains('unified-ui') || browserEl.classList.contains('unified-ui-transparent')
+    const isTransparent = browserEl.classList.contains('unified-ui-transparent')
+    const isAccOnTabs = browserEl.classList.contains('color-behind-tabs-on')
+    const isTransparentTabs = browserEl.classList.contains('ui-transparent-tabs')
+    const isTransparentTabbar = browserEl.classList.contains('transparent-tabbar')
+
     const tabbarWrapper = document.querySelector('.tabbar-wrapper')
     const panelGroup = document.querySelector('.panel-group')
     const tabsSubcontainer = document.querySelector('#tabs-subcontainer')
@@ -5594,8 +5618,10 @@ function createThemeAdapter(root) {
     const highlightBg = readCssVar(b, '--colorHighlightBg')
     const radius = readCssVar(b, '--radius') || readCssVar(b, '--radiusHalf')
     const currentRadius = readCssVar(b, '--currentRadius')
+    const windowBg = readCssVar(b, '--colorWindowBg')
 
     const panelBg = firstUsable([
+      isUnified && !isTransparent && windowBg,
       tabbarWrapperStyle && tabbarWrapperStyle.backgroundColor,
       panelStyle && panelStyle.backgroundColor,
       subcontainerStyle && subcontainerStyle.backgroundColor,
@@ -5605,6 +5631,7 @@ function createThemeAdapter(root) {
     ], '#232629')
 
     const panelBorder = firstUsable([
+      isUnified && 'transparent',
       colorBorderSubtle,
       tabbarWrapperStyle && tabbarWrapperStyle.borderColor,
       accentBgDarker,
@@ -5620,10 +5647,11 @@ function createThemeAdapter(root) {
 
     const tabBg = firstUsable([
       nativeTabStyle && nativeTabStyle.backgroundColor,
-      panelBg,
+      isUnified ? 'transparent' : panelBg,
     ], panelBg)
 
     const tabHoverBg = firstUsable([
+      isUnified && readCssVar(b, '--colorBgAlphaHeavy'),
       readCssVar(b, '--colorBgInverser'),
       readCssVar(b, '--colorBgIntense'),
       'rgba(255,255,255,0.08)',
@@ -5631,6 +5659,7 @@ function createThemeAdapter(root) {
 
     const activeTabBg = firstUsable([
       activeTabStyle && activeTabStyle.backgroundColor,
+      isUnified && readCssVar(b, '--colorBgAlphaHeavier'),
       accentBgDark,
       tabBg,
     ], tabBg)
@@ -5663,6 +5692,11 @@ function createThemeAdapter(root) {
       activeTabFg,
       accent,
       radiusValue,
+      isUnified,
+      isTransparent,
+      isAccOnTabs,
+      isTransparentTabs,
+      isTransparentTabbar,
     }
   }
 
@@ -5670,7 +5704,7 @@ function createThemeAdapter(root) {
     const vars = resolveThemeValues()
     const style = root.style
 
-    setVar(style, '--svb-theme-panel-bg', vars.panelBg)
+    setVar(style, '--svb-theme-panel-bg', vars.isTransparent ? 'transparent' : vars.panelBg)
     setVar(style, '--svb-theme-panel-border', vars.panelBorder)
     setVar(style, '--svb-theme-panel-fg', vars.panelFg)
     setVar(style, '--svb-theme-tab-bg', vars.tabBg)
@@ -5679,7 +5713,14 @@ function createThemeAdapter(root) {
     setVar(style, '--svb-theme-tab-active-fg', vars.activeTabFg)
     setVar(style, '--svb-theme-accent', vars.accent)
     setVar(style, '--svb-theme-radius', vars.radiusValue)
+
+    root.classList.toggle('is-unified', vars.isUnified)
+    root.classList.toggle('is-transparent', vars.isTransparent)
+    root.classList.toggle('is-acc-on-tabs', vars.isAccOnTabs)
+    root.classList.toggle('is-transparent-tabs', vars.isTransparentTabs)
+    root.classList.toggle('is-transparent-tabbar', vars.isTransparentTabbar)
   }
+
 
   function start() {
     apply()
@@ -5741,23 +5782,27 @@ function createLayoutAdapter(options) {
   }
 
   function apply() {
-    if (!host || !root || !trigger || !dragShield) return
+    if (!root || !trigger || !dragShield) return
 
-    if (!host.classList.contains('svb-layout-host')) {
-      host.classList.add('svb-layout-host')
+    // Re-verify host in case it was moved or changed
+    const currentHost = host || document.querySelector('.svb-layout-host')
+    if (!currentHost) return
+
+    if (!currentHost.classList.contains('svb-layout-host')) {
+      currentHost.classList.add('svb-layout-host')
     }
 
-    if (host.style.getPropertyValue('--svb-sidebar-width') !== `${currentWidth}px`) {
-      host.style.setProperty('--svb-sidebar-width', `${currentWidth}px`)
+    if (currentHost.style.getPropertyValue('--svb-sidebar-width') !== `${currentWidth}px`) {
+      currentHost.style.setProperty('--svb-sidebar-width', `${currentWidth}px`)
     }
 
     if (root.style.width !== `${getRenderedWidth()}px`) {
       root.style.width = `${getRenderedWidth()}px`
     }
 
-    host.classList.toggle('svb-mode-docked', currentPinned)
-    host.classList.toggle('svb-mode-overlay', !currentPinned)
-    host.classList.toggle('svb-is-fullscreen', fullscreen)
+    currentHost.classList.toggle('svb-mode-docked', currentPinned)
+    currentHost.classList.toggle('svb-mode-overlay', !currentPinned)
+    currentHost.classList.toggle('svb-is-fullscreen', fullscreen)
     root.classList.toggle('is-revealed', !fullscreen && (currentPinned || revealed))
     trigger.classList.toggle('is-enabled', !fullscreen && !currentPinned)
     dragShield.classList.toggle('is-active', !fullscreen && Boolean(dragState))
@@ -5794,11 +5839,12 @@ function createLayoutAdapter(options) {
 
   function startDragging(event) {
     const handle = event.target.closest('.svb-resize-handle')
-    if (!handle || !host) return
+    const currentHost = host || document.querySelector('.svb-layout-host')
+    if (!handle || !currentHost) return
 
     event.preventDefault()
 
-    const hostRect = host.getBoundingClientRect()
+    const hostRect = currentHost.getBoundingClientRect()
     const onPointerMove = moveEvent => {
       dragState.previewWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(moveEvent.clientX - hostRect.left)))
       apply()

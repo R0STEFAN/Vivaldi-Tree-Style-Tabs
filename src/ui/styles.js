@@ -1,18 +1,18 @@
 const STYLE_TEXT = `
-#browser > #main > .inner.svb-layout-host.svb-mode-docked {
-  padding-left: var(--svb-sidebar-width, 300px);
+.svb-layout-host.svb-mode-docked {
+  padding-left: var(--svb-sidebar-width, 300px) !important;
 }
 
-#browser > #main > .inner.svb-layout-host.svb-is-fullscreen {
+.svb-layout-host.svb-is-fullscreen {
   padding-left: 0 !important;
 }
 
-#browser > #main > .inner.svb-layout-host.svb-mode-overlay {
-  padding-left: 0;
+.svb-layout-host.svb-mode-overlay {
+  padding-left: 0 !important;
 }
 
-#browser > #main > .inner.svb-layout-host.svb-mode-docked #webview-container ~ .StatusInfo {
-  left: calc(var(--svb-sidebar-width, 300px) + 6px);
+.svb-layout-host.svb-mode-docked #webview-container ~ .StatusInfo {
+  left: calc(var(--svb-sidebar-width, 300px) + 6px) !important;
 }
 
 #svb-root.svb-shell {
@@ -30,7 +30,7 @@ const STYLE_TEXT = `
   --svb-radius: var(--svb-theme-radius, 5px);
   --svb-gap: 2px;
   --svb-tree-indent: 14px;
-  --svb-guide-opacity: 0.18;
+  --svb-guide-opacity: 0.35;
   --svb-d-swift: 100ms;
   --svb-d-fast: 120ms;
   --svb-d-norm: 200ms;
@@ -50,6 +50,18 @@ const STYLE_TEXT = `
   transition:
     transform var(--svb-d-norm) var(--svb-ease-out),
     opacity var(--svb-d-fast) linear;
+}
+
+#svb-root.svb-shell.is-transparent .svb-frame {
+  backdrop-filter: var(--backgroundBlur, var(--unifiedBlur, blur(20px)));
+  background-color: transparent;
+}
+
+#svb-root.svb-shell.is-unified .svb-frame {
+  border-right: 1px solid var(--svb-border);
+  border-left: 0;
+  border-top: 0;
+  border-bottom: 0;
 }
 
 #svb-root.svb-shell.is-menu-open {
@@ -73,13 +85,19 @@ body.svb-is-resizing {
   transform: translateX(0);
 }
 
+.svb-layout-host.svb-mode-overlay #svb-root.svb-shell .svb-frame {
+  background-color: var(--colorBg, var(--svb-bg)) !important;
+  backdrop-filter: none !important;
+  background-image: none !important;
+}
+
 #svb-root-trigger.svb-edge-trigger {
   position: absolute;
   top: 0;
   left: 0;
   bottom: 0;
   width: 8px;
-  z-index: 1;
+  z-index: 2;
   display: none;
   pointer-events: auto;
 }
@@ -117,11 +135,11 @@ body.svb-is-resizing {
 #svb-root .svb-resize-handle {
   position: absolute;
   top: 0;
-  right: -3px;
+  right: -5px;
   bottom: 0;
-  width: 8px;
+  width: 10px;
   cursor: ew-resize;
-  z-index: 20;
+  z-index: 200;
 }
 
 #svb-root .svb-drag-ghost {
@@ -339,7 +357,7 @@ body.svb-is-resizing {
   display: flex;
   flex-wrap: wrap;
   gap: var(--svb-gap);
-  padding: 0 0 11px;
+  padding: 0 2px 11px;
   position: relative;
 }
 
@@ -407,15 +425,15 @@ body.svb-is-resizing {
 
 #svb-root .svb-tab__guide {
   position: absolute;
-  width: 1px;
+  width: 1.75px;
   opacity: var(--svb-guide-opacity);
-  background: color-mix(in srgb, var(--svb-text) 90%, transparent);
+  background: var(--svb-accent);
 }
 
 #svb-root .svb-tab__guide--branch {
-  top: 0;
-  left: calc(var(--svb-tree-indent) * 0.5);
-  height: calc(var(--svb-guide-branch-size) * 32px - 2px);
+  top: 32px;
+  left: calc(var(--svb-tree-indent) * 0.5 - 0.375px);
+  height: calc((var(--svb-guide-branch-size) - 1) * 32px - 2px);
 }
 
 #svb-root .svb-tab__body {
@@ -432,39 +450,24 @@ body.svb-is-resizing {
   z-index: 1;
 }
 
-#svb-root .svb-tab.is-dragging {
-  opacity: 0.72;
+#svb-root.is-transparent-tabs .svb-tab:not(.is-active):not(.is-selected) .svb-tab__body {
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
-#svb-root .svb-tab:hover .svb-tab__body {
-  background: var(--svb-panel-hover);
-}
-
-#svb-root .svb-tab.is-colored .svb-tab__body {
-  border-color: color-mix(in srgb, var(--svb-tab-color) 34%, var(--svb-border));
-  background: color-mix(in srgb, var(--svb-tab-color) 14%, var(--svb-panel));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--svb-tab-color) 14%, transparent);
-}
-
-#svb-root .svb-tab.is-colored:hover .svb-tab__body {
-  background: color-mix(in srgb, var(--svb-tab-color) 18%, var(--svb-panel-hover));
-}
-
-#svb-root .svb-tab.is-tiled .svb-tab__body {
-  border-color: color-mix(in srgb, var(--svb-tile-accent, var(--svb-accent)) 30%, var(--svb-border));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--svb-tile-accent, var(--svb-accent)) 18%, transparent);
-}
-
-#svb-root .svb-tab.is-selected .svb-tab__body {
-  border-color: color-mix(in srgb, var(--svb-accent) 35%, transparent);
-  background: color-mix(in srgb, var(--svb-accent) 12%, var(--svb-panel));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--svb-accent) 28%, transparent);
+#svb-root.is-transparent-tabs .svb-tab:not(.is-active):not(.is-selected):hover .svb-tab__body {
+  background: var(--svb-panel-hover) !important;
 }
 
 #svb-root .svb-tab.is-active .svb-tab__body {
   border-color: transparent;
-  background: var(--svb-panel-active);
+  background: var(--colorAccentBg, var(--svb-panel-active));
+  color: var(--colorAccentFg, var(--svb-text-strong));
   box-shadow: 0 1px 4px -1px rgba(0, 0, 0, 0.45), inset 0 0 0 1px color-mix(in srgb, var(--svb-text-strong) 10%, transparent);
+}
+
+#svb-root .svb-tab.is-active .svb-tab__title {
+  color: inherit;
 }
 
 #svb-root .svb-tab.is-colored.is-active .svb-tab__body {
@@ -866,11 +869,10 @@ body.svb-is-resizing {
   max-width: 320px;
   padding: 5px;
   border: 1px solid var(--svb-border, rgba(255, 255, 255, 0.12));
-  border-radius: 8px;
   border-radius: calc(var(--svb-radius, 5px) + 3px);
   color: var(--svb-text, #d8d8d8);
-  background: #202327;
-  background: color-mix(in srgb, var(--svb-bg, #232629) 94%, black);
+  background: var(--colorBg, #202327) !important;
+  backdrop-filter: none !important;
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.42), 0 2px 6px rgba(0, 0, 0, 0.24);
 }
 
