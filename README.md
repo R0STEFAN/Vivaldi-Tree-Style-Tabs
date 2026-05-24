@@ -160,3 +160,47 @@ To regenerate the bundle:
 ```bash
 npm run build
 ```
+
+## Automation Scripts (Recommended)
+
+To simplify the installation and maintain the mod after browser updates, you can use the provided automation scripts.
+
+### Linux (Arch-based)
+
+The project includes an automatic installer that sets up a Pacman Hook to keep the mod active after system updates.
+
+1. **Build the project:**
+   ```bash
+   npm run build
+   ```
+2. **Run the installer:**
+   ```bash
+   bash install-linux.sh
+   ```
+   *What it does:*
+   - Copies `custom.js` to `~/.local/share/vivaldi-patch/`.
+   - Creates a patching script that injects the mod into Vivaldi's `window.html`.
+   - Sets up a **Pacman Hook** (`/etc/pacman.d/hooks/vivaldi-patch.hook`) that automatically re-applies the patch every time Vivaldi is updated via the package manager.
+
+If you don't want the hook and just want a one-time patch, you can use:
+```bash
+sudo bash patch-linux.sh
+```
+
+### Windows
+
+A batch script is provided to automatically find the latest Vivaldi version folder and apply the mod.
+
+1. **Build the project:**
+   ```bash
+   npm run build
+   ```
+2. **Run the patcher:**
+   - Double-click `patch-windows.bat` or run it from CMD/PowerShell.
+   *What it does:*
+   - Automatically detects the Vivaldi installation path (User or System-wide).
+   - Finds the latest versioned folder (e.g., `6.6.3271.48`).
+   - Copies `dist/custom.js` to the resources folder.
+   - Modifies `window.html` to include the script tag.
+
+*Note: Since Windows updates Vivaldi by creating new versioned folders, you will need to run `patch-windows.bat` again after each browser update.*
