@@ -7,10 +7,11 @@ To prevent "orphaned" child tabs (tabs that remain in memory but are hidden beca
 - **UI-Triggered Closure:** When a parent tab is closed via the custom panel, `treeController.getCloseTargetIds` recursively identifies all descendants. A single bulk request is sent to the Vivaldi API to close the entire subtree.
 - **Native-Triggered Closure:** If a tab is closed via native Vivaldi UI, `treeController.removeTab` automatically promotes its children to the next higher level in the hierarchy, preventing the tree structure from breaking.
 
-## 2. Native Reconciliation (Infinite Loop Protection)
+## 2. Native Reconciliation (Infinite Loop & Workspace Protection)
 Synchronization between the linear native tab strip and the hierarchical custom panel is managed by `native-reconcile.js`.
 - **Mechanism:** To avoid infinite loops where the mod moves a tab, Vivaldi emits a move event, and the mod reacts by moving it again, the controller uses an "own move" tracking system.
 - **Implementation:** Before calling `api.moveTab`, the mod registers the Tab ID in an internal `Set`. Incoming `onMoved` events are ignored if the ID is present in this set, effectively breaking the feedback loop.
+- **Workspace Sync:** To prevent "context sticking" when moving tabs between workspaces, the system employs **Active-Tab-First Resolution**. If the active tab's `workspaceId` changes, the panel immediately follows it to the new workspace, overriding any cached "visible tabs" context. This prevents the extension from erroneously activating tabs in the previous workspace.
 
 ## 3. Workspace Context Locking
 Rapid tab closures or switching can cause Vivaldi to momentarily activate tabs in different workspaces, leading to visual flickering.

@@ -3230,11 +3230,24 @@ function tabHasWorkspace(tab) {
 function deriveContextFromActiveTab(allTabs) {
   const activeTab = allTabs.find(tab => tab.active) || null
   const hasWorkspaceTabs = allTabs.some(tab => tab.workspaceId != null)
-  const visibleTabs = allTabs.filter(tab => !tab.hidden)
 
+  // 1. Primary ground truth: the active tab
+  if (activeTab && hasWorkspaceTabs) {
+    const activeWorkspaceId = activeTab.workspaceId ?? null
+    return {
+      activeTab,
+      activeWorkspaceId,
+      outsideWorkspace: activeWorkspaceId == null,
+      filteredByWorkspace: true,
+      visibleTabs: null,
+    }
+  }
+
+  // 2. Secondary: visible tabs (useful during transitions or when no tab is clearly active)
+  const visibleTabs = allTabs.filter(tab => !tab.hidden)
   if (visibleTabs.length > 0 && hasWorkspaceTabs) {
     const visibleWorkspaceIds = Array.from(new Set(
-      visibleTabs.map(tab => (tabHasWorkspace(tab) ? tab.workspaceId : null))
+      visibleTabs.map(tab => tab.workspaceId ?? null)
     ))
 
     if (visibleWorkspaceIds.length === 1) {
@@ -3251,7 +3264,8 @@ function deriveContextFromActiveTab(allTabs) {
     }
   }
 
-  const activeWorkspaceId = activeTab && tabHasWorkspace(activeTab) ? activeTab.workspaceId : null
+  // 3. Fallback
+  const activeWorkspaceId = activeTab && activeTab.workspaceId != null ? activeTab.workspaceId : null
   const outsideWorkspace = activeWorkspaceId == null && hasWorkspaceTabs
 
   return {
@@ -3698,10 +3712,18 @@ function createTabStore(api) {
 
     if (shouldPreserveContext && state.filteredByWorkspace) {
       const preservedContext = lockedContext || createContextSnapshot()
-      const preservedTabs = getVisibleTabsForContext(allTabs, preservedContext)
+      
+      // If the active tab has moved to a DIFFERENT workspace, we should NOT preserve the old context.
+      // This allows following the tab when it's moved or when the user explicitly switches.
+      const activeTabMoved = derivedContext.activeTab && 
+                             (derivedContext.activeTab.workspaceId ?? null) !== (preservedContext.activeWorkspaceId ?? null)
 
-      if (preservedTabs.length > 0) {
-        nextContext = preservedContext
+      if (!activeTabMoved) {
+        const preservedTabs = getVisibleTabsForContext(allTabs, preservedContext)
+
+        if (preservedTabs.length > 0) {
+          nextContext = preservedContext
+        }
       }
     }
 
