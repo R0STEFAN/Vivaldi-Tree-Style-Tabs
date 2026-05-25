@@ -64,15 +64,38 @@ The Vivaldi version layout may have changed."
     || die "window.html missing: $WINDOW_HTML"
 }
 
-# Decide whether subsequent writes need sudo. Sets the global SUDO.
-setup_sudo() {
-  if [[ -w "$RESOURCES_DIR" && -w "$WINDOW_HTML" ]]; then
+# Confirm we can actually write inside the Vivaldi resources directory.
+# A plain `[[ -w ]]` check is misleading on macOS Ventura+: Unix permissions
+# may say writable while the kernel-level App Management TCC restriction still
+# blocks writes with EPERM. We do a real touch probe instead, and on failure
+# print actionable instructions explaining both fixes (App Management
+# permission or sudo). Sets the global SUDO to "" on success.
+verify_writable() {
+  local probe="$RESOURCES_DIR/.tts-write-probe.$$"
+  local err
+  if err="$(touch "$probe" 2>&1)"; then
+    rm -f "$probe"
     SUDO=""
-  else
-    SUDO="sudo"
-    log_warn "$RESOURCES_DIR is not writable by $USER; sudo will be used."
-    log_warn "You may be prompted for your password."
+    return
   fi
+
+  cat >&2 <<EOF
+$(printf '\033[1;31merror:\033[0m') cannot write to the Vivaldi resources directory:
+  $err
+
+This is almost always macOS's App Management protection. Two ways to fix it:
+
+  Option 1 — grant your terminal App Management permission (recommended):
+    1. Open  System Settings  →  Privacy & Security  →  App Management
+       (on some macOS versions it appears as "Developer Tools").
+    2. Add your terminal app (Terminal.app, iTerm.app, Ghostty, etc.) and
+       toggle it on. You may need to quit and reopen the terminal.
+    3. Re-run this script.
+
+  Option 2 — re-run with sudo (works if Vivaldi.app is root-owned):
+    sudo $0 $*
+EOF
+  exit 1
 }
 
 # Warn (and optionally prompt) if Vivaldi is currently running.

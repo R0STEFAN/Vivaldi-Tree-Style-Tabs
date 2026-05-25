@@ -49,7 +49,7 @@ main() {
     exit 0
   fi
 
-  setup_sudo
+  verify_writable
   confirm_if_vivaldi_running
 
   if [[ -f "$WINDOW_HTML_BAK" ]]; then

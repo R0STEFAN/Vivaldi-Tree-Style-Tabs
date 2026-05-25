@@ -48,7 +48,7 @@ main() {
   [[ -f "$custom_js_src" ]] \
     || die "Build did not produce $custom_js_src"
 
-  setup_sudo
+  verify_writable
   confirm_if_vivaldi_running
 
   if [[ ! -f "$WINDOW_HTML_BAK" ]]; then
