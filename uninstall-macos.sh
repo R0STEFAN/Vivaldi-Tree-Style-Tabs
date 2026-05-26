@@ -70,6 +70,13 @@ main() {
   fi
 
   log_ok "Uninstall complete."
+  cat <<EOF
+
+Note:
+  - If you granted your terminal "App Management" permission to run this
+    script, you can revoke it now: System Settings → Privacy & Security →
+    App Management → toggle your terminal off.
+EOF
 }
 
 main "$@"

@@ -79,6 +79,10 @@ Notes:
   - Modifying Vivaldi.app contents invalidates its code signature. On the next
     launch macOS may show a Gatekeeper warning; you can dismiss it and Vivaldi
     will continue to work normally.
+  - If you granted your terminal "App Management" permission to run this
+    script, you can revoke it now: System Settings → Privacy & Security →
+    App Management → toggle your terminal off. You only need it while
+    running install-macos.sh / uninstall-macos.sh.
   - To remove the mod:  npm run uninstall:macos
 EOF
 }

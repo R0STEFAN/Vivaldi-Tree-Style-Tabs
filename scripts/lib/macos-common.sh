@@ -68,8 +68,7 @@ The Vivaldi version layout may have changed."
 # A plain `[[ -w ]]` check is misleading on macOS Ventura+: Unix permissions
 # may say writable while the kernel-level App Management TCC restriction still
 # blocks writes with EPERM. We do a real touch probe instead, and on failure
-# print actionable instructions explaining both fixes (App Management
-# permission or sudo). Sets the global SUDO to "" on success.
+# print actionable instructions. Sets the global SUDO to "" on success.
 verify_writable() {
   local probe="$RESOURCES_DIR/.tts-write-probe.$$"
   local err
@@ -79,22 +78,50 @@ verify_writable() {
     return
   fi
 
+  local has_provenance=0
+  if xattr "$VIVALDI_APP" 2>/dev/null | grep -q '^com\.apple\.provenance$'; then
+    has_provenance=1
+  fi
+  local owner
+  owner="$(stat -f '%Su' "$VIVALDI_APP" 2>/dev/null || echo unknown)"
+
   cat >&2 <<EOF
 $(printf '\033[1;31merror:\033[0m') cannot write to the Vivaldi resources directory:
   $err
-
-This is almost always macOS's App Management protection. Two ways to fix it:
-
-  Option 1 — grant your terminal App Management permission (recommended):
-    1. Open  System Settings  →  Privacy & Security  →  App Management
-       (on some macOS versions it appears as "Developer Tools").
-    2. Add your terminal app (Terminal.app, iTerm.app, Ghostty, etc.) and
-       toggle it on. You may need to quit and reopen the terminal.
-    3. Re-run this script.
-
-  Option 2 — re-run with sudo (works if Vivaldi.app is root-owned):
-    sudo $0 $*
 EOF
+
+  if [[ "$has_provenance" == "1" ]]; then
+    cat >&2 <<'EOF'
+
+Vivaldi.app carries the com.apple.provenance extended attribute, so macOS
+App Management (TCC) is blocking writes to the bundle. This is enforced at
+the kernel level — Unix permissions and sudo do not bypass it.
+
+Fix — grant your terminal "App Management" permission:
+
+  1. System Settings  →  Privacy & Security  →  App Management.
+     This is a DIFFERENT entry from "Developer Tools"; granting Developer
+     Tools will not help. Look specifically for "App Management".
+  2. Click + (or toggle on) and add your terminal app — e.g. Terminal.app,
+     iTerm.app, Ghostty.app, WezTerm.app, Warp.app, etc.
+  3. Fully quit the terminal (Cmd-Q, not just close the window) and reopen.
+     TCC re-evaluates the permission only at process launch.
+  4. Re-run this script.
+
+After installing (or uninstalling), it is good hygiene to revoke the
+permission again:  System Settings  →  Privacy & Security  →  App
+Management → toggle your terminal back off (or remove it with "-").
+You only need it while running install-macos.sh / uninstall-macos.sh.
+EOF
+  else
+    cat >&2 <<EOF
+
+Vivaldi.app is owned by "$owner" and is not tagged with com.apple.provenance,
+so the write was likely blocked by plain Unix permissions. Try:
+
+  sudo $0 $*
+EOF
+  fi
   exit 1
 }
 
