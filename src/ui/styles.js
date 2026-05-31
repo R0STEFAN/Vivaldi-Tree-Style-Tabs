@@ -162,6 +162,11 @@ body.svb-is-resizing {
   width: 10px;
   cursor: ew-resize;
   z-index: 200;
+  display: none;
+}
+
+.svb-mode-docked #svb-root .svb-resize-handle {
+  display: block;
 }
 
 #svb-root .svb-drag-ghost {
@@ -481,6 +486,20 @@ body.svb-is-resizing {
   background: var(--svb-panel-hover) !important;
 }
 
+#svb-root .svb-tab.is-selected:not(.is-active) .svb-tab__body {
+  background: var(--colorHighlightBgAlpha, rgba(var(--colorAccentBgRaw), 0.15));
+  border: 1px dashed var(--colorAccentBg);
+  box-shadow: none;
+}
+
+#svb-root .svb-tab.is-selected.is-active .svb-tab__body {
+  border: 1px dashed var(--colorAccentFg);
+}
+
+#svb-root .svb-tab.is-selected:not(.is-active):hover .svb-tab__body {
+  background: var(--colorHighlightBgAlpha, rgba(var(--colorAccentBgRaw), 0.25));
+}
+
 #svb-root .svb-tab.is-active .svb-tab__body {
   border-color: transparent;
   background: var(--colorAccentBg, var(--svb-panel-active));
@@ -488,8 +507,12 @@ body.svb-is-resizing {
   box-shadow: 0 1px 4px -1px rgba(0, 0, 0, 0.45), inset 0 0 0 1px color-mix(in srgb, var(--svb-text-strong) 10%, transparent);
 }
 
-#svb-root .svb-tab.is-active .svb-tab__title {
-  color: inherit;
+#svb-root .svb-tab.is-colored .svb-tab__body {
+  border-color: color-mix(in srgb, var(--svb-tab-color) 32%, transparent);
+  background: color-mix(in srgb, var(--svb-tab-color) 8%, var(--svb-panel));
+  box-shadow:
+    0 1px 1px 0 rgba(0, 0, 0, 0.12),
+    inset 0 0 0 1px color-mix(in srgb, var(--svb-tab-color) 24%, transparent);
 }
 
 #svb-root .svb-tab.is-colored.is-active .svb-tab__body {
@@ -499,6 +522,13 @@ body.svb-is-resizing {
     0 1px 4px -1px rgba(0, 0, 0, 0.45),
     inset 0 0 0 1px color-mix(in srgb, var(--svb-text-strong) 10%, transparent),
     inset 0 0 0 2px color-mix(in srgb, var(--svb-tab-color) 18%, transparent);
+}
+
+#svb-root .svb-tab.is-tiled .svb-tab__body {
+  border-color: color-mix(in srgb, var(--svb-tile-accent, var(--svb-accent)) 32%, transparent);
+  box-shadow:
+    0 1px 1px 0 rgba(0, 0, 0, 0.12),
+    inset 0 0 0 1px color-mix(in srgb, var(--svb-tile-accent, var(--svb-accent)) 24%, transparent);
 }
 
 #svb-root .svb-tab.is-tiled.is-active .svb-tab__body {

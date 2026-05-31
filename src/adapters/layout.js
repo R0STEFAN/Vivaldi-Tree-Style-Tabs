@@ -99,13 +99,26 @@ function createLayoutAdapter(options) {
     if (!handle || !currentHost) return
 
     event.preventDefault()
+    
+    // Capture pointer to ensure we get events even if mouse moves over webview (critical for Windows)
+    try {
+      handle.setPointerCapture(event.pointerId)
+    } catch (e) {
+      console.warn('[svb] could not set pointer capture', e)
+    }
 
     const hostRect = currentHost.getBoundingClientRect()
     const onPointerMove = moveEvent => {
-      dragState.previewWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(moveEvent.clientX - hostRect.left)))
-      apply()
+      const nextWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(moveEvent.clientX - hostRect.left)))
+      if (dragState && dragState.previewWidth !== nextWidth) {
+        dragState.previewWidth = nextWidth
+        apply()
+      }
     }
-    const onPointerUp = () => {
+    const onPointerUp = upEvent => {
+      try {
+        handle.releasePointerCapture(upEvent.pointerId)
+      } catch (e) {}
       stopDragging()
     }
 
@@ -117,6 +130,8 @@ function createLayoutAdapter(options) {
     document.body.classList.add('svb-is-resizing')
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
+    
+    console.log('[svb] resize started', { startWidth: currentWidth, hostLeft: hostRect.left })
   }
 
   function start() {

@@ -315,6 +315,10 @@ function createTabsApi() {
       return vivaldiBridge.tileTabs(tabIds, layout)
     },
 
+    syncNativeSelection(tabIds) {
+      return vivaldiBridge.setSelectedTabs(tabIds)
+    },
+
     async restoreLastClosedTab() {
       if (!sessionsApi || typeof sessionsApi.restore !== 'function') return null
       return new Promise((resolve, reject) => {
@@ -454,10 +458,52 @@ function createTabsApi() {
     async moveTabsToNewWindow(tabIds) {
       const ids = Array.isArray(tabIds) ? tabIds.filter(Number.isFinite) : []
       if (ids.length === 0) return null
+
       if (vivaldiBridge && typeof vivaldiBridge.detachTabsToNewWindow === 'function') {
-        const detached = await vivaldiBridge.detachTabsToNewWindow(ids)
-        if (detached) return { native: true }
+        try {
+          const detached = await vivaldiBridge.detachTabsToNewWindow(ids)
+          if (detached) return { native: true }
+        } catch (e) {
+          console.warn('[svb] vivaldiBridge.detachTabsToNewWindow failed:', e)
+        }
       }
+
+      // Fallback for Vivaldi 8+ or if bridge fails
+      if (windowsApi && typeof windowsApi.create === 'function') {
+        try {
+          console.log('[svb] fallback: creating window with tab', ids[0])
+          // 1. Create new window with the first tab
+          const newWindow = await promisifyChromeApi(windowsApi.create, { tabId: ids[0] })
+          if (!newWindow || !newWindow.id) {
+             throw new Error('Failed to create new window')
+          }
+          
+          // 2. Wait a bit for the new window to be ready
+          await new Promise(resolve => setTimeout(resolve, 300))
+
+          // 3. Move remaining tabs one by one with a small delay between each
+          if (ids.length > 1) {
+            const children = ids.slice(1)
+            for (const childId of children) {
+              console.log('[svb] fallback: moving child', childId, 'to window', newWindow.id)
+              try {
+                // We use a small delay to prevent Vivaldi from dropping moves
+                await new Promise(resolve => setTimeout(resolve, 150))
+                await promisifyChromeApi(tabsApi.move, childId, {
+                  windowId: newWindow.id,
+                  index: -1
+                })
+              } catch (moveError) {
+                console.error(`[svb] failed to move child tab ${childId} to new window`, moveError)
+              }
+            }
+          }
+          return { native: false, windowId: newWindow.id }
+        } catch (error) {
+          console.error('[svb] fallback move to new window failed', error)
+        }
+      }
+
       console.warn('[svb] native Vivaldi detachPage is unavailable; move to new window skipped')
       return null
     },

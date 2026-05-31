@@ -196,6 +196,11 @@ body.svb-is-resizing {
   width: 10px;
   cursor: ew-resize;
   z-index: 200;
+  display: none;
+}
+
+.svb-mode-docked #svb-root .svb-resize-handle {
+  display: block;
 }
 
 #svb-root .svb-drag-ghost {
@@ -515,6 +520,20 @@ body.svb-is-resizing {
   background: var(--svb-panel-hover) !important;
 }
 
+#svb-root .svb-tab.is-selected:not(.is-active) .svb-tab__body {
+  background: var(--colorHighlightBgAlpha, rgba(var(--colorAccentBgRaw), 0.15));
+  border: 1px dashed var(--colorAccentBg);
+  box-shadow: none;
+}
+
+#svb-root .svb-tab.is-selected.is-active .svb-tab__body {
+  border: 1px dashed var(--colorAccentFg);
+}
+
+#svb-root .svb-tab.is-selected:not(.is-active):hover .svb-tab__body {
+  background: var(--colorHighlightBgAlpha, rgba(var(--colorAccentBgRaw), 0.25));
+}
+
 #svb-root .svb-tab.is-active .svb-tab__body {
   border-color: transparent;
   background: var(--colorAccentBg, var(--svb-panel-active));
@@ -522,8 +541,12 @@ body.svb-is-resizing {
   box-shadow: 0 1px 4px -1px rgba(0, 0, 0, 0.45), inset 0 0 0 1px color-mix(in srgb, var(--svb-text-strong) 10%, transparent);
 }
 
-#svb-root .svb-tab.is-active .svb-tab__title {
-  color: inherit;
+#svb-root .svb-tab.is-colored .svb-tab__body {
+  border-color: color-mix(in srgb, var(--svb-tab-color) 32%, transparent);
+  background: color-mix(in srgb, var(--svb-tab-color) 8%, var(--svb-panel));
+  box-shadow:
+    0 1px 1px 0 rgba(0, 0, 0, 0.12),
+    inset 0 0 0 1px color-mix(in srgb, var(--svb-tab-color) 24%, transparent);
 }
 
 #svb-root .svb-tab.is-colored.is-active .svb-tab__body {
@@ -533,6 +556,13 @@ body.svb-is-resizing {
     0 1px 4px -1px rgba(0, 0, 0, 0.45),
     inset 0 0 0 1px color-mix(in srgb, var(--svb-text-strong) 10%, transparent),
     inset 0 0 0 2px color-mix(in srgb, var(--svb-tab-color) 18%, transparent);
+}
+
+#svb-root .svb-tab.is-tiled .svb-tab__body {
+  border-color: color-mix(in srgb, var(--svb-tile-accent, var(--svb-accent)) 32%, transparent);
+  box-shadow:
+    0 1px 1px 0 rgba(0, 0, 0, 0.12),
+    inset 0 0 0 1px color-mix(in srgb, var(--svb-tile-accent, var(--svb-accent)) 24%, transparent);
 }
 
 #svb-root .svb-tab.is-tiled.is-active .svb-tab__body {
@@ -4039,52 +4069,70 @@ function createTabStore(api) {
 
     async moveSelectionToNewWindow(tabId, selectedIds) {
       const targetIds = getTreeActionTargetIds(tabId, selectedIds)
+      console.log('[svb] moveSelectionToNewWindow targetIds:', targetIds)
       if (targetIds.length === 0 || !api.moveTabsToNewWindow) return
-      const moveRecords = treeController.getWorkspaceMoveRecords(targetIds)
-      const moveRecordById = new Map(moveRecords.map(record => [record.tabId, record]))
-      const visibleTabsById = new Map(getAllVisibleTabs().map(tab => [tab.id, tab]))
-      const nodeIdByTabId = new Map()
-      const detachedContextKey = `detached:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`
+      
+      // Lock context to prevent workspace jumping during detachment
+      lockCurrentContext()
 
-      for (const targetId of targetIds) {
-        const tab = visibleTabsById.get(targetId)
-        const record = tab
-          && tab.vivExtData
-          && tab.vivExtData[TREE_NAMESPACE_KEY]
-          && typeof tab.vivExtData[TREE_NAMESPACE_KEY] === 'object'
-          ? tab.vivExtData[TREE_NAMESPACE_KEY]
-          : null
-        nodeIdByTabId.set(targetId, typeof record?.nodeId === 'string' && record.nodeId ? record.nodeId : createTreeNodeId())
-      }
+      try {
+        const moveRecords = treeController.getWorkspaceMoveRecords(targetIds)
+        console.log('[svb] moveRecords count:', moveRecords.length)
+        const moveRecordById = new Map(moveRecords.map(record => [record.tabId, record]))
+        const visibleTabsById = new Map(getAllVisibleTabs().map(tab => [tab.id, tab]))
+        const nodeIdByTabId = new Map()
+        const detachedContextKey = `detached:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`
 
-      await updateVivExtDataForTabs(targetIds, tab => {
-        const previousData = tab && tab.vivExtData && typeof tab.vivExtData === 'object' ? tab.vivExtData : {}
-        const previousTreeData = previousData[TREE_NAMESPACE_KEY] && typeof previousData[TREE_NAMESPACE_KEY] === 'object'
-          ? previousData[TREE_NAMESPACE_KEY]
-          : null
-        const moveRecord = moveRecordById.get(tab.id) || null
-        const parentNodeId = moveRecord && Number.isFinite(moveRecord.parentId)
-          ? nodeIdByTabId.get(moveRecord.parentId) || null
-          : null
-        const order = moveRecord
-          ? (parentNodeId == null ? moveRecord.rootIndex : moveRecord.siblingIndex)
-          : (previousTreeData && Number.isFinite(Number(previousTreeData.order)) ? Number(previousTreeData.order) : 0)
-
-        return {
-          ...previousData,
-          [TREE_NAMESPACE_KEY]: {
-            ...(previousTreeData || {}),
-            version: (previousTreeData && Number(previousTreeData.version)) || 1,
-            contextKey: detachedContextKey,
-            nodeId: nodeIdByTabId.get(tab.id) || createTreeNodeId(),
-            parentNodeId,
-            collapsed: !!(previousTreeData && previousTreeData.collapsed),
-            order,
-          },
+        for (const targetId of targetIds) {
+          const tab = visibleTabsById.get(targetId)
+          const record = tab
+            && tab.vivExtData
+            && tab.vivExtData[TREE_NAMESPACE_KEY]
+            && typeof tab.vivExtData[TREE_NAMESPACE_KEY] === 'object'
+            ? tab.vivExtData[TREE_NAMESPACE_KEY]
+            : null
+          nodeIdByTabId.set(targetId, typeof record?.nodeId === 'string' && record.nodeId ? record.nodeId : createTreeNodeId())
         }
-      })
 
-      await api.moveTabsToNewWindow(targetIds)
+        await updateVivExtDataForTabs(targetIds, tab => {
+          const previousData = tab && tab.vivExtData && typeof tab.vivExtData === 'object' ? tab.vivExtData : {}
+          const previousTreeData = previousData[TREE_NAMESPACE_KEY] && typeof previousData[TREE_NAMESPACE_KEY] === 'object'
+            ? previousData[TREE_NAMESPACE_KEY]
+            : null
+          const moveRecord = moveRecordById.get(tab.id) || null
+          const parentNodeId = moveRecord && Number.isFinite(moveRecord.parentId)
+            ? nodeIdByTabId.get(moveRecord.parentId) || null
+            : null
+          const order = moveRecord
+            ? (parentNodeId == null ? moveRecord.rootIndex : moveRecord.siblingIndex)
+            : (previousTreeData && Number.isFinite(Number(previousTreeData.order)) ? Number(previousTreeData.order) : 0)
+
+          return {
+            ...previousData,
+            [TREE_NAMESPACE_KEY]: {
+              ...(previousTreeData || {}),
+              version: (previousTreeData && Number(previousTreeData.version)) || 1,
+              contextKey: detachedContextKey,
+              nodeId: nodeIdByTabId.get(tab.id) || createTreeNodeId(),
+              parentNodeId,
+              collapsed: !!(previousTreeData && previousTreeData.collapsed),
+              order,
+            },
+          }
+        })
+
+        console.log('[svb] calling api.moveTabsToNewWindow with:', targetIds)
+        // Delay to allow Vivaldi 8 to settle metadata updates
+        await new Promise(resolve => setTimeout(resolve, 300))
+        await api.moveTabsToNewWindow(targetIds)
+      } finally {
+        // Short delay before releasing lock to let Vivaldi internal events settle
+        setTimeout(() => {
+          releaseContextLock()
+          syncTabs({ preserveContext: true }).catch(() => {})
+        }, 1500)
+      }
+      
       await syncTabs({ preserveContext: true })
     },
 
@@ -4805,13 +4853,22 @@ function createVivaldiBridge(options) {
 
   function getPageActions() {
     if (pageActions) return pageActions
-    pageActions = findModuleByExports(m => typeof m.detachPage === 'function' && typeof m.movePage === 'function')
+    // Vivaldi 8: movePage might be gone or renamed, using detachPage + detachWorkspace as signature
+    // Also ensuring setSelection is present
+    pageActions = findModuleByExports(m => typeof m.detachPage === 'function' && (typeof m.setSelection === 'function' || typeof m.detachWorkspace === 'function'))
     return pageActions
   }
 
   function getCollectionModule() {
     if (collectionModule) return collectionModule
-    collectionModule = findModuleByExports(m => typeof m.aV === 'function' && typeof m.V_ === 'function')
+    // Vivaldi 8: The collection module often has an 'aV' property which is the collection class/object
+    const mod = findModuleByExports(m => m && m.aV && typeof m.aV.of === 'function')
+    if (mod && mod.aV) {
+      collectionModule = mod.aV
+      return collectionModule
+    }
+    // Fallback for older versions
+    collectionModule = findModuleByExports(m => typeof m.aV === 'function' && (typeof m.V_ === 'function' || typeof m.of === 'function'))
     return collectionModule
   }
 
@@ -5000,7 +5057,7 @@ function createVivaldiBridge(options) {
       const collection = getCollectionModule()
       const tilePages = tiling && typeof tiling.Yb === 'function' ? tiling.Yb : null
       const pageStore = store && typeof store.getPageById === 'function' ? store : null
-      const createCollection = collection && typeof collection.aV === 'function' ? collection.aV : null
+      const createCollection = (collection && (collection.aV || collection.of || collection.from)) || null
 
       if (!tilePages || !pageStore || !createCollection) {
         return null
@@ -5011,7 +5068,14 @@ function createVivaldiBridge(options) {
         .filter(Boolean)
 
       if (pages.length < 2) return null
-      return tilePages(createCollection(pages), layout, 'selection')
+
+      const nativeTarget = typeof createCollection === 'function' 
+        ? createCollection(pages) 
+        : typeof createCollection.of === 'function'
+          ? createCollection.of(...pages)
+          : pages
+
+      return tilePages(nativeTarget, layout, 'selection')
     },
 
     async detachTabsToNewWindow(tabIds) {
@@ -5026,22 +5090,84 @@ function createVivaldiBridge(options) {
       
       const detachPage = actions && typeof actions.detachPage === 'function' ? actions.detachPage : null
       const getPageById = store && typeof store.getPageById === 'function' ? store.getPageById.bind(store) : null
-      const createCollection = collection && typeof collection.aV === 'function' ? collection.aV : null
-
-      if (!detachPage || !getPageById || !createCollection) return false
+      
+      if (!detachPage || !getPageById || !collection) {
+        console.warn('[svb] bridge modules missing for detach:', { 
+          hasActions: !!actions, 
+          hasDetach: !!detachPage, 
+          hasStore: !!store, 
+          hasCollection: !!collection
+        })
+        return false
+      }
 
       const pages = ids
         .map(tabId => getPageById(tabId))
         .filter(Boolean)
 
-      if (pages.length === 0) return false
+      if (pages.length === 0) {
+        console.warn('[svb] no native pages found for ids:', ids)
+        return false
+      }
 
-      const nativeTarget = pages.length === 1
-        ? pages[0]
-        : createCollection(pages)
+      try {
+        let nativeTarget
+        if (pages.length === 1) {
+          nativeTarget = pages[0]
+        } else if (typeof collection.of === 'function') {
+          // Vivaldi 8 uses P.aV.of(...pages)
+          nativeTarget = collection.of(...pages)
+        } else if (typeof collection.from === 'function') {
+          nativeTarget = collection.from(pages)
+        } else if (typeof collection === 'function') {
+          nativeTarget = collection(pages)
+        } else {
+          nativeTarget = pages
+        }
 
-      await detachPage(nativeTarget)
-      return true
+        console.log('[svb] detaching native pages:', pages.length, 'using', nativeTarget?.constructor?.name || typeof nativeTarget)
+        await detachPage(nativeTarget)
+        return true
+      } catch (error) {
+        console.error('[svb] native detachPage failed:', error)
+        return false
+      }
+    },
+
+    setSelectedTabs(tabIds) {
+      const ids = Array.isArray(tabIds) ? tabIds.map(Number).filter(Number.isFinite) : []
+      const actions = getPageActions()
+      const store = getPageStore()
+      
+      const setSelection = actions && typeof actions.setSelection === 'function' ? actions.setSelection : null
+      const clearSelection = actions && typeof actions.clearSelection === 'function' ? actions.clearSelection : null
+      const getPageById = store && typeof store.getPageById === 'function' ? store.getPageById.bind(store) : null
+
+      if (!setSelection || !getPageById) return false
+
+      try {
+        // 1. Clear existing selection if we have new IDs to select
+        if (ids.length > 0 && typeof clearSelection === 'function') {
+          const firstPage = getPageById(ids[0])
+          if (firstPage && firstPage.windowId) {
+            clearSelection(firstPage.windowId)
+          }
+        }
+
+        // 2. Apply new selection individually
+        ids.forEach((id) => {
+          const page = getPageById(id)
+          if (page) {
+            // multiSelect: false to avoid range (Shift) selection
+            // addGroup: true to add to the selection group (Ctrl behavior)
+            setSelection(page, { multiSelect: false, addGroup: true })
+          }
+        })
+        return true
+      } catch (error) {
+        console.error('[svb] setSelectedTabs failed:', error)
+        return false
+      }
     },
 
     onWorkspacesChanged(listener) {
@@ -5391,6 +5517,10 @@ function createTabsApi() {
       return vivaldiBridge.tileTabs(tabIds, layout)
     },
 
+    syncNativeSelection(tabIds) {
+      return vivaldiBridge.setSelectedTabs(tabIds)
+    },
+
     async restoreLastClosedTab() {
       if (!sessionsApi || typeof sessionsApi.restore !== 'function') return null
       return new Promise((resolve, reject) => {
@@ -5530,10 +5660,52 @@ function createTabsApi() {
     async moveTabsToNewWindow(tabIds) {
       const ids = Array.isArray(tabIds) ? tabIds.filter(Number.isFinite) : []
       if (ids.length === 0) return null
+
       if (vivaldiBridge && typeof vivaldiBridge.detachTabsToNewWindow === 'function') {
-        const detached = await vivaldiBridge.detachTabsToNewWindow(ids)
-        if (detached) return { native: true }
+        try {
+          const detached = await vivaldiBridge.detachTabsToNewWindow(ids)
+          if (detached) return { native: true }
+        } catch (e) {
+          console.warn('[svb] vivaldiBridge.detachTabsToNewWindow failed:', e)
+        }
       }
+
+      // Fallback for Vivaldi 8+ or if bridge fails
+      if (windowsApi && typeof windowsApi.create === 'function') {
+        try {
+          console.log('[svb] fallback: creating window with tab', ids[0])
+          // 1. Create new window with the first tab
+          const newWindow = await promisifyChromeApi(windowsApi.create, { tabId: ids[0] })
+          if (!newWindow || !newWindow.id) {
+             throw new Error('Failed to create new window')
+          }
+          
+          // 2. Wait a bit for the new window to be ready
+          await new Promise(resolve => setTimeout(resolve, 300))
+
+          // 3. Move remaining tabs one by one with a small delay between each
+          if (ids.length > 1) {
+            const children = ids.slice(1)
+            for (const childId of children) {
+              console.log('[svb] fallback: moving child', childId, 'to window', newWindow.id)
+              try {
+                // We use a small delay to prevent Vivaldi from dropping moves
+                await new Promise(resolve => setTimeout(resolve, 150))
+                await promisifyChromeApi(tabsApi.move, childId, {
+                  windowId: newWindow.id,
+                  index: -1
+                })
+              } catch (moveError) {
+                console.error(`[svb] failed to move child tab ${childId} to new window`, moveError)
+              }
+            }
+          }
+          return { native: false, windowId: newWindow.id }
+        } catch (error) {
+          console.error('[svb] fallback move to new window failed', error)
+        }
+      }
+
       console.warn('[svb] native Vivaldi detachPage is unavailable; move to new window skipped')
       return null
     },
@@ -6020,13 +6192,26 @@ function createLayoutAdapter(options) {
     if (!handle || !currentHost) return
 
     event.preventDefault()
+    
+    // Capture pointer to ensure we get events even if mouse moves over webview (critical for Windows)
+    try {
+      handle.setPointerCapture(event.pointerId)
+    } catch (e) {
+      console.warn('[svb] could not set pointer capture', e)
+    }
 
     const hostRect = currentHost.getBoundingClientRect()
     const onPointerMove = moveEvent => {
-      dragState.previewWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(moveEvent.clientX - hostRect.left)))
-      apply()
+      const nextWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(moveEvent.clientX - hostRect.left)))
+      if (dragState && dragState.previewWidth !== nextWidth) {
+        dragState.previewWidth = nextWidth
+        apply()
+      }
     }
-    const onPointerUp = () => {
+    const onPointerUp = upEvent => {
+      try {
+        handle.releasePointerCapture(upEvent.pointerId)
+      } catch (e) {}
       stopDragging()
     }
 
@@ -6038,6 +6223,8 @@ function createLayoutAdapter(options) {
     document.body.classList.add('svb-is-resizing')
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
+    
+    console.log('[svb] resize started', { startWidth: currentWidth, hostLeft: hostRect.left })
   }
 
   function start() {
@@ -6526,7 +6713,9 @@ function renderTab(tab, compact, canClose, item, editing, visualState) {
   const hasAdd = !compact
   const rowVisualState = getTabVisualState(tab.id, item, visualState)
   const discardedClass = tab.discarded ? ' is-discarded' : ''
-  const tiledClass = tab.vivExtData && tab.vivExtData.tiling ? ' is-tiled' : ''
+  const tiling = tab.vivExtData && tab.vivExtData.tiling
+  const isTiled = !!(tiling && (tiling.id || tiling.layout))
+  const tiledClass = isTiled ? ' is-tiled' : ''
   const tabClass = compact
     ? `svb-tab svb-pinned-tab is-compact${discardedClass}${tiledClass}`
     : `svb-tab${discardedClass}${tiledClass}${hasClose ? ' has-close' : ''}${hasAdd ? ' has-add' : ''}${rowVisualState.isSelected ? ' is-selected' : ''}${rowVisualState.isDragging ? ' is-dragging' : ''}${rowVisualState.isDropTarget ? ' is-drop-target' : ''}`
@@ -6936,11 +7125,14 @@ function createSidebarRenderer(options) {
     const hasClose = !compact && canClose
     const hasAdd = !compact
     const rowVisualState = getTabVisualState(tab.id, item, visualState)
+    const isActuallyMultiSelected = rowVisualState.isSelected && visualState.selectedIds && visualState.selectedIds.length > 1
     const discardedClass = tab.discarded ? ' is-discarded' : ''
-    const tiledClass = tab.vivExtData && tab.vivExtData.tiling ? ' is-tiled' : ''
+    const tiling = tab.vivExtData && tab.vivExtData.tiling
+    const isTiled = !!(tiling && (tiling.id || tiling.layout))
+    const tiledClass = isTiled ? ' is-tiled' : ''
     const tabClass = compact
       ? `svb-tab svb-pinned-tab is-compact${discardedClass}${tiledClass}`
-      : `svb-tab${discardedClass}${tiledClass}${hasClose ? ' has-close' : ''}${hasAdd ? ' has-add' : ''}${rowVisualState.isSelected ? ' is-selected' : ''}${rowVisualState.isDragging ? ' is-dragging' : ''}${rowVisualState.isDropTarget ? ' is-drop-target' : ''}`
+      : `svb-tab${discardedClass}${tiledClass}${hasClose ? ' has-close' : ''}${hasAdd ? ' has-add' : ''}${isActuallyMultiSelected ? ' is-selected' : ''}${rowVisualState.isDragging ? ' is-dragging' : ''}${rowVisualState.isDropTarget ? ' is-drop-target' : ''}`
     const depth = item && !compact ? item.depth : 0
     const visibleIndex = item && !compact ? item.visibleIndex : -1
     const subtreeSize = item && !compact ? item.subtreeSize : 1
@@ -7558,6 +7750,7 @@ function createSidebarRenderer(options) {
       autoScrollVelocity: 0,
       lastPointerX: null,
       lastPointerY: null,
+      pointerId: event.pointerId,
     }
 
     if (typeof tabButton.setPointerCapture === 'function') {
@@ -8086,49 +8279,6 @@ async function main() {
   const entryEventController = new AbortController()
   const unsubscribers = []
 
-  function getVisibleSelectedIds() {
-    if (!latestTabState) return []
-
-    const { visibleIdSet } = getTabLookup(latestTabState)
-    const selectedIds = (latestSelectionState.selectedIds || [])
-      .filter(tabId => visibleIdSet.has(tabId))
-
-    return selectedIds
-  }
-
-  function resolveNativeTilingLayout(button) {
-    if (!button || !button.style) return null
-    const column = button.style.getPropertyValue('--displayTileColumn').trim()
-    const row = button.style.getPropertyValue('--displayTileRow').trim()
-    if (column === '1' && row === '1') return 'grid'
-    if (column === '1' && row === '0') return 'column'
-    if (column === '0' && row === '1') return 'row'
-    return null
-  }
-
-  function interceptNativeTiling(event) {
-    const button = event.target && event.target.closest
-      ? event.target.closest('.PageTiling-Button')
-      : null
-    if (!button) return
-
-    const layoutMode = resolveNativeTilingLayout(button)
-    if (!layoutMode) return
-
-    const selectedIds = getVisibleSelectedIds()
-    if (selectedIds.length < 2) return
-
-    event.preventDefault()
-    event.stopPropagation()
-    if (typeof event.stopImmediatePropagation === 'function') {
-      event.stopImmediatePropagation()
-    }
-
-    api.tileTabs(selectedIds, layoutMode).catch(error => {
-      console.warn('[svb] cannot tile selected tabs', error)
-    })
-  }
-
   function syncView() {
     if (!latestTabState) return
 
@@ -8172,6 +8322,9 @@ async function main() {
 
   unsubscribers.push(selectionStore.subscribe(state => {
     latestSelectionState = state
+    if (state.selectedIds && state.selectedIds.length > 1) {
+      api.syncNativeSelection(state.selectedIds)
+    }
     syncView()
   }))
 
@@ -8179,18 +8332,6 @@ async function main() {
     latestDragState = state
     syncView()
   }))
-
-  document.addEventListener('mouseup', interceptNativeTiling, {
-    capture: true,
-    signal: entryEventController.signal,
-  })
-  document.addEventListener('keydown', event => {
-    if (event.key !== 'Enter' && event.key !== ' ') return
-    interceptNativeTiling(event)
-  }, {
-    capture: true,
-    signal: entryEventController.signal,
-  })
 
   theme.start()
   layout.start()

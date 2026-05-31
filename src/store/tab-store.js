@@ -1023,52 +1023,70 @@ function createTabStore(api) {
 
     async moveSelectionToNewWindow(tabId, selectedIds) {
       const targetIds = getTreeActionTargetIds(tabId, selectedIds)
+      console.log('[svb] moveSelectionToNewWindow targetIds:', targetIds)
       if (targetIds.length === 0 || !api.moveTabsToNewWindow) return
-      const moveRecords = treeController.getWorkspaceMoveRecords(targetIds)
-      const moveRecordById = new Map(moveRecords.map(record => [record.tabId, record]))
-      const visibleTabsById = new Map(getAllVisibleTabs().map(tab => [tab.id, tab]))
-      const nodeIdByTabId = new Map()
-      const detachedContextKey = `detached:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`
+      
+      // Lock context to prevent workspace jumping during detachment
+      lockCurrentContext()
 
-      for (const targetId of targetIds) {
-        const tab = visibleTabsById.get(targetId)
-        const record = tab
-          && tab.vivExtData
-          && tab.vivExtData[TREE_NAMESPACE_KEY]
-          && typeof tab.vivExtData[TREE_NAMESPACE_KEY] === 'object'
-          ? tab.vivExtData[TREE_NAMESPACE_KEY]
-          : null
-        nodeIdByTabId.set(targetId, typeof record?.nodeId === 'string' && record.nodeId ? record.nodeId : createTreeNodeId())
-      }
+      try {
+        const moveRecords = treeController.getWorkspaceMoveRecords(targetIds)
+        console.log('[svb] moveRecords count:', moveRecords.length)
+        const moveRecordById = new Map(moveRecords.map(record => [record.tabId, record]))
+        const visibleTabsById = new Map(getAllVisibleTabs().map(tab => [tab.id, tab]))
+        const nodeIdByTabId = new Map()
+        const detachedContextKey = `detached:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`
 
-      await updateVivExtDataForTabs(targetIds, tab => {
-        const previousData = tab && tab.vivExtData && typeof tab.vivExtData === 'object' ? tab.vivExtData : {}
-        const previousTreeData = previousData[TREE_NAMESPACE_KEY] && typeof previousData[TREE_NAMESPACE_KEY] === 'object'
-          ? previousData[TREE_NAMESPACE_KEY]
-          : null
-        const moveRecord = moveRecordById.get(tab.id) || null
-        const parentNodeId = moveRecord && Number.isFinite(moveRecord.parentId)
-          ? nodeIdByTabId.get(moveRecord.parentId) || null
-          : null
-        const order = moveRecord
-          ? (parentNodeId == null ? moveRecord.rootIndex : moveRecord.siblingIndex)
-          : (previousTreeData && Number.isFinite(Number(previousTreeData.order)) ? Number(previousTreeData.order) : 0)
-
-        return {
-          ...previousData,
-          [TREE_NAMESPACE_KEY]: {
-            ...(previousTreeData || {}),
-            version: (previousTreeData && Number(previousTreeData.version)) || 1,
-            contextKey: detachedContextKey,
-            nodeId: nodeIdByTabId.get(tab.id) || createTreeNodeId(),
-            parentNodeId,
-            collapsed: !!(previousTreeData && previousTreeData.collapsed),
-            order,
-          },
+        for (const targetId of targetIds) {
+          const tab = visibleTabsById.get(targetId)
+          const record = tab
+            && tab.vivExtData
+            && tab.vivExtData[TREE_NAMESPACE_KEY]
+            && typeof tab.vivExtData[TREE_NAMESPACE_KEY] === 'object'
+            ? tab.vivExtData[TREE_NAMESPACE_KEY]
+            : null
+          nodeIdByTabId.set(targetId, typeof record?.nodeId === 'string' && record.nodeId ? record.nodeId : createTreeNodeId())
         }
-      })
 
-      await api.moveTabsToNewWindow(targetIds)
+        await updateVivExtDataForTabs(targetIds, tab => {
+          const previousData = tab && tab.vivExtData && typeof tab.vivExtData === 'object' ? tab.vivExtData : {}
+          const previousTreeData = previousData[TREE_NAMESPACE_KEY] && typeof previousData[TREE_NAMESPACE_KEY] === 'object'
+            ? previousData[TREE_NAMESPACE_KEY]
+            : null
+          const moveRecord = moveRecordById.get(tab.id) || null
+          const parentNodeId = moveRecord && Number.isFinite(moveRecord.parentId)
+            ? nodeIdByTabId.get(moveRecord.parentId) || null
+            : null
+          const order = moveRecord
+            ? (parentNodeId == null ? moveRecord.rootIndex : moveRecord.siblingIndex)
+            : (previousTreeData && Number.isFinite(Number(previousTreeData.order)) ? Number(previousTreeData.order) : 0)
+
+          return {
+            ...previousData,
+            [TREE_NAMESPACE_KEY]: {
+              ...(previousTreeData || {}),
+              version: (previousTreeData && Number(previousTreeData.version)) || 1,
+              contextKey: detachedContextKey,
+              nodeId: nodeIdByTabId.get(tab.id) || createTreeNodeId(),
+              parentNodeId,
+              collapsed: !!(previousTreeData && previousTreeData.collapsed),
+              order,
+            },
+          }
+        })
+
+        console.log('[svb] calling api.moveTabsToNewWindow with:', targetIds)
+        // Delay to allow Vivaldi 8 to settle metadata updates
+        await new Promise(resolve => setTimeout(resolve, 300))
+        await api.moveTabsToNewWindow(targetIds)
+      } finally {
+        // Short delay before releasing lock to let Vivaldi internal events settle
+        setTimeout(() => {
+          releaseContextLock()
+          syncTabs({ preserveContext: true }).catch(() => {})
+        }, 1500)
+      }
+      
       await syncTabs({ preserveContext: true })
     },
 

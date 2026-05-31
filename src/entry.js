@@ -217,49 +217,6 @@ async function main() {
   const entryEventController = new AbortController()
   const unsubscribers = []
 
-  function getVisibleSelectedIds() {
-    if (!latestTabState) return []
-
-    const { visibleIdSet } = getTabLookup(latestTabState)
-    const selectedIds = (latestSelectionState.selectedIds || [])
-      .filter(tabId => visibleIdSet.has(tabId))
-
-    return selectedIds
-  }
-
-  function resolveNativeTilingLayout(button) {
-    if (!button || !button.style) return null
-    const column = button.style.getPropertyValue('--displayTileColumn').trim()
-    const row = button.style.getPropertyValue('--displayTileRow').trim()
-    if (column === '1' && row === '1') return 'grid'
-    if (column === '1' && row === '0') return 'column'
-    if (column === '0' && row === '1') return 'row'
-    return null
-  }
-
-  function interceptNativeTiling(event) {
-    const button = event.target && event.target.closest
-      ? event.target.closest('.PageTiling-Button')
-      : null
-    if (!button) return
-
-    const layoutMode = resolveNativeTilingLayout(button)
-    if (!layoutMode) return
-
-    const selectedIds = getVisibleSelectedIds()
-    if (selectedIds.length < 2) return
-
-    event.preventDefault()
-    event.stopPropagation()
-    if (typeof event.stopImmediatePropagation === 'function') {
-      event.stopImmediatePropagation()
-    }
-
-    api.tileTabs(selectedIds, layoutMode).catch(error => {
-      console.warn('[svb] cannot tile selected tabs', error)
-    })
-  }
-
   function syncView() {
     if (!latestTabState) return
 
@@ -303,6 +260,9 @@ async function main() {
 
   unsubscribers.push(selectionStore.subscribe(state => {
     latestSelectionState = state
+    if (state.selectedIds && state.selectedIds.length > 1) {
+      api.syncNativeSelection(state.selectedIds)
+    }
     syncView()
   }))
 
@@ -310,18 +270,6 @@ async function main() {
     latestDragState = state
     syncView()
   }))
-
-  document.addEventListener('mouseup', interceptNativeTiling, {
-    capture: true,
-    signal: entryEventController.signal,
-  })
-  document.addEventListener('keydown', event => {
-    if (event.key !== 'Enter' && event.key !== ' ') return
-    interceptNativeTiling(event)
-  }, {
-    capture: true,
-    signal: entryEventController.signal,
-  })
 
   theme.start()
   layout.start()

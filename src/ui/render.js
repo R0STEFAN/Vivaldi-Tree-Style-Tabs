@@ -422,7 +422,9 @@ function renderTab(tab, compact, canClose, item, editing, visualState) {
   const hasAdd = !compact
   const rowVisualState = getTabVisualState(tab.id, item, visualState)
   const discardedClass = tab.discarded ? ' is-discarded' : ''
-  const tiledClass = tab.vivExtData && tab.vivExtData.tiling ? ' is-tiled' : ''
+  const tiling = tab.vivExtData && tab.vivExtData.tiling
+  const isTiled = !!(tiling && (tiling.id || tiling.layout))
+  const tiledClass = isTiled ? ' is-tiled' : ''
   const tabClass = compact
     ? `svb-tab svb-pinned-tab is-compact${discardedClass}${tiledClass}`
     : `svb-tab${discardedClass}${tiledClass}${hasClose ? ' has-close' : ''}${hasAdd ? ' has-add' : ''}${rowVisualState.isSelected ? ' is-selected' : ''}${rowVisualState.isDragging ? ' is-dragging' : ''}${rowVisualState.isDropTarget ? ' is-drop-target' : ''}`
@@ -832,11 +834,14 @@ function createSidebarRenderer(options) {
     const hasClose = !compact && canClose
     const hasAdd = !compact
     const rowVisualState = getTabVisualState(tab.id, item, visualState)
+    const isActuallyMultiSelected = rowVisualState.isSelected && visualState.selectedIds && visualState.selectedIds.length > 1
     const discardedClass = tab.discarded ? ' is-discarded' : ''
-    const tiledClass = tab.vivExtData && tab.vivExtData.tiling ? ' is-tiled' : ''
+    const tiling = tab.vivExtData && tab.vivExtData.tiling
+    const isTiled = !!(tiling && (tiling.id || tiling.layout))
+    const tiledClass = isTiled ? ' is-tiled' : ''
     const tabClass = compact
       ? `svb-tab svb-pinned-tab is-compact${discardedClass}${tiledClass}`
-      : `svb-tab${discardedClass}${tiledClass}${hasClose ? ' has-close' : ''}${hasAdd ? ' has-add' : ''}${rowVisualState.isSelected ? ' is-selected' : ''}${rowVisualState.isDragging ? ' is-dragging' : ''}${rowVisualState.isDropTarget ? ' is-drop-target' : ''}`
+      : `svb-tab${discardedClass}${tiledClass}${hasClose ? ' has-close' : ''}${hasAdd ? ' has-add' : ''}${isActuallyMultiSelected ? ' is-selected' : ''}${rowVisualState.isDragging ? ' is-dragging' : ''}${rowVisualState.isDropTarget ? ' is-drop-target' : ''}`
     const depth = item && !compact ? item.depth : 0
     const visibleIndex = item && !compact ? item.visibleIndex : -1
     const subtreeSize = item && !compact ? item.subtreeSize : 1
@@ -1454,6 +1459,7 @@ function createSidebarRenderer(options) {
       autoScrollVelocity: 0,
       lastPointerX: null,
       lastPointerY: null,
+      pointerId: event.pointerId,
     }
 
     if (typeof tabButton.setPointerCapture === 'function') {

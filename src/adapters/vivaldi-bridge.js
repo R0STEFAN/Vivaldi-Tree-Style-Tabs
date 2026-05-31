@@ -105,13 +105,22 @@ function createVivaldiBridge(options) {
 
   function getPageActions() {
     if (pageActions) return pageActions
-    pageActions = findModuleByExports(m => typeof m.detachPage === 'function' && typeof m.movePage === 'function')
+    // Vivaldi 8: movePage might be gone or renamed, using detachPage + detachWorkspace as signature
+    // Also ensuring setSelection is present
+    pageActions = findModuleByExports(m => typeof m.detachPage === 'function' && (typeof m.setSelection === 'function' || typeof m.detachWorkspace === 'function'))
     return pageActions
   }
 
   function getCollectionModule() {
     if (collectionModule) return collectionModule
-    collectionModule = findModuleByExports(m => typeof m.aV === 'function' && typeof m.V_ === 'function')
+    // Vivaldi 8: The collection module often has an 'aV' property which is the collection class/object
+    const mod = findModuleByExports(m => m && m.aV && typeof m.aV.of === 'function')
+    if (mod && mod.aV) {
+      collectionModule = mod.aV
+      return collectionModule
+    }
+    // Fallback for older versions
+    collectionModule = findModuleByExports(m => typeof m.aV === 'function' && (typeof m.V_ === 'function' || typeof m.of === 'function'))
     return collectionModule
   }
 
@@ -300,7 +309,7 @@ function createVivaldiBridge(options) {
       const collection = getCollectionModule()
       const tilePages = tiling && typeof tiling.Yb === 'function' ? tiling.Yb : null
       const pageStore = store && typeof store.getPageById === 'function' ? store : null
-      const createCollection = collection && typeof collection.aV === 'function' ? collection.aV : null
+      const createCollection = (collection && (collection.aV || collection.of || collection.from)) || null
 
       if (!tilePages || !pageStore || !createCollection) {
         return null
@@ -311,7 +320,14 @@ function createVivaldiBridge(options) {
         .filter(Boolean)
 
       if (pages.length < 2) return null
-      return tilePages(createCollection(pages), layout, 'selection')
+
+      const nativeTarget = typeof createCollection === 'function' 
+        ? createCollection(pages) 
+        : typeof createCollection.of === 'function'
+          ? createCollection.of(...pages)
+          : pages
+
+      return tilePages(nativeTarget, layout, 'selection')
     },
 
     async detachTabsToNewWindow(tabIds) {
@@ -326,22 +342,84 @@ function createVivaldiBridge(options) {
       
       const detachPage = actions && typeof actions.detachPage === 'function' ? actions.detachPage : null
       const getPageById = store && typeof store.getPageById === 'function' ? store.getPageById.bind(store) : null
-      const createCollection = collection && typeof collection.aV === 'function' ? collection.aV : null
-
-      if (!detachPage || !getPageById || !createCollection) return false
+      
+      if (!detachPage || !getPageById || !collection) {
+        console.warn('[svb] bridge modules missing for detach:', { 
+          hasActions: !!actions, 
+          hasDetach: !!detachPage, 
+          hasStore: !!store, 
+          hasCollection: !!collection
+        })
+        return false
+      }
 
       const pages = ids
         .map(tabId => getPageById(tabId))
         .filter(Boolean)
 
-      if (pages.length === 0) return false
+      if (pages.length === 0) {
+        console.warn('[svb] no native pages found for ids:', ids)
+        return false
+      }
 
-      const nativeTarget = pages.length === 1
-        ? pages[0]
-        : createCollection(pages)
+      try {
+        let nativeTarget
+        if (pages.length === 1) {
+          nativeTarget = pages[0]
+        } else if (typeof collection.of === 'function') {
+          // Vivaldi 8 uses P.aV.of(...pages)
+          nativeTarget = collection.of(...pages)
+        } else if (typeof collection.from === 'function') {
+          nativeTarget = collection.from(pages)
+        } else if (typeof collection === 'function') {
+          nativeTarget = collection(pages)
+        } else {
+          nativeTarget = pages
+        }
 
-      await detachPage(nativeTarget)
-      return true
+        console.log('[svb] detaching native pages:', pages.length, 'using', nativeTarget?.constructor?.name || typeof nativeTarget)
+        await detachPage(nativeTarget)
+        return true
+      } catch (error) {
+        console.error('[svb] native detachPage failed:', error)
+        return false
+      }
+    },
+
+    setSelectedTabs(tabIds) {
+      const ids = Array.isArray(tabIds) ? tabIds.map(Number).filter(Number.isFinite) : []
+      const actions = getPageActions()
+      const store = getPageStore()
+      
+      const setSelection = actions && typeof actions.setSelection === 'function' ? actions.setSelection : null
+      const clearSelection = actions && typeof actions.clearSelection === 'function' ? actions.clearSelection : null
+      const getPageById = store && typeof store.getPageById === 'function' ? store.getPageById.bind(store) : null
+
+      if (!setSelection || !getPageById) return false
+
+      try {
+        // 1. Clear existing selection if we have new IDs to select
+        if (ids.length > 0 && typeof clearSelection === 'function') {
+          const firstPage = getPageById(ids[0])
+          if (firstPage && firstPage.windowId) {
+            clearSelection(firstPage.windowId)
+          }
+        }
+
+        // 2. Apply new selection individually
+        ids.forEach((id) => {
+          const page = getPageById(id)
+          if (page) {
+            // multiSelect: false to avoid range (Shift) selection
+            // addGroup: true to add to the selection group (Ctrl behavior)
+            setSelection(page, { multiSelect: false, addGroup: true })
+          }
+        })
+        return true
+      } catch (error) {
+        console.error('[svb] setSelectedTabs failed:', error)
+        return false
+      }
     },
 
     onWorkspacesChanged(listener) {
