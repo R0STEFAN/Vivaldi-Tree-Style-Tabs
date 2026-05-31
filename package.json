@@ -5,6 +5,8 @@
   "description": "Custom Sidebery-inspired vertical tabs for Vivaldi",
   "scripts": {
     "build": "node build/build.mjs",
-    "watch": "node build/build.mjs --watch"
+    "watch": "node build/build.mjs --watch",
+    "install:macos": "bash install-macos.sh",
+    "uninstall:macos": "bash uninstall-macos.sh"
   }
 }

@@ -187,6 +187,39 @@ If you don't want the hook and just want a one-time patch, you can use:
 sudo bash patch-linux.sh
 ```
 
+### macOS
+
+The repo includes `install-macos.sh` and `uninstall-macos.sh`, plus matching npm scripts.
+
+1. **Install:**
+   ```bash
+   npm run install:macos
+   ```
+   *What it does:*
+   - Runs `npm run build` to produce a fresh `dist/custom.js`.
+   - Resolves the Vivaldi resources dir (default `/Applications/Vivaldi.app/Contents/Frameworks/Vivaldi Framework.framework/Versions/Current/Resources/vivaldi`).
+   - Backs up `window.html` to `window.html.bak` (only the first time, so the pristine original is preserved across re-installs).
+   - Copies `dist/custom.js` into the resources dir.
+   - Injects `<script src="custom.js"></script>` before `</body>` in `window.html`.
+   - Auto-detects whether `sudo` is needed based on file ownership and only escalates if necessary.
+
+2. **Uninstall:**
+   ```bash
+   npm run uninstall:macos
+   ```
+   Restores `window.html` from `window.html.bak` if present, otherwise surgically removes the injected `<script>` line, then deletes `custom.js`.
+
+3. **Custom Vivaldi paths** (e.g. Vivaldi Snapshot):
+   ```bash
+   bash install-macos.sh /Applications/Vivaldi\ Snapshot.app
+   bash uninstall-macos.sh /Applications/Vivaldi\ Snapshot.app
+   ```
+
+*Notes:*
+- After every Vivaldi auto-update the resources directory is replaced, wiping the mod. Re-run `npm run install:macos` to reapply.
+- Modifying files inside `Vivaldi.app` invalidates the code signature. macOS may show a Gatekeeper warning on first launch after install; dismiss it once and Vivaldi continues to work normally.
+- Pass `-y` / `--yes` to skip the "Vivaldi is currently running" prompt.
+
 ### Windows
 
 A batch script is provided to automatically find the latest Vivaldi version folder and apply the mod.
