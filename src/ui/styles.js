@@ -776,18 +776,20 @@ body.svb-is-resizing {
 }
 
 #svb-root .svb-tab__badge {
-  padding: 1px 6px;
-  border-radius: 999px;
-  font-size: 10px;
-  line-height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
   color: var(--svb-accent);
-  background: var(--svb-accent-soft);
+  background: transparent;
   cursor: pointer;
   user-select: none;
 }
 
 #svb-root .svb-tab__badge:hover {
-  background: color-mix(in srgb, var(--svb-accent) 28%, transparent);
+  background: color-mix(in srgb, var(--svb-text) 10%, transparent);
 }
 
 #svb-root .svb-tab__close {

@@ -303,12 +303,20 @@ function syncTabLeadIcon(lead, tab) {
   return fallback
 }
 
+function renderTabBadgeIcon(name) {
+  const paths = {
+    audio: '<path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>',
+    mute: '<path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>',
+  }
+  return `<svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">${paths[name]}</svg>`
+}
+
 function renderTabBadge(tab) {
   if (tab.muted) {
-    return `<span class="svb-tab__badge" data-role="toggle-mute" data-tab-id="${tab.id}" title="Unmute tab">Muted</span>`
+    return `<span class="svb-tab__badge" data-role="toggle-mute" data-tab-id="${tab.id}" title="Unmute tab">${renderTabBadgeIcon('mute')}</span>`
   }
   if (tab.audible) {
-    return `<span class="svb-tab__badge" data-role="toggle-mute" data-tab-id="${tab.id}" title="Mute tab">Audio</span>`
+    return `<span class="svb-tab__badge" data-role="toggle-mute" data-tab-id="${tab.id}" title="Mute tab">${renderTabBadgeIcon('audio')}</span>`
   }
   return ''
 }
