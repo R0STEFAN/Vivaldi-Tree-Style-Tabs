@@ -41,19 +41,28 @@ function createLayoutAdapter(options) {
     if (!root || !trigger || !dragShield) return
 
     // Re-verify host in case it was moved or changed
-    const currentHost = host || document.querySelector('.svb-layout-host')
+    let currentHost = host
+    if (!currentHost || !document.body.contains(currentHost)) {
+      currentHost = document.querySelector('.svb-layout-host')
+        || document.querySelector('#browser > #main > .inner')
+        || document.querySelector('#main > .inner')
+    }
+    
     if (!currentHost) return
 
     if (!currentHost.classList.contains('svb-layout-host')) {
       currentHost.classList.add('svb-layout-host')
     }
 
-    if (currentHost.style.getPropertyValue('--svb-sidebar-width') !== `${currentWidth}px`) {
-      currentHost.style.setProperty('--svb-sidebar-width', `${currentWidth}px`)
+    const renderedWidth = getRenderedWidth()
+
+    // Sync both variables immediately for smooth layout movement
+    if (currentHost.style.getPropertyValue('--svb-sidebar-width') !== `${renderedWidth}px`) {
+      currentHost.style.setProperty('--svb-sidebar-width', `${renderedWidth}px`)
     }
 
-    if (root.style.width !== `${getRenderedWidth()}px`) {
-      root.style.width = `${getRenderedWidth()}px`
+    if (root.style.width !== `${renderedWidth}px`) {
+      root.style.width = `${renderedWidth}px`
     }
 
     currentHost.classList.toggle('svb-mode-docked', currentPinned)
@@ -84,54 +93,70 @@ function createLayoutAdapter(options) {
 
   function stopDragging() {
     if (!dragState) return
-    const { previewWidth } = dragState
-    window.removeEventListener('pointermove', dragState.onPointerMove)
-    window.removeEventListener('pointerup', dragState.onPointerUp)
+    
+    const { previewWidth, onPointerMove, onPointerUp, onPointerCancel } = dragState
+    
+    document.removeEventListener('pointermove', onPointerMove)
+    document.removeEventListener('pointerup', onPointerUp)
+    document.removeEventListener('pointercancel', onPointerCancel)
+    
     document.body.classList.remove('svb-is-resizing')
     dragState = null
+    
     panelStore.setWidth(previewWidth)
     apply()
   }
 
   function startDragging(event) {
     const handle = event.target.closest('.svb-resize-handle')
-    const currentHost = host || document.querySelector('.svb-layout-host')
-    if (!handle || !currentHost) return
+    if (!handle || dragState) return
+
+    const currentHost = document.querySelector('.svb-layout-host')
+      || document.querySelector('#browser > #main > .inner')
+      || document.querySelector('#main > .inner')
+    
+    if (!currentHost) return
 
     event.preventDefault()
     
-    // Capture pointer to ensure we get events even if mouse moves over webview (critical for Windows)
-    try {
-      handle.setPointerCapture(event.pointerId)
-    } catch (e) {
-      console.warn('[svb] could not set pointer capture', e)
-    }
-
     const hostRect = currentHost.getBoundingClientRect()
+    let frameRequested = false
+
     const onPointerMove = moveEvent => {
+      if (!dragState || frameRequested) return
+      
       const nextWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(moveEvent.clientX - hostRect.left)))
-      if (dragState && dragState.previewWidth !== nextWidth) {
-        dragState.previewWidth = nextWidth
-        apply()
+      
+      if (dragState.previewWidth !== nextWidth) {
+        frameRequested = true
+        requestAnimationFrame(() => {
+          if (!dragState) {
+            frameRequested = false
+            return
+          }
+          dragState.previewWidth = nextWidth
+          apply()
+          frameRequested = false
+        })
       }
     }
-    const onPointerUp = upEvent => {
-      try {
-        handle.releasePointerCapture(upEvent.pointerId)
-      } catch (e) {}
-      stopDragging()
-    }
+
+    const onPointerUp = () => stopDragging()
+    const onPointerCancel = onPointerUp
 
     dragState = {
       previewWidth: currentWidth,
       onPointerMove,
       onPointerUp,
+      onPointerCancel,
     }
+
     document.body.classList.add('svb-is-resizing')
-    window.addEventListener('pointermove', onPointerMove)
-    window.addEventListener('pointerup', onPointerUp)
+    document.addEventListener('pointermove', onPointerMove, { passive: true })
+    document.addEventListener('pointerup', onPointerUp)
+    document.addEventListener('pointercancel', onPointerCancel)
     
-    console.log('[svb] resize started', { startWidth: currentWidth, hostLeft: hostRect.left })
+    apply()
   }
 
   function start() {

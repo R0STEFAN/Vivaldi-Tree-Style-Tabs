@@ -1,18 +1,35 @@
 const STYLE_TEXT = `
-.svb-layout-host.svb-mode-docked {
-  padding-left: var(--svb-sidebar-width, 300px) !important;
-}
-
-.svb-layout-host.svb-is-fullscreen {
+/* Hard reset for all parent containers */
+#browser, 
+#main, 
+.svb-layout-host {
   padding-left: 0 !important;
+  margin-left: 0 !important;
+  border-left: none !important;
 }
 
-.svb-layout-host.svb-mode-overlay {
-  padding-left: 0 !important;
+.svb-layout-host {
+  position: relative;
 }
 
-.svb-layout-host.svb-mode-docked #webview-container ~ .StatusInfo {
-  left: calc(var(--svb-sidebar-width, 300px) + 6px) !important;
+/* Webbview pushing logic */
+.svb-layout-host.svb-mode-docked #webview-container,
+.svb-layout-host.svb-mode-docked .StatusInfo,
+.svb-layout-host.svb-mode-docked #addressbar {
+  margin-left: var(--svb-sidebar-width, 300px) !important;
+  width: auto !important;
+}
+
+.svb-layout-host.svb-mode-overlay #webview-container,
+.svb-layout-host.svb-mode-overlay .StatusInfo,
+.svb-layout-host.svb-mode-overlay #addressbar {
+  margin-left: 0 !important;
+}
+
+.svb-layout-host.svb-is-fullscreen #webview-container,
+.svb-layout-host.svb-is-fullscreen .StatusInfo,
+.svb-layout-host.svb-is-fullscreen #addressbar {
+  margin-left: 0 !important;
 }
 
 #svb-root.svb-shell {
@@ -36,17 +53,18 @@ const STYLE_TEXT = `
   --svb-d-norm: 200ms;
   --svb-ease: cubic-bezier(0.2, 0, 0, 1);
   --svb-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  bottom: 0 !important;
+  margin: 0 !important;
   width: var(--svb-sidebar-width, 300px);
-  z-index: 1;
+  z-index: 1000;
   pointer-events: auto;
   font-family: "Segoe UI", "Noto Sans", sans-serif;
   font-size: 13px;
   opacity: 0;
-  transform: translateX(calc(-100% + 2px));
+  transform: translateX(-100%) !important;
   transition:
     transform var(--svb-d-norm) var(--svb-ease-out),
     opacity var(--svb-d-fast) linear;
@@ -79,10 +97,10 @@ body.svb-is-resizing {
   user-select: none;
 }
 
-#browser > #main > .inner.svb-layout-host.svb-mode-docked #svb-root.svb-shell,
-#svb-root.svb-shell.is-revealed {
-  opacity: 1;
-  transform: translateX(0);
+#svb-root.svb-shell.is-revealed,
+.svb-layout-host.svb-mode-docked #svb-root.svb-shell {
+  opacity: 1 !important;
+  transform: translateX(0) !important;
 }
 
 .svb-layout-host.svb-mode-overlay #svb-root.svb-shell .svb-frame {
@@ -92,12 +110,12 @@ body.svb-is-resizing {
 }
 
 #svb-root-trigger.svb-edge-trigger {
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: 8px;
-  z-index: 2;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  bottom: 0 !important;
+  width: 12px;
+  z-index: 100000;
   display: none;
   pointer-events: auto;
 }
@@ -139,7 +157,7 @@ body.svb-is-resizing {
 }
 
 #svb-root.svb-shell.is-unified {
-  padding: 0 0 4px 4px;
+  padding: 0 0 4px 0 !important;
 }
 
 #svb-root.svb-shell.is-unified .svb-frame {
