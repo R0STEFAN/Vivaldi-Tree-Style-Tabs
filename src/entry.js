@@ -186,6 +186,17 @@ async function main() {
         dragStore.clear()
       })
     },
+    onCommitExternalContentDrop: ({ url, text, targetId, position }) => {
+      if (!url && !text) return
+
+      const finalUrl = url ? url.split('\n')[0].trim() : `https://www.google.com/search?q=${encodeURIComponent(text.trim())}`
+      
+      if (Number.isFinite(targetId) && position) {
+        store.createTabAt(finalUrl, targetId, position)
+      } else {
+        store.createTab(null, { url: finalUrl })
+      }
+    },
     onClearDrag: () => {
       dragStore.clear()
     },

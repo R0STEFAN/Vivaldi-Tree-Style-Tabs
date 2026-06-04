@@ -4013,6 +4013,31 @@ function createTabStore(api) {
       })
     },
 
+    createTabAt(url, targetId, position) {
+      if (state.windowId == null || !Number.isFinite(targetId) || !position) return
+      
+      const kind = position === 'inside' ? 'child' : 'sibling'
+      treeController.registerExpectedCreation({
+        kind,
+        parentTabId: targetId,
+      })
+
+      const index = position === 'inside' 
+        ? treeController.getCreateChildIndex(targetId, state.tabs)
+        : position === 'before'
+          ? getTabById(targetId).index
+          : treeController.getCreateSiblingIndex(targetId, state.tabs)
+
+      pendingNativeReconcileReason = `create-${kind}-at`
+      api.createChildTab(state.windowId, targetId, {
+        url,
+        index,
+        vivExtData: kind === 'child' 
+          ? getCreateVivExtDataForChild(state, targetId)
+          : getCreateVivExtDataForState(state),
+      })
+    },
+
     createChildTab(parentTabId) {
       if (state.windowId == null) return
       if (!Number.isFinite(parentTabId)) return
@@ -6854,8 +6879,8 @@ function createNodeFromHtml(html) {
   return template.content.firstElementChild
 }
 
-function createSidebarRenderer(options) {
-  const { root, dragShield, onActivateTab, onCloseTab, onCreateTab, onCreateChildTab, onRenameTab, onTogglePinned, onToggleMute, onToggleCollapse, onCollapseAll, onSelectTab, onOpenContextMenu, onContextMenuAction, onStartDrag, onUpdateDropTarget, onCommitDrop, onCommitExternalDrop, onClearDrag } = options
+  function createSidebarRenderer(options) {
+  const { root, dragShield, onActivateTab, onCloseTab, onCreateTab, onCreateChildTab, onRenameTab, onTogglePinned, onToggleMute, onToggleCollapse, onCollapseAll, onSelectTab, onOpenContextMenu, onContextMenuAction, onStartDrag, onUpdateDropTarget, onCommitDrop, onCommitExternalDrop, onCommitExternalContentDrop, onClearDrag } = options
   let pendingScrollToActive = false
   let pendingScrollSourceTabId = null
   let currentVisibleIds = []
@@ -6872,6 +6897,7 @@ function createSidebarRenderer(options) {
   const enteringNodes = new WeakSet()
   const pendingEnterNodes = new Set()
   let pointerDrag = null
+  let externalDrag = null
   let autoScrollRafId = 0
   let suppressClick = false
   let contextMenu = null
@@ -6954,6 +6980,55 @@ function createSidebarRenderer(options) {
     }
 
     shell.footer.appendChild(createNodeFromHtml(renderNewTabButton(false)))
+
+    // Setup native drag-and-drop for external content
+    shell.frame.addEventListener('dragover', event => {
+      // Only handle if it's NOT our own pointer drag
+      if (pointerDrag) return
+
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'copy'
+
+      const drop = resolveDropTarget(event.clientX, event.clientY)
+      if (drop && onUpdateDropTarget) {
+        onUpdateDropTarget(drop.tabId, drop.position)
+      } else if (onUpdateDropTarget) {
+        onUpdateDropTarget(null, null)
+      }
+
+      updateDragAutoScroll(event.clientX, event.clientY)
+    }, eventOptions)
+
+    shell.frame.addEventListener('dragleave', event => {
+      if (pointerDrag) return
+      // Use relatedTarget to check if we actually left the frame
+      if (!shell.frame.contains(event.relatedTarget)) {
+        if (onUpdateDropTarget) onUpdateDropTarget(null, null)
+        stopDragAutoScroll()
+      }
+    }, eventOptions)
+
+    shell.frame.addEventListener('drop', event => {
+      if (pointerDrag) return
+      event.preventDefault()
+      stopDragAutoScroll()
+
+      const url = event.dataTransfer.getData('text/uri-list')
+      const text = event.dataTransfer.getData('text/plain')
+      
+      const drop = resolveDropTarget(event.clientX, event.clientY)
+      if (onCommitExternalContentDrop && (url || text)) {
+        onCommitExternalContentDrop({
+          url: url || null,
+          text: text || null,
+          targetId: drop ? drop.tabId : null,
+          position: drop ? drop.position : null,
+        })
+      }
+
+      if (onUpdateDropTarget) onUpdateDropTarget(null, null)
+    }, eventOptions)
+
     return shell
   }
 
@@ -8300,6 +8375,17 @@ async function main() {
       void store.moveSelectionToNewWindow(draggedIds[0], draggedIds).finally(() => {
         dragStore.clear()
       })
+    },
+    onCommitExternalContentDrop: ({ url, text, targetId, position }) => {
+      if (!url && !text) return
+
+      const finalUrl = url ? url.split('\n')[0].trim() : `https://www.google.com/search?q=${encodeURIComponent(text.trim())}`
+      
+      if (Number.isFinite(targetId) && position) {
+        store.createTabAt(finalUrl, targetId, position)
+      } else {
+        store.createTab(null, { url: finalUrl })
+      }
     },
     onClearDrag: () => {
       dragStore.clear()

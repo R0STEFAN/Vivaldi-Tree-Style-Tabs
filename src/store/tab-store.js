@@ -947,6 +947,31 @@ function createTabStore(api) {
       })
     },
 
+    createTabAt(url, targetId, position) {
+      if (state.windowId == null || !Number.isFinite(targetId) || !position) return
+      
+      const kind = position === 'inside' ? 'child' : 'sibling'
+      treeController.registerExpectedCreation({
+        kind,
+        parentTabId: targetId,
+      })
+
+      const index = position === 'inside' 
+        ? treeController.getCreateChildIndex(targetId, state.tabs)
+        : position === 'before'
+          ? getTabById(targetId).index
+          : treeController.getCreateSiblingIndex(targetId, state.tabs)
+
+      pendingNativeReconcileReason = `create-${kind}-at`
+      api.createChildTab(state.windowId, targetId, {
+        url,
+        index,
+        vivExtData: kind === 'child' 
+          ? getCreateVivExtDataForChild(state, targetId)
+          : getCreateVivExtDataForState(state),
+      })
+    },
+
     createChildTab(parentTabId) {
       if (state.windowId == null) return
       if (!Number.isFinite(parentTabId)) return
