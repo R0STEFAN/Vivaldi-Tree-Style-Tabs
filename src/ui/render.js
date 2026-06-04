@@ -1818,24 +1818,40 @@ function createSidebarRenderer(options) {
 
     const margin = 10
     const rect = menu.getBoundingClientRect()
-    
-    // Default position: top edge at cursor
+    const panelPosition = settingsStore.get('panelPosition')
+    const isRight = panelPosition === 'right'
+
+    // Vertical positioning
     let top = contextMenu.y
-    
-    // If menu goes below viewport, flip it up or shift it
     if (contextMenu.viewportY + rect.height > window.innerHeight - margin) {
       top = contextMenu.y - rect.height
-      // If it now goes above the top, just align with bottom of viewport
       if (contextMenu.viewportY - rect.height < margin) {
         const rootRect = root.getBoundingClientRect()
         top = window.innerHeight - rect.height - margin - rootRect.top
       }
     }
 
-    menu.style.left = `${contextMenu.x}px`
-    menu.style.top = `${top}px`
-  }
+    // Horizontal positioning
+    let left = contextMenu.x
+    if (isRight) {
+      // Position to the left of the cursor
+      left = contextMenu.x - rect.width
+      // Ensure it doesn't go off-screen to the left
+      if (contextMenu.viewportX - rect.width < margin) {
+        left = margin - root.getBoundingClientRect().left
+      }
+    } else {
+      // Default: position to the right of the cursor
+      // Ensure it doesn't go off-screen to the right
+      if (contextMenu.viewportX + rect.width > window.innerWidth - margin) {
+        left = window.innerWidth - rect.width - margin - root.getBoundingClientRect().left
+      }
+    }
 
+    menu.style.left = `${left}px`
+    menu.style.top = `${top}px`
+    menu.classList.toggle('is-right-side', isRight)
+  }
   return {
     render(state) {
       if (!state) return

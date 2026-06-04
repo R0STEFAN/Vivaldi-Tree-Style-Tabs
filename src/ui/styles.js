@@ -1163,6 +1163,16 @@ body.svb-is-resizing {
   transform: translateX(0);
 }
 
+#svb-root .svb-menu.is-right-side .svb-menu__submenu {
+  left: auto;
+  right: calc(100% - 4px);
+  transform: translateX(4px);
+}
+
+#svb-root .svb-menu.is-right-side .svb-menu__item.has-submenu:hover > .svb-menu__submenu {
+  transform: translateX(0);
+}
+
 #svb-root .svb-menu__item.has-submenu.is-submenu-up > .svb-menu__submenu {
   top: auto;
   bottom: -5px;
