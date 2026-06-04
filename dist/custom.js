@@ -6551,6 +6551,8 @@ module.exports = { createLayoutAdapter }
 
     },
     "ui/render.js": function(require, module, exports) {
+const { settingsStore } = require('../store/settings-store.js')
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -7072,11 +7074,7 @@ function createNodeFromHtml(html) {
   return template.content.firstElementChild
 }
 
-  const { settingsStore } = require('../store/settings-store.js')
-
-function escapeHtml(value) {
-...
-  function createSidebarRenderer(options) {
+function createSidebarRenderer(options) {
   const { root, dragShield, onActivateTab, onCloseTab, onCreateTab, onCreateChildTab, onRenameTab, onTogglePinned, onToggleMute, onToggleCollapse, onCollapseAll, onSelectTab, onOpenContextMenu, onContextMenuAction, onStartDrag, onUpdateDropTarget, onCommitDrop, onCommitExternalDrop, onCommitExternalContentDrop, onClearDrag } = options
   let pendingScrollToActive = false
   let pendingScrollSourceTabId = null
