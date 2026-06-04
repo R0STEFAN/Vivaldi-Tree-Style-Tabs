@@ -1120,6 +1120,109 @@ body.svb-is-resizing {
   color: var(--svb-text-muted);
 }
 
+/* Settings View */
+#svb-root .svb-header__left {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#svb-root .svb-main-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+#svb-root .svb-settings-view {
+  display: none;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: var(--svb-bg);
+}
+
+#svb-root .svb-settings-header {
+  padding: 12px;
+  border-bottom: 1px solid var(--svb-border);
+}
+
+#svb-root .svb-settings-back {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: var(--svb-accent);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 500;
+}
+
+#svb-root .svb-settings-back .svb-menu__icon {
+  transform: rotate(180deg);
+  width: 14px;
+  height: 14px;
+}
+
+#svb-root .svb-settings-title {
+  margin: 12px 0 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--svb-text-strong);
+}
+
+#svb-root .svb-settings-content {
+  padding: 16px 12px;
+  overflow: auto;
+}
+
+#svb-root .svb-settings-group {
+  margin-bottom: 24px;
+}
+
+#svb-root .svb-settings-label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--svb-text-strong);
+}
+
+#svb-root .svb-settings-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#svb-root .svb-settings-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--svb-border);
+  border-radius: var(--svb-radius);
+  background: var(--svb-panel);
+  cursor: pointer;
+  transition: background var(--svb-d-fast) ease;
+}
+
+#svb-root .svb-settings-option:hover {
+  background: var(--svb-panel-hover);
+}
+
+#svb-root .svb-settings-option input {
+  margin: 0;
+  cursor: pointer;
+}
+
+#svb-root .svb-settings-option span {
+  font-size: 13px;
+  color: var(--svb-text);
+}
 `
 
 module.exports = { STYLE_TEXT }

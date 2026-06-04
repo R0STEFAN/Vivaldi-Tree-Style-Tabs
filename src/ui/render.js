@@ -34,6 +34,7 @@ function renderMenuIcon(name) {
     folder: '<path d="M4 7h6l2 2h8v9H4z"/><path d="M4 7v11"/>',
     color: '<path d="M12 4.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z"/><path d="M19 15.5a2 2 0 1 1-4 0c0-1.4 2-3.8 2-3.8s2 2.4 2 3.8Z"/><path d="M8.5 18a1.5 1.5 0 1 1-3 0c0-1 1.5-2.9 1.5-2.9S8.5 17 8.5 18Z"/>',
     chevron: '<path d="m9 6 6 6-6 6"/>',
+    settings: '<path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/>',
   }
   return `<svg class="svb-menu__icon" viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.workspace}</svg>`
 }
@@ -544,8 +545,28 @@ function createNodeFromHtml(html) {
   let renderCurrent = () => {}
   let shell = null
   let editingTabId = null
+  let isSettingsOpen = false
   const eventController = new AbortController()
   const eventOptions = { signal: eventController.signal }
+
+  const SETTINGS_KEY = 'svb-settings'
+  const DEFAULT_SETTINGS = {
+    childPosition: 'bottom',
+    activateAfterClose: 'above',
+  }
+
+  function getSettings() {
+    try {
+      const saved = localStorage.getItem(SETTINGS_KEY)
+      return saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : { ...DEFAULT_SETTINGS }
+    } catch (e) {
+      return { ...DEFAULT_SETTINGS }
+    }
+  }
+
+  function saveSettings(settings) {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
+  }
 
   function findTab(tabId) {
     if (!latestState) return null
@@ -580,23 +601,66 @@ function createNodeFromHtml(html) {
     root.innerHTML = `
       <div class="svb-frame">
         <div class="svb-header">
-          <div class="svb-header__count">0</div>
+          <div class="svb-header__left">
+            <button class="svb-icon-button" data-role="toggle-settings" title="Settings" aria-label="Settings"></button>
+            <div class="svb-header__count">0</div>
+          </div>
           <div class="svb-header__actions">
             <button class="svb-icon-button" data-role="collapse-all" title="Collapse all trees" aria-label="Collapse all trees"></button>
             <button class="svb-icon-button" data-role="toggle-pinned" title="Pin panel"></button>
           </div>
         </div>
 
-        <section class="svb-section svb-section--pinned">
-          <div class="svb-section__label">Pinned</div>
-          <div class="svb-pinned-grid"></div>
-        </section>
+        <div class="svb-main-view">
+          <section class="svb-section svb-section--pinned">
+            <div class="svb-section__label">Pinned</div>
+            <div class="svb-pinned-grid"></div>
+          </section>
 
-        <section class="svb-section svb-section--fill">
-          <div class="svb-section__label">Tabs</div>
-          <div class="svb-tab-list"></div>
-          <div class="svb-footer"></div>
-        </section>
+          <section class="svb-section svb-section--fill">
+            <div class="svb-section__label">Tabs</div>
+            <div class="svb-tab-list"></div>
+            <div class="svb-footer"></div>
+          </section>
+        </div>
+
+        <div class="svb-settings-view">
+          <div class="svb-settings-header">
+            <button class="svb-settings-back" data-role="toggle-settings">
+              ${renderMenuIcon('chevron')}
+              Back to Tabs
+            </button>
+            <h2 class="svb-settings-title">Settings</h2>
+          </div>
+          <div class="svb-settings-content">
+            <div class="svb-settings-group">
+              <label class="svb-settings-label">New child tab position</label>
+              <div class="svb-settings-options">
+                <label class="svb-settings-option">
+                  <input type="radio" name="childPosition" value="top">
+                  <span>Top of subtree</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="childPosition" value="bottom">
+                  <span>Bottom of subtree</span>
+                </label>
+              </div>
+            </div>
+            <div class="svb-settings-group">
+              <label class="svb-settings-label">After closing a tab</label>
+              <div class="svb-settings-options">
+                <label class="svb-settings-option">
+                  <input type="radio" name="activateAfterClose" value="above">
+                  <span>Activate tab above</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="activateAfterClose" value="below">
+                  <span>Activate tab below</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="svb-resize-handle" aria-hidden="true"></div>
       <div class="svb-drag-ghost" aria-hidden="true"></div>
@@ -605,7 +669,10 @@ function createNodeFromHtml(html) {
 
     shell = {
       frame: root.querySelector('.svb-frame'),
+      mainView: root.querySelector('.svb-main-view'),
+      settingsView: root.querySelector('.svb-settings-view'),
       count: root.querySelector('.svb-header__count'),
+      settingsButton: root.querySelector('[data-role="toggle-settings"]'),
       collapseAllButton: root.querySelector('[data-role="collapse-all"]'),
       pinButton: root.querySelector('[data-role="toggle-pinned"]'),
       pinnedSection: root.querySelector('.svb-section--pinned'),
@@ -623,7 +690,7 @@ function createNodeFromHtml(html) {
     // Setup native drag-and-drop for external content
     shell.frame.addEventListener('dragover', event => {
       // Only handle if it's NOT our own pointer drag
-      if (pointerDrag) return
+      if (pointerDrag || isSettingsOpen) return
 
       event.preventDefault()
       event.dataTransfer.dropEffect = 'copy'
@@ -639,7 +706,7 @@ function createNodeFromHtml(html) {
     }, eventOptions)
 
     shell.frame.addEventListener('dragleave', event => {
-      if (pointerDrag) return
+      if (pointerDrag || isSettingsOpen) return
       // Use relatedTarget to check if we actually left the frame
       if (!shell.frame.contains(event.relatedTarget)) {
         if (onUpdateDropTarget) onUpdateDropTarget(null, null)
@@ -648,7 +715,7 @@ function createNodeFromHtml(html) {
     }, eventOptions)
 
     shell.frame.addEventListener('drop', event => {
-      if (pointerDrag) return
+      if (pointerDrag || isSettingsOpen) return
       event.preventDefault()
       stopDragAutoScroll()
 
@@ -794,10 +861,23 @@ function createNodeFromHtml(html) {
     currentShell.collapseAllButton.className = `svb-icon-button${canCollapseAll ? '' : ' is-disabled'}`
     currentShell.collapseAllButton.disabled = !canCollapseAll
     currentShell.collapseAllButton.innerHTML = renderCollapseAllIcon()
-    currentShell.pinButton.className = `svb-icon-button${state.panelPinned ? ' is-active' : ''}`
-    currentShell.pinButton.title = state.panelPinned ? 'Unpin panel' : 'Pin panel'
-    currentShell.pinButton.innerHTML = renderPinIcon(state.panelPinned)
-    currentShell.pinnedSection.style.display = state.pinnedTabs.length ? '' : 'none'
+    shell.pinButton.className = `svb-icon-button${state.panelPinned ? ' is-active' : ''}`
+    shell.pinButton.title = state.panelPinned ? 'Unpin panel' : 'Pin panel'
+    shell.pinButton.innerHTML = renderPinIcon(state.panelPinned)
+    shell.settingsButton.innerHTML = renderMenuIcon('settings')
+    shell.pinnedSection.style.display = state.pinnedTabs.length ? '' : 'none'
+    shell.mainView.style.display = isSettingsOpen ? 'none' : 'flex'
+    shell.settingsView.style.display = isSettingsOpen ? 'flex' : 'none'
+
+    if (isSettingsOpen) {
+      const settings = getSettings()
+      const inputs = shell.settingsView.querySelectorAll('input')
+      for (const input of inputs) {
+        if (input.name in settings) {
+          input.checked = settings[input.name] === input.value
+        }
+      }
+    }
   }
 
   function updateContextMenu(currentShell, state) {
@@ -1459,6 +1539,20 @@ function createNodeFromHtml(html) {
       return
     }
     if (role === 'toggle-pinned') onTogglePinned()
+    if (role === 'toggle-settings') {
+      isSettingsOpen = !isSettingsOpen
+      renderCurrent()
+    }
+  }, eventOptions)
+
+  root.addEventListener('change', event => {
+    const input = event.target.closest('input')
+    if (!input || !input.name) return
+
+    const settings = getSettings()
+    settings[input.name] = input.value
+    saveSettings(settings)
+    renderCurrent()
   }, eventOptions)
 
   root.addEventListener('dblclick', event => {

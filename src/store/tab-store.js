@@ -517,16 +517,39 @@ function createTabStore(api) {
     const closeIds = new Set(normalizeUniqueIds(targetIds))
     if (!closeIds.has(activeTabId)) return null
 
+    let activateAfterClose = 'above'
+    try {
+      const saved = localStorage.getItem('svb-settings')
+      if (saved) {
+        const settings = JSON.parse(saved)
+        if (settings.activateAfterClose) activateAfterClose = settings.activateAfterClose
+      }
+    } catch (e) {
+      // Fallback to default
+    }
+
     const orderIds = getPanelOrderIds()
     const activeIndex = orderIds.indexOf(activeTabId)
     if (activeIndex < 0) return null
 
-    for (let index = activeIndex - 1; index >= 0; index -= 1) {
-      if (!closeIds.has(orderIds[index])) return orderIds[index]
-    }
-
-    for (let index = activeIndex + 1; index < orderIds.length; index += 1) {
-      if (!closeIds.has(orderIds[index])) return orderIds[index]
+    if (activateAfterClose === 'below') {
+      // Try to find the first non-closed tab BELOW
+      for (let index = activeIndex + 1; index < orderIds.length; index += 1) {
+        if (!closeIds.has(orderIds[index])) return orderIds[index]
+      }
+      // Fallback to ABOVE if no tab found below
+      for (let index = activeIndex - 1; index >= 0; index -= 1) {
+        if (!closeIds.has(orderIds[index])) return orderIds[index]
+      }
+    } else {
+      // Default: Try to find the first non-closed tab ABOVE
+      for (let index = activeIndex - 1; index >= 0; index -= 1) {
+        if (!closeIds.has(orderIds[index])) return orderIds[index]
+      }
+      // Fallback to BELOW if no tab found above
+      for (let index = activeIndex + 1; index < orderIds.length; index += 1) {
+        if (!closeIds.has(orderIds[index])) return orderIds[index]
+      }
     }
 
     return null

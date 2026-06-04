@@ -1154,6 +1154,109 @@ body.svb-is-resizing {
   color: var(--svb-text-muted);
 }
 
+/* Settings View */
+#svb-root .svb-header__left {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#svb-root .svb-main-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+#svb-root .svb-settings-view {
+  display: none;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: var(--svb-bg);
+}
+
+#svb-root .svb-settings-header {
+  padding: 12px;
+  border-bottom: 1px solid var(--svb-border);
+}
+
+#svb-root .svb-settings-back {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: var(--svb-accent);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 500;
+}
+
+#svb-root .svb-settings-back .svb-menu__icon {
+  transform: rotate(180deg);
+  width: 14px;
+  height: 14px;
+}
+
+#svb-root .svb-settings-title {
+  margin: 12px 0 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--svb-text-strong);
+}
+
+#svb-root .svb-settings-content {
+  padding: 16px 12px;
+  overflow: auto;
+}
+
+#svb-root .svb-settings-group {
+  margin-bottom: 24px;
+}
+
+#svb-root .svb-settings-label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--svb-text-strong);
+}
+
+#svb-root .svb-settings-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#svb-root .svb-settings-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--svb-border);
+  border-radius: var(--svb-radius);
+  background: var(--svb-panel);
+  cursor: pointer;
+  transition: background var(--svb-d-fast) ease;
+}
+
+#svb-root .svb-settings-option:hover {
+  background: var(--svb-panel-hover);
+}
+
+#svb-root .svb-settings-option input {
+  margin: 0;
+  cursor: pointer;
+}
+
+#svb-root .svb-settings-option span {
+  font-size: 13px;
+  color: var(--svb-text);
+}
 `
 
 module.exports = { STYLE_TEXT }
@@ -2465,6 +2568,24 @@ function createTreeController(api) {
 
       const items = Array.isArray(tabs) ? tabs : []
       const tabsById = new Map(items.map(tab => [tab.id, tab]))
+      const parentTab = tabsById.get(parentTabId)
+      if (!parentTab) return null
+
+      let childPosition = 'bottom'
+      try {
+        const saved = localStorage.getItem('svb-settings')
+        if (saved) {
+          const settings = JSON.parse(saved)
+          if (settings.childPosition) childPosition = settings.childPosition
+        }
+      } catch (e) {
+        // Fallback to default
+      }
+
+      if (childPosition === 'top') {
+        return parentTab.index + 1
+      }
+
       const treeState = treeStore.exportState()
       const subtreeIds = getSubtreeIds(parentTabId, treeState)
 
@@ -2476,8 +2597,7 @@ function createTreeController(api) {
       }
 
       if (maxIndex == null) {
-        const parentTab = tabsById.get(parentTabId)
-        return parentTab && Number.isFinite(parentTab.index) ? parentTab.index + 1 : null
+        return parentTab.index + 1
       }
 
       return maxIndex + 1
@@ -3589,16 +3709,39 @@ function createTabStore(api) {
     const closeIds = new Set(normalizeUniqueIds(targetIds))
     if (!closeIds.has(activeTabId)) return null
 
+    let activateAfterClose = 'above'
+    try {
+      const saved = localStorage.getItem('svb-settings')
+      if (saved) {
+        const settings = JSON.parse(saved)
+        if (settings.activateAfterClose) activateAfterClose = settings.activateAfterClose
+      }
+    } catch (e) {
+      // Fallback to default
+    }
+
     const orderIds = getPanelOrderIds()
     const activeIndex = orderIds.indexOf(activeTabId)
     if (activeIndex < 0) return null
 
-    for (let index = activeIndex - 1; index >= 0; index -= 1) {
-      if (!closeIds.has(orderIds[index])) return orderIds[index]
-    }
-
-    for (let index = activeIndex + 1; index < orderIds.length; index += 1) {
-      if (!closeIds.has(orderIds[index])) return orderIds[index]
+    if (activateAfterClose === 'below') {
+      // Try to find the first non-closed tab BELOW
+      for (let index = activeIndex + 1; index < orderIds.length; index += 1) {
+        if (!closeIds.has(orderIds[index])) return orderIds[index]
+      }
+      // Fallback to ABOVE if no tab found below
+      for (let index = activeIndex - 1; index >= 0; index -= 1) {
+        if (!closeIds.has(orderIds[index])) return orderIds[index]
+      }
+    } else {
+      // Default: Try to find the first non-closed tab ABOVE
+      for (let index = activeIndex - 1; index >= 0; index -= 1) {
+        if (!closeIds.has(orderIds[index])) return orderIds[index]
+      }
+      // Fallback to BELOW if no tab found above
+      for (let index = activeIndex + 1; index < orderIds.length; index += 1) {
+        if (!closeIds.has(orderIds[index])) return orderIds[index]
+      }
     }
 
     return null
@@ -6401,6 +6544,7 @@ function renderMenuIcon(name) {
     folder: '<path d="M4 7h6l2 2h8v9H4z"/><path d="M4 7v11"/>',
     color: '<path d="M12 4.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z"/><path d="M19 15.5a2 2 0 1 1-4 0c0-1.4 2-3.8 2-3.8s2 2.4 2 3.8Z"/><path d="M8.5 18a1.5 1.5 0 1 1-3 0c0-1 1.5-2.9 1.5-2.9S8.5 17 8.5 18Z"/>',
     chevron: '<path d="m9 6 6 6-6 6"/>',
+    settings: '<path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/>',
   }
   return `<svg class="svb-menu__icon" viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.workspace}</svg>`
 }
@@ -6911,8 +7055,28 @@ function createNodeFromHtml(html) {
   let renderCurrent = () => {}
   let shell = null
   let editingTabId = null
+  let isSettingsOpen = false
   const eventController = new AbortController()
   const eventOptions = { signal: eventController.signal }
+
+  const SETTINGS_KEY = 'svb-settings'
+  const DEFAULT_SETTINGS = {
+    childPosition: 'bottom',
+    activateAfterClose: 'above',
+  }
+
+  function getSettings() {
+    try {
+      const saved = localStorage.getItem(SETTINGS_KEY)
+      return saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : { ...DEFAULT_SETTINGS }
+    } catch (e) {
+      return { ...DEFAULT_SETTINGS }
+    }
+  }
+
+  function saveSettings(settings) {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
+  }
 
   function findTab(tabId) {
     if (!latestState) return null
@@ -6947,23 +7111,66 @@ function createNodeFromHtml(html) {
     root.innerHTML = `
       <div class="svb-frame">
         <div class="svb-header">
-          <div class="svb-header__count">0</div>
+          <div class="svb-header__left">
+            <button class="svb-icon-button" data-role="toggle-settings" title="Settings" aria-label="Settings"></button>
+            <div class="svb-header__count">0</div>
+          </div>
           <div class="svb-header__actions">
             <button class="svb-icon-button" data-role="collapse-all" title="Collapse all trees" aria-label="Collapse all trees"></button>
             <button class="svb-icon-button" data-role="toggle-pinned" title="Pin panel"></button>
           </div>
         </div>
 
-        <section class="svb-section svb-section--pinned">
-          <div class="svb-section__label">Pinned</div>
-          <div class="svb-pinned-grid"></div>
-        </section>
+        <div class="svb-main-view">
+          <section class="svb-section svb-section--pinned">
+            <div class="svb-section__label">Pinned</div>
+            <div class="svb-pinned-grid"></div>
+          </section>
 
-        <section class="svb-section svb-section--fill">
-          <div class="svb-section__label">Tabs</div>
-          <div class="svb-tab-list"></div>
-          <div class="svb-footer"></div>
-        </section>
+          <section class="svb-section svb-section--fill">
+            <div class="svb-section__label">Tabs</div>
+            <div class="svb-tab-list"></div>
+            <div class="svb-footer"></div>
+          </section>
+        </div>
+
+        <div class="svb-settings-view">
+          <div class="svb-settings-header">
+            <button class="svb-settings-back" data-role="toggle-settings">
+              ${renderMenuIcon('chevron')}
+              Back to Tabs
+            </button>
+            <h2 class="svb-settings-title">Settings</h2>
+          </div>
+          <div class="svb-settings-content">
+            <div class="svb-settings-group">
+              <label class="svb-settings-label">New child tab position</label>
+              <div class="svb-settings-options">
+                <label class="svb-settings-option">
+                  <input type="radio" name="childPosition" value="top">
+                  <span>Top of subtree</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="childPosition" value="bottom">
+                  <span>Bottom of subtree</span>
+                </label>
+              </div>
+            </div>
+            <div class="svb-settings-group">
+              <label class="svb-settings-label">After closing a tab</label>
+              <div class="svb-settings-options">
+                <label class="svb-settings-option">
+                  <input type="radio" name="activateAfterClose" value="above">
+                  <span>Activate tab above</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="activateAfterClose" value="below">
+                  <span>Activate tab below</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="svb-resize-handle" aria-hidden="true"></div>
       <div class="svb-drag-ghost" aria-hidden="true"></div>
@@ -6972,7 +7179,10 @@ function createNodeFromHtml(html) {
 
     shell = {
       frame: root.querySelector('.svb-frame'),
+      mainView: root.querySelector('.svb-main-view'),
+      settingsView: root.querySelector('.svb-settings-view'),
       count: root.querySelector('.svb-header__count'),
+      settingsButton: root.querySelector('[data-role="toggle-settings"]'),
       collapseAllButton: root.querySelector('[data-role="collapse-all"]'),
       pinButton: root.querySelector('[data-role="toggle-pinned"]'),
       pinnedSection: root.querySelector('.svb-section--pinned'),
@@ -6990,7 +7200,7 @@ function createNodeFromHtml(html) {
     // Setup native drag-and-drop for external content
     shell.frame.addEventListener('dragover', event => {
       // Only handle if it's NOT our own pointer drag
-      if (pointerDrag) return
+      if (pointerDrag || isSettingsOpen) return
 
       event.preventDefault()
       event.dataTransfer.dropEffect = 'copy'
@@ -7006,7 +7216,7 @@ function createNodeFromHtml(html) {
     }, eventOptions)
 
     shell.frame.addEventListener('dragleave', event => {
-      if (pointerDrag) return
+      if (pointerDrag || isSettingsOpen) return
       // Use relatedTarget to check if we actually left the frame
       if (!shell.frame.contains(event.relatedTarget)) {
         if (onUpdateDropTarget) onUpdateDropTarget(null, null)
@@ -7015,7 +7225,7 @@ function createNodeFromHtml(html) {
     }, eventOptions)
 
     shell.frame.addEventListener('drop', event => {
-      if (pointerDrag) return
+      if (pointerDrag || isSettingsOpen) return
       event.preventDefault()
       stopDragAutoScroll()
 
@@ -7161,10 +7371,23 @@ function createNodeFromHtml(html) {
     currentShell.collapseAllButton.className = `svb-icon-button${canCollapseAll ? '' : ' is-disabled'}`
     currentShell.collapseAllButton.disabled = !canCollapseAll
     currentShell.collapseAllButton.innerHTML = renderCollapseAllIcon()
-    currentShell.pinButton.className = `svb-icon-button${state.panelPinned ? ' is-active' : ''}`
-    currentShell.pinButton.title = state.panelPinned ? 'Unpin panel' : 'Pin panel'
-    currentShell.pinButton.innerHTML = renderPinIcon(state.panelPinned)
-    currentShell.pinnedSection.style.display = state.pinnedTabs.length ? '' : 'none'
+    shell.pinButton.className = `svb-icon-button${state.panelPinned ? ' is-active' : ''}`
+    shell.pinButton.title = state.panelPinned ? 'Unpin panel' : 'Pin panel'
+    shell.pinButton.innerHTML = renderPinIcon(state.panelPinned)
+    shell.settingsButton.innerHTML = renderMenuIcon('settings')
+    shell.pinnedSection.style.display = state.pinnedTabs.length ? '' : 'none'
+    shell.mainView.style.display = isSettingsOpen ? 'none' : 'flex'
+    shell.settingsView.style.display = isSettingsOpen ? 'flex' : 'none'
+
+    if (isSettingsOpen) {
+      const settings = getSettings()
+      const inputs = shell.settingsView.querySelectorAll('input')
+      for (const input of inputs) {
+        if (input.name in settings) {
+          input.checked = settings[input.name] === input.value
+        }
+      }
+    }
   }
 
   function updateContextMenu(currentShell, state) {
@@ -7826,6 +8049,20 @@ function createNodeFromHtml(html) {
       return
     }
     if (role === 'toggle-pinned') onTogglePinned()
+    if (role === 'toggle-settings') {
+      isSettingsOpen = !isSettingsOpen
+      renderCurrent()
+    }
+  }, eventOptions)
+
+  root.addEventListener('change', event => {
+    const input = event.target.closest('input')
+    if (!input || !input.name) return
+
+    const settings = getSettings()
+    settings[input.name] = input.value
+    saveSettings(settings)
+    renderCurrent()
   }, eventOptions)
 
   root.addEventListener('dblclick', event => {

@@ -182,6 +182,24 @@ function createTreeController(api) {
 
       const items = Array.isArray(tabs) ? tabs : []
       const tabsById = new Map(items.map(tab => [tab.id, tab]))
+      const parentTab = tabsById.get(parentTabId)
+      if (!parentTab) return null
+
+      let childPosition = 'bottom'
+      try {
+        const saved = localStorage.getItem('svb-settings')
+        if (saved) {
+          const settings = JSON.parse(saved)
+          if (settings.childPosition) childPosition = settings.childPosition
+        }
+      } catch (e) {
+        // Fallback to default
+      }
+
+      if (childPosition === 'top') {
+        return parentTab.index + 1
+      }
+
       const treeState = treeStore.exportState()
       const subtreeIds = getSubtreeIds(parentTabId, treeState)
 
@@ -193,8 +211,7 @@ function createTreeController(api) {
       }
 
       if (maxIndex == null) {
-        const parentTab = tabsById.get(parentTabId)
-        return parentTab && Number.isFinite(parentTab.index) ? parentTab.index + 1 : null
+        return parentTab.index + 1
       }
 
       return maxIndex + 1
