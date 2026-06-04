@@ -83,9 +83,8 @@ function createDragStore() {
     },
 
     updateDropTarget(targetId, position) {
-      if (!state.dragging) return
       setState({
-        dragging: true,
+        dragging: state.dragging,
         draggedIds: state.draggedIds,
         sourceParentId: state.sourceParentId,
         dropTargetId: targetId,
