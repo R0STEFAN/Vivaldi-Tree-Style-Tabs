@@ -1325,6 +1325,7 @@ const SETTINGS_KEY = 'svb-settings'
 const DEFAULT_SETTINGS = {
   childPosition: 'bottom',
   activateAfterClose: 'above',
+  doubleClickAction: 'rename',
 }
 
 function createSettingsStore() {
@@ -7199,6 +7200,19 @@ function createSidebarRenderer(options) {
                 </label>
               </div>
             </div>
+            <div class="svb-settings-group">
+              <label class="svb-settings-label">Double-click on tab</label>
+              <div class="svb-settings-options">
+                <label class="svb-settings-option">
+                  <input type="radio" name="doubleClickAction" value="rename">
+                  <span>Rename tab</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="doubleClickAction" value="close">
+                  <span>Close tab</span>
+                </label>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -8111,7 +8125,13 @@ function createSidebarRenderer(options) {
 
     event.preventDefault()
     event.stopPropagation()
-    startEditing(tabId)
+
+    const action = settingsStore.get('doubleClickAction')
+    if (action === 'close') {
+      onCloseTab(tabId)
+    } else {
+      startEditing(tabId)
+    }
   }, eventOptions)
 
   root.addEventListener('pointerdown', event => {

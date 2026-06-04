@@ -2,6 +2,7 @@ const SETTINGS_KEY = 'svb-settings'
 const DEFAULT_SETTINGS = {
   childPosition: 'bottom',
   activateAfterClose: 'above',
+  doubleClickAction: 'rename',
 }
 
 function createSettingsStore() {
