@@ -1320,6 +1320,65 @@ function mountRoot(id) {
 module.exports = { mountRoot }
 
     },
+    "store/settings-store.js": function(require, module, exports) {
+const SETTINGS_KEY = 'svb-settings'
+const DEFAULT_SETTINGS = {
+  childPosition: 'bottom',
+  activateAfterClose: 'above',
+}
+
+function createSettingsStore() {
+  let currentSettings = { ...DEFAULT_SETTINGS }
+  const listeners = new Set()
+
+  function load() {
+    try {
+      const saved = localStorage.getItem(SETTINGS_KEY)
+      if (saved) {
+        currentSettings = { ...DEFAULT_SETTINGS, ...JSON.parse(saved) }
+      }
+    } catch (e) {
+      console.warn('[svb] failed to load settings', e)
+    }
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(currentSettings))
+    } catch (e) {
+      console.warn('[svb] failed to save settings', e)
+    }
+  }
+
+  // Initial load
+  load()
+
+  return {
+    get(key) {
+      return currentSettings[key]
+    },
+    getAll() {
+      return { ...currentSettings }
+    },
+    set(key, value) {
+      if (currentSettings[key] === value) return
+      currentSettings[key] = value
+      save()
+      listeners.forEach(l => l(currentSettings))
+    },
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+  }
+}
+
+// Global instance for simple access in logic files
+const settingsStore = createSettingsStore()
+
+module.exports = { settingsStore }
+
+    },
     "store/tree-store.js": function(require, module, exports) {
 function normalizeTabId(value) {
   if (value == null || value === '') return null
@@ -2384,6 +2443,7 @@ module.exports = {
 
     },
     "controllers/tree-controller.js": function(require, module, exports) {
+const { settingsStore } = require('../store/settings-store.js')
 const { createTreeStore } = require('../store/tree-store.js')
 const { createTreePersistence } = require('../store/tree-persistence.js')
 const { buildTreeView, getAncestorIds, isDescendantOf, getSubtreeIds, getFullTreeOrderIds } = require('../store/tree-selectors.js')
@@ -2571,16 +2631,7 @@ function createTreeController(api) {
       const parentTab = tabsById.get(parentTabId)
       if (!parentTab) return null
 
-      let childPosition = 'bottom'
-      try {
-        const saved = localStorage.getItem('svb-settings')
-        if (saved) {
-          const settings = JSON.parse(saved)
-          if (settings.childPosition) childPosition = settings.childPosition
-        }
-      } catch (e) {
-        // Fallback to default
-      }
+      const childPosition = settingsStore.get('childPosition')
 
       if (childPosition === 'top') {
         return parentTab.index + 1
@@ -3190,6 +3241,7 @@ module.exports = { createNativeReconcile }
 
     },
     "store/tab-store.js": function(require, module, exports) {
+const { settingsStore } = require('../store/settings-store.js')
 const { createTreeController } = require('../controllers/tree-controller.js')
 const { createNativeReconcile } = require('../controllers/native-reconcile.js')
 
@@ -3709,16 +3761,7 @@ function createTabStore(api) {
     const closeIds = new Set(normalizeUniqueIds(targetIds))
     if (!closeIds.has(activeTabId)) return null
 
-    let activateAfterClose = 'above'
-    try {
-      const saved = localStorage.getItem('svb-settings')
-      if (saved) {
-        const settings = JSON.parse(saved)
-        if (settings.activateAfterClose) activateAfterClose = settings.activateAfterClose
-      }
-    } catch (e) {
-      // Fallback to default
-    }
+    const activateAfterClose = settingsStore.get('activateAfterClose')
 
     const orderIds = getPanelOrderIds()
     const activeIndex = orderIds.indexOf(activeTabId)
@@ -7029,6 +7072,10 @@ function createNodeFromHtml(html) {
   return template.content.firstElementChild
 }
 
+  const { settingsStore } = require('../store/settings-store.js')
+
+function escapeHtml(value) {
+...
   function createSidebarRenderer(options) {
   const { root, dragShield, onActivateTab, onCloseTab, onCreateTab, onCreateChildTab, onRenameTab, onTogglePinned, onToggleMute, onToggleCollapse, onCollapseAll, onSelectTab, onOpenContextMenu, onContextMenuAction, onStartDrag, onUpdateDropTarget, onCommitDrop, onCommitExternalDrop, onCommitExternalContentDrop, onClearDrag } = options
   let pendingScrollToActive = false
@@ -7059,25 +7106,6 @@ function createNodeFromHtml(html) {
   let isSettingsOpen = false
   const eventController = new AbortController()
   const eventOptions = { signal: eventController.signal }
-
-  const SETTINGS_KEY = 'svb-settings'
-  const DEFAULT_SETTINGS = {
-    childPosition: 'bottom',
-    activateAfterClose: 'above',
-  }
-
-  function getSettings() {
-    try {
-      const saved = localStorage.getItem(SETTINGS_KEY)
-      return saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : { ...DEFAULT_SETTINGS }
-    } catch (e) {
-      return { ...DEFAULT_SETTINGS }
-    }
-  }
-
-  function saveSettings(settings) {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
-  }
 
   function findTab(tabId) {
     if (!latestState) return null
@@ -7381,7 +7409,7 @@ function createNodeFromHtml(html) {
     currentShell.settingsView.style.display = isSettingsOpen ? 'flex' : 'none'
 
     if (isSettingsOpen) {
-      const settings = getSettings()
+      const settings = settingsStore.getAll()
       const inputs = currentShell.settingsView.querySelectorAll('input')
       for (const input of inputs) {
         if (input.name in settings) {
@@ -8057,12 +8085,10 @@ function createNodeFromHtml(html) {
   }, eventOptions)
 
   root.addEventListener('change', event => {
-    const input = event.target.closest('input')
+    const input = event.target.closest('.svb-settings-view input')
     if (!input || !input.name) return
 
-    const settings = getSettings()
-    settings[input.name] = input.value
-    saveSettings(settings)
+    settingsStore.set(input.name, input.value)
     renderCurrent()
   }, eventOptions)
 

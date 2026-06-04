@@ -519,6 +519,10 @@ function createNodeFromHtml(html) {
   return template.content.firstElementChild
 }
 
+  const { settingsStore } = require('../store/settings-store.js')
+
+function escapeHtml(value) {
+...
   function createSidebarRenderer(options) {
   const { root, dragShield, onActivateTab, onCloseTab, onCreateTab, onCreateChildTab, onRenameTab, onTogglePinned, onToggleMute, onToggleCollapse, onCollapseAll, onSelectTab, onOpenContextMenu, onContextMenuAction, onStartDrag, onUpdateDropTarget, onCommitDrop, onCommitExternalDrop, onCommitExternalContentDrop, onClearDrag } = options
   let pendingScrollToActive = false
@@ -549,25 +553,6 @@ function createNodeFromHtml(html) {
   let isSettingsOpen = false
   const eventController = new AbortController()
   const eventOptions = { signal: eventController.signal }
-
-  const SETTINGS_KEY = 'svb-settings'
-  const DEFAULT_SETTINGS = {
-    childPosition: 'bottom',
-    activateAfterClose: 'above',
-  }
-
-  function getSettings() {
-    try {
-      const saved = localStorage.getItem(SETTINGS_KEY)
-      return saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : { ...DEFAULT_SETTINGS }
-    } catch (e) {
-      return { ...DEFAULT_SETTINGS }
-    }
-  }
-
-  function saveSettings(settings) {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
-  }
 
   function findTab(tabId) {
     if (!latestState) return null
@@ -871,7 +856,7 @@ function createNodeFromHtml(html) {
     currentShell.settingsView.style.display = isSettingsOpen ? 'flex' : 'none'
 
     if (isSettingsOpen) {
-      const settings = getSettings()
+      const settings = settingsStore.getAll()
       const inputs = currentShell.settingsView.querySelectorAll('input')
       for (const input of inputs) {
         if (input.name in settings) {
@@ -1547,12 +1532,10 @@ function createNodeFromHtml(html) {
   }, eventOptions)
 
   root.addEventListener('change', event => {
-    const input = event.target.closest('input')
+    const input = event.target.closest('.svb-settings-view input')
     if (!input || !input.name) return
 
-    const settings = getSettings()
-    settings[input.name] = input.value
-    saveSettings(settings)
+    settingsStore.set(input.name, input.value)
     renderCurrent()
   }, eventOptions)
 

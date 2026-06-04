@@ -1,3 +1,4 @@
+const { settingsStore } = require('../store/settings-store.js')
 const { createTreeController } = require('../controllers/tree-controller.js')
 const { createNativeReconcile } = require('../controllers/native-reconcile.js')
 
@@ -517,16 +518,7 @@ function createTabStore(api) {
     const closeIds = new Set(normalizeUniqueIds(targetIds))
     if (!closeIds.has(activeTabId)) return null
 
-    let activateAfterClose = 'above'
-    try {
-      const saved = localStorage.getItem('svb-settings')
-      if (saved) {
-        const settings = JSON.parse(saved)
-        if (settings.activateAfterClose) activateAfterClose = settings.activateAfterClose
-      }
-    } catch (e) {
-      // Fallback to default
-    }
+    const activateAfterClose = settingsStore.get('activateAfterClose')
 
     const orderIds = getPanelOrderIds()
     const activeIndex = orderIds.indexOf(activeTabId)

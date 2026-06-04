@@ -1,3 +1,4 @@
+const { settingsStore } = require('../store/settings-store.js')
 const { createTreeStore } = require('../store/tree-store.js')
 const { createTreePersistence } = require('../store/tree-persistence.js')
 const { buildTreeView, getAncestorIds, isDescendantOf, getSubtreeIds, getFullTreeOrderIds } = require('../store/tree-selectors.js')
@@ -185,16 +186,7 @@ function createTreeController(api) {
       const parentTab = tabsById.get(parentTabId)
       if (!parentTab) return null
 
-      let childPosition = 'bottom'
-      try {
-        const saved = localStorage.getItem('svb-settings')
-        if (saved) {
-          const settings = JSON.parse(saved)
-          if (settings.childPosition) childPosition = settings.childPosition
-        }
-      } catch (e) {
-        // Fallback to default
-      }
+      const childPosition = settingsStore.get('childPosition')
 
       if (childPosition === 'top') {
         return parentTab.index + 1
