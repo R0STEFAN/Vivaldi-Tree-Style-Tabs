@@ -71,6 +71,11 @@ function createLayoutAdapter(options) {
     currentHost.classList.toggle('svb-mode-overlay', !currentPinned)
     currentHost.classList.toggle('svb-is-fullscreen', fullscreen)
 
+    const browser = document.querySelector('#browser')
+    if (browser) {
+      browser.classList.toggle('svb-is-fullscreen', fullscreen)
+    }
+
     const panelPosition = settingsStore.get('panelPosition')
     currentHost.classList.toggle('svb-position-right', panelPosition === 'right')
 

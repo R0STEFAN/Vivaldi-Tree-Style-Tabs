@@ -38,8 +38,11 @@ const STYLE_TEXT = `
 #main, 
 .svb-layout-host {
   padding-left: 0 !important;
+  padding-right: 0 !important;
   margin-left: 0 !important;
+  margin-right: 0 !important;
   border-left: none !important;
+  border-right: none !important;
 }
 
 .svb-layout-host {
@@ -47,9 +50,9 @@ const STYLE_TEXT = `
 }
 
 /* Webbview pushing logic */
-.svb-layout-host.svb-mode-docked #webview-container,
-.svb-layout-host.svb-mode-docked .StatusInfo,
-.svb-layout-host.svb-mode-docked #addressbar {
+.svb-layout-host.svb-mode-docked:not(.svb-is-fullscreen) #webview-container,
+.svb-layout-host.svb-mode-docked:not(.svb-is-fullscreen) .StatusInfo,
+.svb-layout-host.svb-mode-docked:not(.svb-is-fullscreen) #addressbar {
   margin-left: var(--svb-sidebar-width, 300px) !important;
   width: auto !important;
 }
@@ -58,24 +61,19 @@ const STYLE_TEXT = `
 .svb-layout-host.svb-mode-overlay .StatusInfo,
 .svb-layout-host.svb-mode-overlay #addressbar {
   margin-left: 0 !important;
-}
-
-.svb-layout-host.svb-is-fullscreen #webview-container,
-.svb-layout-host.svb-is-fullscreen .StatusInfo,
-.svb-layout-host.svb-is-fullscreen #addressbar {
-  margin-left: 0 !important;
+  margin-right: 0 !important;
 }
 
 /* Right-side position overrides */
-.svb-layout-host.svb-position-right #webview-container,
-.svb-layout-host.svb-position-right .StatusInfo,
-.svb-layout-host.svb-position-right #addressbar {
+.svb-layout-host.svb-position-right:not(.svb-is-fullscreen) #webview-container,
+.svb-layout-host.svb-position-right:not(.svb-is-fullscreen) .StatusInfo,
+.svb-layout-host.svb-position-right:not(.svb-is-fullscreen) #addressbar {
   margin-left: 0 !important;
 }
 
-.svb-layout-host.svb-position-right.svb-mode-docked #webview-container,
-.svb-layout-host.svb-position-right.svb-mode-docked .StatusInfo,
-.svb-layout-host.svb-position-right.svb-mode-docked #addressbar {
+.svb-layout-host.svb-position-right.svb-mode-docked:not(.svb-is-fullscreen) #webview-container,
+.svb-layout-host.svb-position-right.svb-mode-docked:not(.svb-is-fullscreen) .StatusInfo,
+.svb-layout-host.svb-position-right.svb-mode-docked:not(.svb-is-fullscreen) #addressbar {
   margin-right: var(--svb-sidebar-width, 300px) !important;
 }
 
@@ -117,6 +115,39 @@ const STYLE_TEXT = `
 
 .svb-layout-host.svb-position-right #svb-root .svb-header__count {
   margin: 0 0 0 8px;
+}
+
+.svb-layout-host.svb-position-right #svb-root-drag-shield.svb-drag-shield.is-menu-backdrop {
+  left: 0 !important;
+  right: var(--svb-sidebar-width, 300px) !important;
+}
+
+.svb-layout-host.svb-position-right #svb-root.svb-shell:not(.is-unified) .svb-frame {
+  border-left: 1px solid var(--svb-border);
+  border-right: 0;
+}
+
+/* Fullscreen handling - Ultimate Force */
+.svb-layout-host.svb-is-fullscreen #webview-container,
+.svb-layout-host.svb-is-fullscreen .StatusInfo,
+.svb-layout-host.svb-is-fullscreen #addressbar,
+#browser.svb-is-fullscreen #webview-container,
+#browser.svb-is-fullscreen .StatusInfo,
+#browser.svb-is-fullscreen #addressbar {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+.svb-layout-host.svb-is-fullscreen #svb-root.svb-shell,
+.svb-layout-host.svb-is-fullscreen #svb-root-trigger.svb-edge-trigger,
+.svb-layout-host.svb-is-fullscreen #svb-root-drag-shield.svb-drag-shield,
+#browser.svb-is-fullscreen #svb-root.svb-shell,
+#browser.svb-is-fullscreen #svb-root-trigger.svb-edge-trigger,
+#browser.svb-is-fullscreen #svb-root-drag-shield.svb-drag-shield {
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  pointer-events: none !important;
 }
 
 #svb-root.svb-shell {
@@ -171,12 +202,6 @@ const STYLE_TEXT = `
 
 #svb-root.svb-shell.is-menu-open {
   z-index: 1000001 !important;
-}
-
-#browser > #main > .inner.svb-layout-host.svb-is-fullscreen #svb-root.svb-shell,
-#browser > #main > .inner.svb-layout-host.svb-is-fullscreen #svb-root-trigger.svb-edge-trigger,
-#browser > #main > .inner.svb-layout-host.svb-is-fullscreen #svb-root-drag-shield.svb-drag-shield {
-  display: none !important;
 }
 
 body.svb-is-resizing {
@@ -6573,6 +6598,11 @@ function createLayoutAdapter(options) {
     currentHost.classList.toggle('svb-mode-docked', currentPinned)
     currentHost.classList.toggle('svb-mode-overlay', !currentPinned)
     currentHost.classList.toggle('svb-is-fullscreen', fullscreen)
+
+    const browser = document.querySelector('#browser')
+    if (browser) {
+      browser.classList.toggle('svb-is-fullscreen', fullscreen)
+    }
 
     const panelPosition = settingsStore.get('panelPosition')
     currentHost.classList.toggle('svb-position-right', panelPosition === 'right')
