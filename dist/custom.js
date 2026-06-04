@@ -6586,6 +6586,7 @@ function renderMenuIcon(name) {
     duplicate: '<path d="M8 8h10v10H8z"/><path d="M5 15V5h10"/>',
     close: '<path d="M7 7l10 10"/><path d="M17 7 7 17"/>',
     add: '<path d="M12 5v14"/><path d="M5 12h14"/>',
+    rename: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
     bookmark: '<path d="M6 5.5A1.5 1.5 0 0 1 7.5 4h9A1.5 1.5 0 0 1 18 5.5V20l-6-3.5L6 20z"/>',
     folder: '<path d="M4 7h6l2 2h8v9H4z"/><path d="M4 7v11"/>',
     color: '<path d="M12 4.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z"/><path d="M19 15.5a2 2 0 1 1-4 0c0-1.4 2-3.8 2-3.8s2 2.4 2 3.8Z"/><path d="M8.5 18a1.5 1.5 0 1 1-3 0c0-1 1.5-2.9 1.5-2.9S8.5 17 8.5 18Z"/>',
@@ -6742,6 +6743,7 @@ function renderContextMenu(tab, state, contextMenu) {
       ${renderContextMenuItem({ action: 'toggle-mute', icon: 'mute', label: muteLabel })}
       ${renderContextMenuItem({ icon: 'color', label: 'Set Color', submenu: colorSubmenu })}
       ${renderContextMenuItem({ action: 'duplicate', icon: 'duplicate', label: 'Duplicate' })}
+      ${renderContextMenuItem({ action: 'rename', icon: 'rename', label: 'Rename', disabled: isPinned })}
       <div class="svb-menu__separator"></div>
       ${renderContextMenuItem({ action: 'close', icon: 'close', label: closeLabel, danger: true, disabled: !state.canCloseVisibleTabs })}
       ${renderContextMenuItem({ action: 'close-other', icon: 'close', label: 'Close Other Tabs', danger: true })}
@@ -7992,6 +7994,11 @@ function createSidebarRenderer(options) {
           bookmarkTreeId: bookmarkTreeId || null,
         })
       }
+
+      if (menuAction.getAttribute('data-action') === 'rename' && contextMenu) {
+        startEditing(contextMenu.tabId)
+      }
+
       contextMenu = null
       renderCurrent()
       return
