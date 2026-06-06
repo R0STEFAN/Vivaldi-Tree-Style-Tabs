@@ -675,16 +675,22 @@ function createTabStore(api) {
 
     const { preserveContext = false, activeRegularTabIdOverride = undefined } = options
     const allTabs = sortTabs(await api.getTabs(state.windowId))
-    let workspaces = []
+    let workspaces = state.workspaces
     let savedBookmarkTrees = state.savedBookmarkTrees
-    if (api.getWorkspaces) {
+
+    // Only query workspaces and bookmarks on init, reload, or explicit workspace/bookmark events
+    const isWorkspaceEvent = reason === 'workspaces'
+    const isBookmarkEvent = reason === 'bookmark'
+    const isFullSync = reason === 'init' || reason === 'reload' || !workspaces.length
+    
+    if ((isFullSync || isWorkspaceEvent) && api.getWorkspaces) {
       try {
         workspaces = await api.getWorkspaces()
       } catch (error) {
         console.warn('[svb] cannot read workspaces', error)
       }
     }
-    if (api.getSavedBookmarkTrees) {
+    if ((isFullSync || isBookmarkEvent) && api.getSavedBookmarkTrees) {
       try {
         savedBookmarkTrees = await api.getSavedBookmarkTrees()
       } catch (error) {
@@ -820,13 +826,9 @@ function createTabStore(api) {
 
     if (actionReconcileReason) {
       nativeReconcile.scheduleAfterAction(actionReconcileReason)
-      return
-    }
-
-    if (shouldScheduleStartupReconcile) {
+    } else if (shouldScheduleStartupReconcile) {
       nativeReconcile.scheduleStartup()
     }
-
   }
 
   function resetListeners() {
@@ -902,7 +904,9 @@ function createTabStore(api) {
       api.onAttached(refreshPreservingContext),
       api.onDetached(refreshPreservingContext),
       api.onActivated(refreshFromActiveTab),
-      api.onWorkspacesChanged ? api.onWorkspacesChanged(refreshPreservingContext) : () => {},
+      api.onWorkspacesChanged ? api.onWorkspacesChanged(() => {
+        scheduleSync({ preserveContext: true }, 'workspaces', 12).catch(error => console.error('[svb] sync failed', error))
+      }) : () => {},
       api.onBookmarksChanged ? api.onBookmarksChanged(refreshBookmarks) : () => {},
     ]
   }

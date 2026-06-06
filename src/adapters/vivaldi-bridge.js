@@ -11,26 +11,31 @@ function createVivaldiBridge(options) {
     workspacesPrefPath,
     defaultWorkspaceIcon,
   } = options
+let mainViewWebpackRequire = null
+let workspaceManager = null
+let pageStore = null
+let tilingModule = null
+let pageActions = null
+let collectionModule = null
+let workspaceStore = null
+let mainView = null
+const workspaceRepairTasksById = new Map()
 
-  let mainViewWebpackRequire = null
-  let workspaceManager = null
-  let pageStore = null
-  let tilingModule = null
-  let pageActions = null
-  let collectionModule = null
-  const workspaceRepairTasksById = new Map()
+function getVivaldiMainView() {
+  if (mainView && !mainView.closed) return mainView
 
-  function getVivaldiMainView() {
-    const extensionApi = typeof chrome !== 'undefined' && chrome ? chrome.extension : null
-    if (!extensionApi || typeof extensionApi.getViews !== 'function') return null
+  const extensionApi = typeof chrome !== 'undefined' && chrome ? chrome.extension : null
+  if (!extensionApi || typeof extensionApi.getViews !== 'function') return null
 
-    return extensionApi.getViews().find(view => {
-      if (!view || view === window) return false
-      if (!view.document || !view.location) return false
-      if (!String(view.location.href || '').endsWith('/main.html')) return false
-      return !!view.webpackChunkgapp_browser_react
-    }) || null
-  }
+  mainView = extensionApi.getViews().find(view => {
+    if (!view || view === window) return false
+    if (!view.document || !view.location) return false
+    if (!String(view.location.href || '').endsWith('/main.html')) return false
+    return !!view.webpackChunkgapp_browser_react
+  }) || null
+
+  return mainView
+}
 
   function getMainViewWebpackRequire() {
     if (mainViewWebpackRequire) return mainViewWebpackRequire
@@ -201,11 +206,13 @@ function createVivaldiBridge(options) {
   }
 
   function getWorkspaceStore() {
-    return findModuleByExports(m => 
+    if (workspaceStore) return workspaceStore
+    workspaceStore = findModuleByExports(m => 
       typeof m.getWorkspaces === 'function' && 
       typeof m.getActiveWorkspaceId === 'function' &&
       typeof m.addListener === 'function'
     )
+    return workspaceStore
   }
 
   function normalizeWorkspace(workspace) {
