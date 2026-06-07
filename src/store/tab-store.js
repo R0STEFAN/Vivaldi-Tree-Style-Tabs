@@ -519,6 +519,39 @@ function createTabStore(api) {
     if (!closeIds.has(activeTabId)) return null
 
     const activateAfterClose = settingsStore.get('activateAfterClose')
+    const adaptiveActivation = settingsStore.get('adaptiveActivation')
+
+    if (adaptiveActivation) {
+      const activeTreeItem = state.treeTabs.find(item => item.id === activeTabId)
+      if (activeTreeItem) {
+        const parentId = activeTreeItem.parentId
+        const siblings = state.treeTabs.filter(item => item.parentId === parentId && !closeIds.has(item.id))
+
+        if (siblings.length > 0) {
+          // Rule: Sibling prioritization
+          const activeIndexInTree = state.treeTabs.indexOf(activeTreeItem)
+          
+          if (activateAfterClose === 'below') {
+            // Try sibling BELOW
+            const siblingBelow = siblings.find(s => state.treeTabs.indexOf(s) > activeIndexInTree)
+            if (siblingBelow) return siblingBelow.id
+            // Bounce: Try sibling ABOVE
+            const siblingAbove = siblings.slice().reverse().find(s => state.treeTabs.indexOf(s) < activeIndexInTree)
+            if (siblingAbove) return siblingAbove.id
+          } else {
+            // Default: Try sibling ABOVE
+            const siblingAbove = siblings.slice().reverse().find(s => state.treeTabs.indexOf(s) < activeIndexInTree)
+            if (siblingAbove) return siblingAbove.id
+            // Bounce: Try sibling BELOW
+            const siblingBelow = siblings.find(s => state.treeTabs.indexOf(s) > activeIndexInTree)
+            if (siblingBelow) return siblingBelow.id
+          }
+        } else if (Number.isFinite(parentId) && !closeIds.has(parentId)) {
+          // Rule: Last child closed -> activate parent
+          return parentId
+        }
+      }
+    }
 
     const orderIds = getPanelOrderIds()
     const activeIndex = orderIds.indexOf(activeTabId)

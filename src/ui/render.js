@@ -646,6 +646,15 @@ function createSidebarRenderer(options) {
               </div>
             </div>
             <div class="svb-settings-group">
+              <label class="svb-settings-label">Adaptive tab activation</label>
+              <div class="svb-settings-options">
+                <label class="svb-settings-option">
+                  <input type="checkbox" name="adaptiveActivation">
+                  <span>Prioritize tree context when closing tabs</span>
+                </label>
+              </div>
+            </div>
+            <div class="svb-settings-group">
               <label class="svb-settings-label">Double-click on tab</label>
               <div class="svb-settings-options">
                 <label class="svb-settings-option">
@@ -886,7 +895,11 @@ function createSidebarRenderer(options) {
       const inputs = currentShell.settingsView.querySelectorAll('input')
       for (const input of inputs) {
         if (input.name in settings) {
-          input.checked = settings[input.name] === input.value
+          if (input.type === 'checkbox') {
+            input.checked = !!settings[input.name]
+          } else {
+            input.checked = settings[input.name] === input.value
+          }
         }
       }
     }
@@ -1566,7 +1579,8 @@ function createSidebarRenderer(options) {
     const input = event.target.closest('.svb-settings-view input')
     if (!input || !input.name) return
 
-    settingsStore.set(input.name, input.value)
+    const value = input.type === 'checkbox' ? input.checked : input.value
+    settingsStore.set(input.name, value)
     renderCurrent()
   }, eventOptions)
 

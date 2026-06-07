@@ -1413,6 +1413,7 @@ const SETTINGS_KEY = 'svb-settings'
 const DEFAULT_SETTINGS = {
   childPosition: 'bottom',
   activateAfterClose: 'above',
+  adaptiveActivation: true,
   doubleClickAction: 'rename',
   panelPosition: 'left',
 }
@@ -3958,6 +3959,39 @@ function createTabStore(api) {
     if (!closeIds.has(activeTabId)) return null
 
     const activateAfterClose = settingsStore.get('activateAfterClose')
+    const adaptiveActivation = settingsStore.get('adaptiveActivation')
+
+    if (adaptiveActivation) {
+      const activeTreeItem = state.treeTabs.find(item => item.id === activeTabId)
+      if (activeTreeItem) {
+        const parentId = activeTreeItem.parentId
+        const siblings = state.treeTabs.filter(item => item.parentId === parentId && !closeIds.has(item.id))
+
+        if (siblings.length > 0) {
+          // Rule: Sibling prioritization
+          const activeIndexInTree = state.treeTabs.indexOf(activeTreeItem)
+          
+          if (activateAfterClose === 'below') {
+            // Try sibling BELOW
+            const siblingBelow = siblings.find(s => state.treeTabs.indexOf(s) > activeIndexInTree)
+            if (siblingBelow) return siblingBelow.id
+            // Bounce: Try sibling ABOVE
+            const siblingAbove = siblings.slice().reverse().find(s => state.treeTabs.indexOf(s) < activeIndexInTree)
+            if (siblingAbove) return siblingAbove.id
+          } else {
+            // Default: Try sibling ABOVE
+            const siblingAbove = siblings.slice().reverse().find(s => state.treeTabs.indexOf(s) < activeIndexInTree)
+            if (siblingAbove) return siblingAbove.id
+            // Bounce: Try sibling BELOW
+            const siblingBelow = siblings.find(s => state.treeTabs.indexOf(s) > activeIndexInTree)
+            if (siblingBelow) return siblingBelow.id
+          }
+        } else if (Number.isFinite(parentId) && !closeIds.has(parentId)) {
+          // Rule: Last child closed -> activate parent
+          return parentId
+        }
+      }
+    }
 
     const orderIds = getPanelOrderIds()
     const activeIndex = orderIds.indexOf(activeTabId)
@@ -7423,6 +7457,15 @@ function createSidebarRenderer(options) {
               </div>
             </div>
             <div class="svb-settings-group">
+              <label class="svb-settings-label">Adaptive tab activation</label>
+              <div class="svb-settings-options">
+                <label class="svb-settings-option">
+                  <input type="checkbox" name="adaptiveActivation">
+                  <span>Prioritize tree context when closing tabs</span>
+                </label>
+              </div>
+            </div>
+            <div class="svb-settings-group">
               <label class="svb-settings-label">Double-click on tab</label>
               <div class="svb-settings-options">
                 <label class="svb-settings-option">
@@ -7663,7 +7706,11 @@ function createSidebarRenderer(options) {
       const inputs = currentShell.settingsView.querySelectorAll('input')
       for (const input of inputs) {
         if (input.name in settings) {
-          input.checked = settings[input.name] === input.value
+          if (input.type === 'checkbox') {
+            input.checked = !!settings[input.name]
+          } else {
+            input.checked = settings[input.name] === input.value
+          }
         }
       }
     }
@@ -8343,7 +8390,8 @@ function createSidebarRenderer(options) {
     const input = event.target.closest('.svb-settings-view input')
     if (!input || !input.name) return
 
-    settingsStore.set(input.name, input.value)
+    const value = input.type === 'checkbox' ? input.checked : input.value
+    settingsStore.set(input.name, value)
     renderCurrent()
   }, eventOptions)
 

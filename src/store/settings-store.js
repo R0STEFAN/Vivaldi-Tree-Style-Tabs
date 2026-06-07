@@ -2,6 +2,7 @@ const SETTINGS_KEY = 'svb-settings'
 const DEFAULT_SETTINGS = {
   childPosition: 'bottom',
   activateAfterClose: 'above',
+  adaptiveActivation: true,
   doubleClickAction: 'rename',
   panelPosition: 'left',
 }
