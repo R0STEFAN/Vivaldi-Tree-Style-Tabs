@@ -220,37 +220,19 @@ function createLayoutAdapter(options) {
     root.addEventListener('pointerleave', () => setRevealed(false))
     root.addEventListener('pointerdown', startDragging)
 
-    // Wayland fix: ensure panel hides when pointer enters the webview area
-    const webviewContainer = document.querySelector('#webview-container')
-    if (webviewContainer) {
-      webviewContainer.addEventListener('mouseenter', () => setRevealed(false))
-      webviewContainer.addEventListener('pointerenter', () => setRevealed(false))
-    }
-
-    // Additional fallback for Wayland surface crossing issues
-    document.addEventListener('pointermove', event => {
+    // Handle surface crossing where native webviews swallow pointer events and prevent mouseleave.
+    // Also handles dynamic webview container creation and moving the mouse out of the panel into other UI.
+    const hideOnExternalHover = event => {
       if (!revealed || currentPinned || fullscreen || dragState) return
       
-      const currentHost = document.querySelector('.svb-layout-host')
-        || document.querySelector('#browser > #main > .inner')
-        || document.querySelector('#main > .inner')
-      if (!currentHost) return
-      
-      const hostRect = currentHost.getBoundingClientRect()
-      const panelPosition = settingsStore.get('panelPosition')
-      const isRight = panelPosition === 'right'
-      const width = getRenderedWidth()
-      
-      if (isRight) {
-        if (event.clientX < hostRect.right - width) {
-          setRevealed(false)
-        }
-      } else {
-        if (event.clientX > hostRect.left + width) {
-          setRevealed(false)
-        }
+      const target = event.target
+      if (target && !root.contains(target) && !trigger.contains(target) && target !== dragShield) {
+        setRevealed(false)
       }
-    })
+    }
+    
+    document.addEventListener('mouseover', hideOnExternalHover)
+    document.addEventListener('pointerover', hideOnExternalHover)
 
     unlistenPanel = panelStore.subscribe(nextState => {
       currentPinned = nextState.pinned
