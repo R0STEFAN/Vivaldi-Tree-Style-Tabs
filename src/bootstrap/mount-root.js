@@ -38,7 +38,7 @@ function mountRoot(id) {
     trigger = document.createElement('div')
     trigger.id = `${id}-trigger`
     trigger.className = 'svb-edge-trigger'
-    host.prepend(trigger)
+    document.body.appendChild(trigger)
   }
 
   let dragShield = document.getElementById(`${id}-drag-shield`)

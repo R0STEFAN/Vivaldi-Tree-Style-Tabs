@@ -193,7 +193,7 @@ body.svb-is-resizing {
   left: 0 !important;
   bottom: 0 !important;
   width: 4px;
-  z-index: 10;
+  z-index: 999999;
   display: none;
   pointer-events: auto;
 }
