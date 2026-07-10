@@ -188,7 +188,7 @@ body.svb-is-resizing {
 }
 
 #svb-root-trigger.svb-edge-trigger {
-  position: absolute !important;
+  position: fixed !important;
   top: 0 !important;
   left: 0 !important;
   bottom: 0 !important;

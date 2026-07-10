@@ -234,6 +234,22 @@ function createLayoutAdapter(options) {
     document.addEventListener('mouseover', hideOnExternalHover)
     document.addEventListener('pointerover', hideOnExternalHover)
 
+    // Fallback to show the panel if the mouse hits the extreme edge of the window.
+    // This catches cases where the user moves the mouse quickly and the edge trigger div is missed,
+    // or if the browser window has borders that offset the trigger.
+    document.addEventListener('mousemove', event => {
+      if (revealed || currentPinned || fullscreen || dragState) return
+      
+      const panelPosition = settingsStore.get('panelPosition')
+      const isRight = panelPosition === 'right'
+      
+      if (!isRight && event.clientX <= 4) {
+        setRevealed(true)
+      } else if (isRight && event.clientX >= window.innerWidth - 4) {
+        setRevealed(true)
+      }
+    })
+
     unlistenPanel = panelStore.subscribe(nextState => {
       currentPinned = nextState.pinned
       currentWidth = nextState.width
