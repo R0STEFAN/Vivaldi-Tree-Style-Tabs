@@ -6787,8 +6787,33 @@ function createLayoutAdapter(options) {
     document.addEventListener('MSFullscreenChange', refreshFullscreen)
     window.addEventListener('resize', refreshFullscreen)
 
-    trigger.addEventListener('mouseenter', () => setRevealed(true))
-    root.addEventListener('mouseenter', () => setRevealed(true))
+    let revealTimeout = null
+    const REVEAL_DELAY = 150 // Delay in ms before showing panel
+
+    const clearRevealDelay = () => {
+      if (revealTimeout) {
+        clearTimeout(revealTimeout)
+        revealTimeout = null
+      }
+    }
+
+    const triggerRevealWithDelay = () => {
+      if (revealed || currentPinned || fullscreen || dragState) return
+      if (!revealTimeout) {
+        revealTimeout = setTimeout(() => {
+          setRevealed(true)
+          revealTimeout = null
+        }, REVEAL_DELAY)
+      }
+    }
+
+    trigger.addEventListener('mouseenter', triggerRevealWithDelay)
+    trigger.addEventListener('mouseleave', clearRevealDelay)
+    
+    root.addEventListener('mouseenter', () => {
+      clearRevealDelay()
+      setRevealed(true)
+    })
     root.addEventListener('mouseleave', () => setRevealed(false))
     root.addEventListener('pointerleave', () => setRevealed(false))
     root.addEventListener('pointerdown', startDragging)
@@ -6807,46 +6832,27 @@ function createLayoutAdapter(options) {
     document.addEventListener('mouseover', hideOnExternalHover)
     document.addEventListener('pointerover', hideOnExternalHover)
 
-    // Fallback to show the panel if the mouse hits the extreme edge of the window.
-    // This catches cases where the user moves the mouse quickly and the edge trigger div is missed,
-    // or if the browser window has borders that offset the trigger.
     document.addEventListener('mousemove', event => {
-      if (revealed || currentPinned || fullscreen || dragState) return
+      if (revealed || currentPinned || fullscreen || dragState) {
+        clearRevealDelay()
+        return
+      }
       
       const panelPosition = settingsStore.get('panelPosition')
       const isRight = panelPosition === 'right'
+      const threshold = 15 // Wider logical trigger zone (doesn't block clicks)
       
-      if (!isRight && event.clientX <= 4) {
-        setRevealed(true)
-      } else if (isRight && event.clientX >= window.innerWidth - 4) {
-        setRevealed(true)
+      const inZone = !isRight ? (event.clientX <= threshold) : (event.clientX >= window.innerWidth - threshold)
+      
+      if (inZone) {
+        triggerRevealWithDelay()
+      } else {
+        clearRevealDelay()
       }
     })
 
-    // In windowed mode, rapid mouse movements can completely skip the 4px trigger zone
-    // and exit the window before the browser registers a mousemove event inside the zone.
-    // By detecting when the mouse LEAVES or ENTERS the document at the edges,
-    // we can reliably catch the user's intent to hit the edge of the window.
-    document.addEventListener('mouseleave', event => {
-      if (revealed || currentPinned || fullscreen || dragState) return
-      const isRight = settingsStore.get('panelPosition') === 'right'
-      
-      if (!isRight && event.clientX <= 10) {
-        setRevealed(true)
-      } else if (isRight && event.clientX >= window.innerWidth - 10) {
-        setRevealed(true)
-      }
-    })
-
-    document.addEventListener('mouseenter', event => {
-      if (revealed || currentPinned || fullscreen || dragState) return
-      const isRight = settingsStore.get('panelPosition') === 'right'
-      
-      if (!isRight && event.clientX <= 15) {
-        setRevealed(true)
-      } else if (isRight && event.clientX >= window.innerWidth - 15) {
-        setRevealed(true)
-      }
+    document.addEventListener('mouseleave', () => {
+      clearRevealDelay() // Mouse left the window completely, cancel reveal
     })
 
     unlistenPanel = panelStore.subscribe(nextState => {

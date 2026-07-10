@@ -78,6 +78,7 @@ function createLayoutAdapter(options) {
 
     const panelPosition = settingsStore.get('panelPosition')
     currentHost.classList.toggle('svb-position-right', panelPosition === 'right')
+    trigger.classList.toggle('svb-position-right', panelPosition === 'right')
 
     root.classList.toggle('is-revealed', !fullscreen && (currentPinned || revealed))
     trigger.classList.toggle('is-enabled', !fullscreen && !currentPinned)

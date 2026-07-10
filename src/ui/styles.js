@@ -54,7 +54,7 @@ const STYLE_TEXT = `
   transform: translateX(0) !important;
 }
 
-.svb-layout-host.svb-position-right #svb-root-trigger.svb-edge-trigger {
+#svb-root-trigger.svb-edge-trigger.svb-position-right {
   left: auto !important;
   right: 0 !important;
 }
