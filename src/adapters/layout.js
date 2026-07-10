@@ -250,6 +250,32 @@ function createLayoutAdapter(options) {
       }
     })
 
+    // In windowed mode, rapid mouse movements can completely skip the 4px trigger zone
+    // and exit the window before the browser registers a mousemove event inside the zone.
+    // By detecting when the mouse LEAVES or ENTERS the document at the edges,
+    // we can reliably catch the user's intent to hit the edge of the window.
+    document.addEventListener('mouseleave', event => {
+      if (revealed || currentPinned || fullscreen || dragState) return
+      const isRight = settingsStore.get('panelPosition') === 'right'
+      
+      if (!isRight && event.clientX <= 10) {
+        setRevealed(true)
+      } else if (isRight && event.clientX >= window.innerWidth - 10) {
+        setRevealed(true)
+      }
+    })
+
+    document.addEventListener('mouseenter', event => {
+      if (revealed || currentPinned || fullscreen || dragState) return
+      const isRight = settingsStore.get('panelPosition') === 'right'
+      
+      if (!isRight && event.clientX <= 15) {
+        setRevealed(true)
+      } else if (isRight && event.clientX >= window.innerWidth - 15) {
+        setRevealed(true)
+      }
+    })
+
     unlistenPanel = panelStore.subscribe(nextState => {
       currentPinned = nextState.pinned
       currentWidth = nextState.width

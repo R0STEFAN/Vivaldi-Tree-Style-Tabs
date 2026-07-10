@@ -222,12 +222,12 @@ body.svb-is-resizing {
 }
 
 #svb-root-trigger.svb-edge-trigger {
-  position: absolute !important;
+  position: fixed !important;
   top: 0 !important;
   left: 0 !important;
   bottom: 0 !important;
-  width: 12px;
-  z-index: 10;
+  width: 4px;
+  z-index: 999999;
   display: none;
   pointer-events: auto;
 }
@@ -1391,7 +1391,7 @@ function mountRoot(id) {
     trigger = document.createElement('div')
     trigger.id = `${id}-trigger`
     trigger.className = 'svb-edge-trigger'
-    host.prepend(trigger)
+    document.body.appendChild(trigger)
   }
 
   let dragShield = document.getElementById(`${id}-drag-shield`)
@@ -6806,6 +6806,22 @@ function createLayoutAdapter(options) {
     
     document.addEventListener('mouseover', hideOnExternalHover)
     document.addEventListener('pointerover', hideOnExternalHover)
+
+    // Fallback to show the panel if the mouse hits the extreme edge of the window.
+    // This catches cases where the user moves the mouse quickly and the edge trigger div is missed,
+    // or if the browser window has borders that offset the trigger.
+    document.addEventListener('mousemove', event => {
+      if (revealed || currentPinned || fullscreen || dragState) return
+      
+      const panelPosition = settingsStore.get('panelPosition')
+      const isRight = panelPosition === 'right'
+      
+      if (!isRight && event.clientX <= 4) {
+        setRevealed(true)
+      } else if (isRight && event.clientX >= window.innerWidth - 4) {
+        setRevealed(true)
+      }
+    })
 
     unlistenPanel = panelStore.subscribe(nextState => {
       currentPinned = nextState.pinned
