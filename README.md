@@ -1,5 +1,7 @@
 # TreeTabsVivaldi
 
+![Vivaldi Tree Style Tabs Screenshot](screenshot/vivaldi_aIzu7wJKEg.jpg)
+
 TreeTabsVivaldi is a custom Vivaldi browser UI mod that adds a Sidebery-inspired vertical tree tab panel to the left side of the browser window.
 
 It is not a browser extension. It is a `custom.js` UI modification loaded into Vivaldi's `window.html`.
