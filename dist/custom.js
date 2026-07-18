@@ -5624,21 +5624,13 @@ function getVivaldiMainView() {
       if (!setSelection || !getPageById) return false
 
       try {
-        // 1. Clear existing selection if we have new IDs to select
-        if (ids.length > 0 && typeof clearSelection === 'function') {
-          const firstPage = getPageById(ids[0])
-          if (firstPage && firstPage.windowId) {
-            clearSelection(firstPage.windowId)
-          }
-        }
-
-        // 2. Apply new selection individually
-        ids.forEach((id) => {
+        // 1. Apply new selection individually. The first tab clears the existing selection.
+        ids.forEach((id, index) => {
           const page = getPageById(id)
           if (page) {
             // multiSelect: false to avoid range (Shift) selection
-            // addGroup: true to add to the selection group (Ctrl behavior)
-            setSelection(page, { multiSelect: false, addGroup: true })
+            // addGroup: false for the first item to clear existing selection, true for the rest to add to it.
+            setSelection(page, { multiSelect: false, addGroup: index > 0 })
           }
         })
         return true
@@ -9123,7 +9115,7 @@ async function main() {
 
   unsubscribers.push(selectionStore.subscribe(state => {
     latestSelectionState = state
-    if (state.selectedIds && state.selectedIds.length > 1) {
+    if (state.selectedIds && state.selectedIds.length > 0) {
       api.syncNativeSelection(state.selectedIds)
     }
     syncView()
