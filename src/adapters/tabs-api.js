@@ -269,16 +269,32 @@ function createTabsApi() {
       return vivaldiBridge.getWorkspaces()
     },
 
-    async createWorkspace(name = 'New Workspace') {
+    getActiveWorkspaceId(windowId) {
+      return vivaldiBridge.getActiveWorkspaceId(windowId)
+    },
+
+    createWorkspace(name = 'New Workspace') {
       return vivaldiBridge.createWorkspace(name)
+    },
+
+    createWorkspaceWithId(workspaceId, name = 'New Workspace') {
+      return vivaldiBridge.createWorkspaceWithId(workspaceId, name)
+    },
+
+    async deleteWorkspace(windowId, workspaceId) {
+      return vivaldiBridge.deleteWorkspace(windowId, workspaceId)
+    },
+
+    activateWorkspace(windowId, workspaceId) {
+      return vivaldiBridge.activateWorkspace(windowId, workspaceId)
+    },
+
+    setWorkspaceName(workspaceId, name) {
+      return vivaldiBridge.setWorkspaceName(workspaceId, name)
     },
 
     onWorkspacesChanged(listener) {
       return vivaldiBridge.onWorkspacesChanged(listener)
-    },
-
-    repairWorkspace(workspace) {
-      vivaldiBridge.repairWorkspace(workspace)
     },
 
     activateTab(tabId) {
@@ -311,6 +327,31 @@ function createTabsApi() {
     async duplicateTab(tabId) {
       if (!Number.isFinite(tabId) || typeof tabsApi.duplicate !== 'function') return null
       return promisifyChromeApi(tabsApi.duplicate, tabId)
+    },
+
+    reloadTab(tabId, bypassCache = false) {
+      if (!Number.isFinite(tabId) || typeof tabsApi.reload !== 'function') return
+      tabsApi.reload(tabId, { bypassCache: !!bypassCache })
+    },
+
+    discardTab(tabId) {
+      if (!Number.isFinite(tabId) || typeof tabsApi.discard !== 'function') return
+      tabsApi.discard(tabId)
+    },
+
+    async bookmarkTab({ title, url } = {}) {
+      if (!bookmarksApi || typeof bookmarksApi.create !== 'function' || !url) return null
+      let parentId
+      try {
+        if (typeof bookmarksApi.getTree === 'function') {
+          const roots = await promisifyChromeApi(bookmarksApi.getTree)
+          const bookmarksBar = getBookmarksBarNode(roots)
+          parentId = bookmarksBar ? bookmarksBar.id : undefined
+        }
+      } catch (error) {}
+      const properties = { title: title || url, url }
+      if (parentId) properties.parentId = parentId
+      return promisifyChromeApi(bookmarksApi.create, properties)
     },
 
     async tileTabs(tabIds, layout) {

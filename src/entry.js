@@ -82,6 +82,46 @@ async function main() {
   const store = createTabStore(api)
   const selectionStore = createSelectionStore()
   const dragStore = createDragStore()
+  function writeClipboard(text) {
+    if (!text) return
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        void navigator.clipboard.writeText(text)
+        return
+      }
+    } catch (error) {}
+    try {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    } catch (error) {}
+  }
+
+  function copyTabsToClipboard(action, tabId, selectedIds) {
+    if (!latestTabState) return
+    const ids = Array.isArray(selectedIds) && selectedIds.includes(tabId) && selectedIds.length > 1
+      ? selectedIds
+      : [tabId]
+    const byId = new Map(latestTabState.pinnedTabs.concat(latestTabState.tabs).map(tab => [tab.id, tab]))
+    const lines = ids
+      .map(id => byId.get(id))
+      .filter(Boolean)
+      .map(tab => {
+        const url = tab.url || ''
+        const title = tab.title || url
+        if (action === 'copy-url') return url
+        if (action === 'copy-title') return title
+        return `[${title}](${url})`
+      })
+      .filter(Boolean)
+    if (lines.length) writeClipboard(lines.join('\n'))
+  }
+
   const renderer = createSidebarRenderer({
     root: mount.root,
     dragShield: mount.dragShield,
@@ -94,6 +134,9 @@ async function main() {
     onCreateChildTab: id => store.createChildTab(id),
     onRenameTab: (id, title) => { void store.renameTab(id, title) },
     onTogglePinned: () => panelStore.togglePinned(),
+    onSwitchWorkspace: workspaceId => { void store.switchToWorkspace(workspaceId) },
+    onCreateWorkspace: name => { void store.createWorkspace(name) },
+    onRenameWorkspace: (workspaceId, name) => { void store.renameWorkspace(workspaceId, name) },
     onToggleMute: id => {
       const selectedIds = selectionStore.getState().selectedIds || []
       void store.toggleMutedForSelection(id, selectedIds)
@@ -107,6 +150,11 @@ async function main() {
       }
     },
     onContextMenuAction: (action, payload) => {
+      if (action === 'delete-workspace') {
+        void store.deleteWorkspace(payload && payload.workspaceId)
+        return
+      }
+
       const tabId = payload && payload.tabId
       const selectedIds = latestSelectionState.selectedIds || []
       if (!Number.isFinite(tabId)) return
@@ -131,6 +179,14 @@ async function main() {
         void store.setColorForSelection(tabId, selectedIds, payload.colorKey)
       } else if (action === 'duplicate') {
         void store.duplicateTab(tabId)
+      } else if (action === 'reload') {
+        store.reloadSelection(tabId, selectedIds)
+      } else if (action === 'hibernate') {
+        void store.hibernateSelection(tabId, selectedIds)
+      } else if (action === 'copy-url' || action === 'copy-title' || action === 'copy-markdown') {
+        copyTabsToClipboard(action, tabId, selectedIds)
+      } else if (action === 'bookmark-tab') {
+        void store.bookmarkTab(tabId)
       } else if (action === 'save-tree-bookmark') {
         void store.saveTreeAsBookmark(tabId)
       } else if (action === 'open-saved-tree') {

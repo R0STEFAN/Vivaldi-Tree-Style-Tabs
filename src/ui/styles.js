@@ -123,7 +123,8 @@ const STYLE_TEXT = `
   --svb-panel-active: var(--svb-theme-tab-active-bg, #4b5259);
   --svb-border: var(--svb-theme-panel-border, rgba(255, 255, 255, 0.08));
   --svb-text: var(--svb-theme-panel-fg, #d8d8d8);
-  --svb-text-strong: var(--svb-theme-tab-active-fg, #f2f2f2);
+  --svb-text-strong: var(--svb-theme-panel-fg-strong, var(--svb-theme-tab-active-fg, #f2f2f2));
+  --svb-text-on-active: var(--colorAccentFg, var(--svb-theme-tab-active-fg, #f2f2f2));
   --svb-text-muted: color-mix(in srgb, var(--svb-text) 58%, transparent);
   --svb-accent: var(--svb-theme-accent, #47cfff);
   --svb-accent-soft: color-mix(in srgb, var(--svb-accent) 18%, transparent);
@@ -643,6 +644,23 @@ body.svb-is-resizing {
   color: var(--svb-text-muted);
 }
 
+#svb-root .svb-tab.is-stacked .svb-tab__body::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--svb-stack-color, var(--svb-accent));
+  pointer-events: none;
+  z-index: 2;
+}
+
+#svb-root .svb-tab.is-stacked .svb-tab__content {
+  padding-left: 4px;
+}
+
 #svb-root .svb-tab.is-compact .svb-tab__outer {
   width: 100%;
   margin-left: 0;
@@ -772,6 +790,10 @@ body.svb-is-resizing {
   opacity: 1;
 }
 
+#svb-root .svb-tab.is-active .svb-tab__exp-icon {
+  color: var(--svb-text-on-active);
+}
+
 #svb-root .svb-tab[data-parent="true"] .svb-tab__lead:hover .svb-tab__exp,
 #svb-root .svb-tab[data-parent="true"][data-folded="true"] .svb-tab__exp {
   opacity: 1;
@@ -798,7 +820,7 @@ body.svb-is-resizing {
 }
 
 #svb-root .svb-tab.is-active .svb-tab__child-count {
-  color: var(--svb-text-strong);
+  color: var(--svb-text-on-active);
 }
 
 #svb-root .svb-tab__content {
@@ -856,7 +878,7 @@ body.svb-is-resizing {
 }
 
 #svb-root .svb-tab.is-active .svb-tab__title {
-  color: var(--svb-text-strong);
+  color: var(--svb-text-on-active);
 }
 
 #svb-root .svb-tab.is-discarded .svb-tab__title {
@@ -864,7 +886,7 @@ body.svb-is-resizing {
 }
 
 #svb-root .svb-tab.is-discarded.is-active .svb-tab__title {
-  color: color-mix(in srgb, var(--svb-text-strong) 72%, var(--svb-text-muted));
+  color: color-mix(in srgb, var(--svb-text-on-active) 72%, var(--svb-text-muted));
 }
 
 #svb-root .svb-tab.is-discarded .svb-tab__badge {
@@ -1310,6 +1332,83 @@ body.svb-is-resizing {
 #svb-root .svb-settings-option span {
   font-size: 13px;
   color: var(--svb-text);
+}
+
+#svb-root .svb-workspaces {
+  display: flex;
+  gap: 4px;
+  padding: 0 4px 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+#svb-root .svb-workspaces::-webkit-scrollbar {
+  height: 0;
+}
+
+#svb-root .svb-workspace {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  max-width: 140px;
+  min-height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--svb-border);
+  border-radius: 999px;
+  color: var(--svb-text-muted);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+#svb-root .svb-workspace:hover {
+  color: var(--svb-text);
+  background: color-mix(in srgb, var(--svb-text) 10%, transparent);
+}
+
+#svb-root .svb-workspace.is-active {
+  color: var(--svb-text-strong);
+  border-color: color-mix(in srgb, var(--svb-accent) 60%, transparent);
+  background: var(--svb-accent-soft);
+}
+
+#svb-root .svb-workspace .svb-menu__icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+#svb-root .svb-workspace__label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#svb-root .svb-workspace--add {
+  width: 26px;
+  padding: 0;
+  justify-content: center;
+}
+
+#svb-root .svb-workspace__input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 26px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--svb-accent) 72%, transparent);
+  border-radius: 999px;
+  outline: none;
+  color: var(--svb-text-strong);
+  background: color-mix(in srgb, var(--svb-accent) 12%, var(--svb-panel));
+  font: inherit;
+  font-size: 12px;
 }
 `
 
