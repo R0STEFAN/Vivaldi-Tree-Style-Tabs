@@ -5614,23 +5614,47 @@ function getVivaldiMainView() {
 
     setSelectedTabs(tabIds) {
       const ids = Array.isArray(tabIds) ? tabIds.map(Number).filter(Number.isFinite) : []
-      const actions = getPageActions()
+      const actions = findModuleByExports(m => typeof m.setSelection === 'function') || getPageActions()
       const store = getPageStore()
       
       const setSelection = actions && typeof actions.setSelection === 'function' ? actions.setSelection : null
       const clearSelection = actions && typeof actions.clearSelection === 'function' ? actions.clearSelection : null
       const getPageById = store && typeof store.getPageById === 'function' ? store.getPageById.bind(store) : null
 
-      if (!setSelection || !getPageById) return false
+      const reduxStore = findModuleByExports(m => m && typeof m.getState === 'function' && typeof m.dispatch === 'function')
+
+      console.log('[svb] setSelectedTabs:', ids, 'actions found:', !!actions, 'setSelection found:', !!setSelection, 'redux found:', !!reduxStore)
+
+      if (!getPageById) return false
 
       try {
-        // 1. Apply new selection individually. The first tab clears the existing selection.
+        // 1. Clear existing selection if possible as a safeguard.
+        if (ids.length > 0) {
+          const firstPage = getPageById(ids[0])
+          if (firstPage && firstPage.windowId) {
+            if (typeof clearSelection === 'function') {
+              clearSelection(firstPage.windowId)
+            } else if (reduxStore) {
+              reduxStore.dispatch({ actionType: "PAGE_SELECTION_CLEAR", windowId: firstPage.windowId })
+            }
+          }
+        }
+
+        // 2. Apply new selection individually.
         ids.forEach((id, index) => {
           const page = getPageById(id)
           if (page) {
-            // multiSelect: false to avoid range (Shift) selection
-            // addGroup: false for the first item to clear existing selection, true for the rest to add to it.
-            setSelection(page, { multiSelect: false, addGroup: index > 0 })
+            if (setSelection) {
+              setSelection(page, { multiSelect: false, addGroup: index > 0 })
+            } else if (reduxStore) {
+              reduxStore.dispatch({
+                actionType: "PAGE_SELECTION_SET",
+                page: page,
+                multiSelect: false,
+                addGroup: index > 0,
+                excludeActive: false
+              })
+            }
           }
         })
         return true
