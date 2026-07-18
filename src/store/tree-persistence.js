@@ -8,6 +8,14 @@ function updateMetadataCache(tabId, record) {
   treeMetadataCache.set(tabId, { ...record })
 }
 
+function migrateMetadataCache(removedTabId, addedTabId) {
+  const entry = treeMetadataCache.get(removedTabId)
+  if (entry) {
+    treeMetadataCache.set(addedTabId, entry)
+    treeMetadataCache.delete(removedTabId)
+  }
+}
+
 function getCachedMetadata(tabId) {
   return treeMetadataCache.get(tabId) || null
 }
@@ -320,4 +328,4 @@ function createTreePersistence(api) {
   }
 }
 
-module.exports = { createTreePersistence }
+module.exports = { createTreePersistence, migrateMetadataCache }

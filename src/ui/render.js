@@ -38,6 +38,12 @@ function renderMenuIcon(name) {
     color: '<path d="M12 4.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z"/><path d="M19 15.5a2 2 0 1 1-4 0c0-1.4 2-3.8 2-3.8s2 2.4 2 3.8Z"/><path d="M8.5 18a1.5 1.5 0 1 1-3 0c0-1 1.5-2.9 1.5-2.9S8.5 17 8.5 18Z"/>',
     chevron: '<path d="m9 6 6 6-6 6"/>',
     settings: '<path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/>',
+    reload: '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
+    sleep: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+    copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+    link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+    type: '<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/>',
+    code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
   }
   return `<svg class="svb-menu__icon" viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.workspace}</svg>`
 }
@@ -167,6 +173,12 @@ function renderContextMenu(tab, state, contextMenu) {
   `
   const savedTrees = Array.isArray(state.savedBookmarkTrees) ? state.savedBookmarkTrees : []
   const savedTreeSubmenu = savedTrees.map(renderSavedTreeMenuItem).join('')
+  const copyLabelSuffix = selectedCount > 1 ? ` (${selectedCount})` : ''
+  const copySubmenu = `
+    ${renderContextMenuItem({ action: 'copy-url', icon: 'link', label: `Copy URL${copyLabelSuffix}` })}
+    ${renderContextMenuItem({ action: 'copy-title', icon: 'type', label: `Copy Title${copyLabelSuffix}` })}
+    ${renderContextMenuItem({ action: 'copy-markdown', icon: 'code', label: `Copy as Markdown Link${copyLabelSuffix}` })}
+  `
   const menuX = Math.max(4, contextMenu.x)
   const menuY = Math.max(4, contextMenu.y)
 
@@ -177,9 +189,13 @@ function renderContextMenu(tab, state, contextMenu) {
       data-tab-id="${tab.id}"
       role="menu"
     >
+      ${renderContextMenuItem({ action: 'reload', icon: 'reload', label: 'Reload' })}
       ${renderContextMenuItem({ action: 'restore-closed', icon: 'restore', label: 'Reopen Last Closed Tab' })}
       ${renderContextMenuItem({ action: 'new-child', icon: 'child', label: 'New Child Tab', disabled: isPinned })}
       ${renderContextMenuItem({ action: 'new-sibling', icon: 'add', label: 'New Sibling Tab Below', disabled: isPinned })}
+      ${renderContextMenuItem({ icon: 'copy', label: 'Copy', submenu: copySubmenu })}
+      <div class="svb-menu__separator"></div>
+      ${renderContextMenuItem({ action: 'bookmark-tab', icon: 'bookmark', label: 'Bookmark Tab' })}
       ${renderContextMenuItem({ action: 'save-tree-bookmark', icon: 'bookmark', label: 'Save Tree as Bookmark', disabled: isPinned || !hasChildren })}
       ${renderContextMenuItem({ icon: 'folder', label: 'Open Saved Tree', submenu: savedTreeSubmenu || '<div class="svb-menu__empty">No Saved Trees</div>' })}
       <div class="svb-menu__separator"></div>
@@ -187,6 +203,7 @@ function renderContextMenu(tab, state, contextMenu) {
       <div class="svb-menu__separator"></div>
       ${renderContextMenuItem({ action: 'toggle-pin', icon: 'pin', label: pinLabel })}
       ${renderContextMenuItem({ action: 'toggle-mute', icon: 'mute', label: muteLabel })}
+      ${renderContextMenuItem({ action: 'hibernate', icon: 'sleep', label: 'Hibernate Tab' })}
       ${renderContextMenuItem({ icon: 'color', label: 'Set Color', submenu: colorSubmenu })}
       ${renderContextMenuItem({ action: 'duplicate', icon: 'duplicate', label: 'Duplicate' })}
       ${renderContextMenuItem({ action: 'rename', icon: 'rename', label: 'Rename', disabled: isPinned })}
@@ -917,11 +934,13 @@ function createSidebarRenderer(options) {
       return
     }
 
-    // Render if empty OR if requested for a different tab
+    // Render if empty, if requested for a different tab, or if workspaces changed
     const existingMenu = currentShell.menuHost.querySelector('.svb-menu')
     const renderedTabId = existingMenu ? Number(existingMenu.getAttribute('data-tab-id')) : null
+    const renderedWorkspaces = existingMenu ? existingMenu.getAttribute('data-workspaces') : null
+    const currentWorkspaces = (Array.isArray(state.workspaces) ? state.workspaces : []).map(w => w.id).join(',')
 
-    if (!existingMenu || renderedTabId !== contextMenu.tabId) {
+    if (!existingMenu || renderedTabId !== contextMenu.tabId || renderedWorkspaces !== currentWorkspaces) {
       const allTabsById = new Map(state.pinnedTabs.concat(state.tabs).map(tab => [tab.id, tab]))
       const contextTab = allTabsById.get(contextMenu.tabId) || null
       if (!contextTab) return
@@ -931,6 +950,7 @@ function createSidebarRenderer(options) {
 
       const menuNode = currentShell.menuHost.querySelector('.svb-menu')
       if (menuNode) {
+        menuNode.setAttribute('data-workspaces', currentWorkspaces)
         void menuNode.offsetWidth
         menuNode.classList.add('is-visible')
       }
@@ -1711,16 +1731,29 @@ function createSidebarRenderer(options) {
 
     event.preventDefault()
     event.stopPropagation()
-    if (onOpenContextMenu) onOpenContextMenu(tabId)
-
-    const rootRect = root.getBoundingClientRect()
-    contextMenu = {
-      tabId,
-      x: event.clientX - rootRect.left,
-      y: event.clientY - rootRect.top,
-      viewportY: event.clientY,
+    
+    const showMenu = () => {
+      const rootRect = root.getBoundingClientRect()
+      contextMenu = {
+        tabId,
+        x: event.clientX - rootRect.left,
+        y: event.clientY - rootRect.top,
+        viewportY: event.clientY,
+        viewportX: event.clientX,
+      }
+      renderCurrent()
     }
-    renderCurrent()
+
+    if (onOpenContextMenu) {
+      const result = onOpenContextMenu(tabId)
+      if (result && typeof result.then === 'function') {
+        result.then(showMenu).catch(console.error)
+      } else {
+        showMenu()
+      }
+    } else {
+      showMenu()
+    }
   }, eventOptions)
 
   root.addEventListener('pointerover', event => {

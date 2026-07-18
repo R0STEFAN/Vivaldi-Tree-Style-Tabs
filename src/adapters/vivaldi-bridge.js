@@ -92,7 +92,11 @@ function getVivaldiMainView() {
 
   function getWorkspaceManager() {
     if (workspaceManager) return workspaceManager
-    workspaceManager = findModuleByExports(m => typeof m.setName === 'function' && (typeof m.setIcon === 'function' || typeof m.setWorkspaceIcon === 'function'))
+    workspaceManager = findModuleByExports(m => 
+      typeof m.addWorkspace === 'function' && 
+      typeof m.removeWorkspace === 'function' &&
+      typeof m.activateWorkspaceByIndex === 'function'
+    )
     return workspaceManager
   }
 
@@ -205,15 +209,14 @@ function getVivaldiMainView() {
     }
   }
 
-  function getWorkspaceStore() {
-    if (workspaceStore) return workspaceStore
-    workspaceStore = findModuleByExports(m => 
-      typeof m.getWorkspaces === 'function' && 
-      typeof m.getActiveWorkspaceId === 'function' &&
-      typeof m.addListener === 'function'
-    )
-    return workspaceStore
-  }
+    function getWorkspaceStore() {
+      if (workspaceStore) return workspaceStore
+      workspaceStore = findModuleByExports(m => 
+        typeof m.getWorkspaces === 'function' && 
+        typeof m.getActiveWorkspaceId === 'function'
+      )
+      return workspaceStore
+    }
 
   function normalizeWorkspace(workspace) {
     if (!workspace || typeof workspace !== 'object') return null
@@ -228,7 +231,33 @@ function getVivaldiMainView() {
 
   return {
     async getWorkspaces() {
-      // 1. Try internal WorkspaceStore (Most reliable in Vivaldi 8)
+      // 1. Try Prefs (Guaranteed to be instantly updated by Vivaldi when workspaces change)
+      const prefsApi = getPrefsApi()
+      if (prefsApi && typeof prefsApi.get === 'function') {
+        try {
+          const workspaces = await promisifyChromeApi(prefsApi.get, 'vivaldi.workspaces.list')
+          if (Array.isArray(workspaces) && workspaces.length > 0) {
+            return workspaces.map(normalizeWorkspace).filter(Boolean)
+          }
+        } catch (e) {
+          console.warn('[svb] prefs workspaces fetch failed:', e)
+        }
+      }
+
+      // 2. Try native API
+      const workspacesApi = typeof vivaldi !== 'undefined' && vivaldi.workspaces
+      if (workspacesApi && typeof workspacesApi.getAll === 'function') {
+        try {
+          const workspaces = await promisifyChromeApi(workspacesApi.getAll)
+          if (Array.isArray(workspaces) && workspaces.length > 0) {
+            return workspaces.map(normalizeWorkspace).filter(Boolean)
+          }
+        } catch (e) {
+          console.warn('[svb] native workspaces.getAll failed:', e)
+        }
+      }
+
+      // 3. Fallback to internal WorkspaceStore
       const store = getWorkspaceStore()
       if (store) {
         try {
@@ -241,67 +270,109 @@ function getVivaldiMainView() {
         }
       }
 
-      // 2. Fallback to native API
-      const workspacesApi = typeof vivaldi !== 'undefined' && vivaldi.workspaces
-      if (workspacesApi && typeof workspacesApi.getAll === 'function') {
-        try {
-          const workspaces = await promisifyChromeApi(workspacesApi.getAll)
-          if (Array.isArray(workspaces) && workspaces.length > 0) {
-            return workspaces.map(normalizeWorkspace).filter(Boolean)
-          }
-        } catch (e) {}
-      }
-
-      // 3. Fallback to Prefs
-      const prefsApi = getPrefsApi()
-      if (!prefsApi || typeof prefsApi.get !== 'function') return []
-      
-      try {
-        const workspaces = await promisifyChromeApi(prefsApi.get, 'vivaldi.workspaces.list')
-        if (Array.isArray(workspaces)) {
-          return workspaces.map(normalizeWorkspace).filter(Boolean)
-        }
-      } catch (e) {}
-
       return []
     },
 
-    async createWorkspace(name = 'New Workspace') {
+    // Create a workspace via Vivaldi's own manager. It assigns the id, persists
+    // it, and switches to the (empty) new workspace — same as native.
+    createWorkspace(name = 'New Workspace') {
+      const manager = getWorkspaceManager()
+      if (!manager || typeof manager.addWorkspace !== 'function') return false
       const store = getWorkspaceStore()
-      if (store && typeof store.addWorkspace === 'function') {
-        // In Vivaldi 8, we might need to use the store to create
-        // But for now, let's keep the pref-based creation if it works
+      let icon
+      try {
+        icon = store && typeof store.getRandomIcon === 'function'
+          ? store.getRandomIcon()
+          : (store && typeof store.getDefaultIcon === 'function' ? store.getDefaultIcon() : defaultWorkspaceIcon)
+      } catch (error) {
+        icon = defaultWorkspaceIcon
       }
-
-      const prefsApi = getPrefsApi()
-      if (!prefsApi || typeof prefsApi.get !== 'function') return null
-
-      const current = await promisifyChromeApi(prefsApi.get, workspacesPrefPath)
-      const workspaces = Array.isArray(current) ? current.slice() : []
-      const usedIds = new Set(workspaces.map(workspace => Number(workspace && workspace.id)).filter(Number.isFinite))
-      let id = Date.now()
-      while (usedIds.has(id)) id += 1
-
-      const workspace = {
-        id,
-        name,
-        icon: defaultWorkspaceIcon,
+      try {
+        manager.addWorkspace(name, icon)
+        return true
+      } catch (error) {
+        console.warn('[svb] native addWorkspace failed', error)
+        return false
       }
-
-      await upsertWorkspacePref(workspace)
-      scheduleWorkspacePrefRepair(workspace)
-
-      return workspace
     },
 
-    repairWorkspace(workspace) {
-      if (!workspace || !Number.isFinite(Number(workspace.id))) return
-      scheduleWorkspacePrefRepair({
-        ...workspace,
-        id: Number(workspace.id),
-        name: workspace.name || 'New Workspace',
-        icon: workspace.icon || defaultWorkspaceIcon,
-      })
+    // Create with a caller-supplied id (used by "create workspace and move
+    // tabs here"): dispatches the native create but does not move/activate.
+    createWorkspaceWithId(workspaceId, name = 'New Workspace') {
+      const id = Number(workspaceId)
+      if (!Number.isFinite(id)) return false
+      const manager = getWorkspaceManager()
+      if (!manager || typeof manager.addWorkspaceWithId !== 'function') return false
+      const store = getWorkspaceStore()
+      let icon
+      try {
+        icon = store && typeof store.getRandomIcon === 'function'
+          ? store.getRandomIcon()
+          : (store && typeof store.getDefaultIcon === 'function' ? store.getDefaultIcon() : defaultWorkspaceIcon)
+      } catch (error) {
+        icon = defaultWorkspaceIcon
+      }
+      try {
+        manager.addWorkspaceWithId(id, name, icon)
+        return true
+      } catch (error) {
+        console.warn('[svb] native addWorkspaceWithId failed', error)
+        return false
+      }
+    },
+
+    // Delete via the native manager: it switches away if active, closes the
+    // workspace's tabs, and removes it — exactly Vivaldi's "Delete Workspace".
+    async deleteWorkspace(windowId, workspaceId) {
+      const id = Number(workspaceId)
+      if (!Number.isFinite(id)) return false
+      const manager = getWorkspaceManager()
+      if (!manager || typeof manager.removeWorkspace !== 'function') return false
+      try {
+        await manager.removeWorkspace(windowId, id)
+        return true
+      } catch (error) {
+        console.warn('[svb] native removeWorkspace failed', error)
+        return false
+      }
+    },
+
+    // Switch the active workspace natively (works for empty workspaces). A null
+    // workspaceId activates the "no workspace" default area.
+    activateWorkspace(windowId, workspaceId) {
+      const manager = getWorkspaceManager()
+      if (!manager || typeof manager.activateWorkspaceByIndex !== 'function') return false
+      try {
+        if (workspaceId == null) {
+          // Non-number index → native maps to the default (no workspace).
+          manager.activateWorkspaceByIndex(windowId, null)
+          return true
+        }
+        const id = Number(workspaceId)
+        const store = getWorkspaceStore()
+        const list = store && typeof store.getWorkspaces === 'function' ? store.getWorkspaces() : []
+        const index = Array.isArray(list) ? list.findIndex(workspace => Number(workspace && workspace.id) === id) : -1
+        if (index < 0) return false
+        manager.activateWorkspaceByIndex(windowId, index)
+        return true
+      } catch (error) {
+        console.warn('[svb] native activateWorkspace failed', error)
+        return false
+      }
+    },
+
+    setWorkspaceName(workspaceId, name) {
+      const id = Number(workspaceId)
+      if (!Number.isFinite(id)) return false
+      const manager = getWorkspaceManager()
+      if (!manager || typeof manager.setName !== 'function') return false
+      try {
+        manager.setName(id, name)
+        return true
+      } catch (error) {
+        console.warn('[svb] native setName failed', error)
+        return false
+      }
     },
 
     async tileTabs(tabIds, layout) {
@@ -384,7 +455,6 @@ function getVivaldiMainView() {
           nativeTarget = pages
         }
 
-        console.log('[svb] detaching native pages:', pages.length, 'using', nativeTarget?.constructor?.name || typeof nativeTarget)
         await detachPage(nativeTarget)
         return true
       } catch (error) {
@@ -403,8 +473,6 @@ function getVivaldiMainView() {
       const getPageById = store && typeof store.getPageById === 'function' ? store.getPageById.bind(store) : null
 
       const reduxStore = findModuleByExports(m => m && typeof m.getState === 'function' && typeof m.dispatch === 'function')
-
-      console.log('[svb] setSelectedTabs:', ids, 'actions found:', !!actions, 'setSelection found:', !!setSelection, 'redux found:', !!reduxStore)
 
       if (!getPageById) return false
 
@@ -446,17 +514,25 @@ function getVivaldiMainView() {
     },
 
     onWorkspacesChanged(listener) {
-      // 1. Try WorkspaceStore listener (Immediate updates)
-      const store = getWorkspaceStore()
-      if (store && typeof store.addListener === 'function') {
-        const wrapped = () => {
-          listener(store.getWorkspaces())
+        // 1. Try WorkspaceStore listener (Immediate updates)
+        const store = getWorkspaceStore()
+        if (store) {
+          const wrapped = () => {
+            listener(store.getWorkspaces())
+          }
+          if (typeof store.addListener === 'function') {
+            store.addListener(wrapped)
+            return () => store.removeListener(wrapped)
+          } else if (typeof store.addChangeListener === 'function') {
+            store.addChangeListener(wrapped)
+            return () => store.removeChangeListener(wrapped)
+          } else if (typeof store.subscribe === 'function') {
+            const unsubscribe = store.subscribe(wrapped)
+            return () => unsubscribe && unsubscribe()
+          }
         }
-        store.addListener(wrapped)
-        return () => store.removeListener(wrapped)
-      }
-
-      // 2. Fallback to Prefs listener
+  
+        // 2. Fallback to Prefs listener
       const prefsApi = getPrefsApi()
       if (!prefsApi || typeof prefsApi.onChanged === 'undefined') return () => {}
 

@@ -269,16 +269,32 @@ function createTabsApi() {
       return vivaldiBridge.getWorkspaces()
     },
 
-    async createWorkspace(name = 'New Workspace') {
+    getActiveWorkspaceId(windowId) {
+      return vivaldiBridge.getActiveWorkspaceId(windowId)
+    },
+
+    createWorkspace(name = 'New Workspace') {
       return vivaldiBridge.createWorkspace(name)
+    },
+
+    createWorkspaceWithId(workspaceId, name = 'New Workspace') {
+      return vivaldiBridge.createWorkspaceWithId(workspaceId, name)
+    },
+
+    async deleteWorkspace(windowId, workspaceId) {
+      return vivaldiBridge.deleteWorkspace(windowId, workspaceId)
+    },
+
+    activateWorkspace(windowId, workspaceId) {
+      return vivaldiBridge.activateWorkspace(windowId, workspaceId)
+    },
+
+    setWorkspaceName(workspaceId, name) {
+      return vivaldiBridge.setWorkspaceName(workspaceId, name)
     },
 
     onWorkspacesChanged(listener) {
       return vivaldiBridge.onWorkspacesChanged(listener)
-    },
-
-    repairWorkspace(workspace) {
-      vivaldiBridge.repairWorkspace(workspace)
     },
 
     activateTab(tabId) {
@@ -311,6 +327,42 @@ function createTabsApi() {
     async duplicateTab(tabId) {
       if (!Number.isFinite(tabId) || typeof tabsApi.duplicate !== 'function') return null
       return promisifyChromeApi(tabsApi.duplicate, tabId)
+    },
+
+    reloadTab(tabId, bypassCache = false) {
+      if (!Number.isFinite(tabId) || typeof tabsApi.reload !== 'function') return
+      tabsApi.reload(tabId, { bypassCache: !!bypassCache })
+    },
+
+    async discardTab(tabId) {
+      if (!Number.isFinite(tabId) || typeof tabsApi.discard !== 'function') return null
+      try {
+        const newTab = await tabsApi.discard(tabId)
+        return newTab ? newTab.id : null
+      } catch (err) {
+        try {
+          const newTab = await promisifyChromeApi(tabsApi.discard, tabId)
+          return newTab ? newTab.id : null
+        } catch (fallbackErr) {
+          console.error('[svb] discardTab failed:', err, fallbackErr)
+          return null
+        }
+      }
+    },
+
+    async bookmarkTab({ title, url } = {}) {
+      if (!bookmarksApi || typeof bookmarksApi.create !== 'function' || !url) return null
+      let parentId
+      try {
+        if (typeof bookmarksApi.getTree === 'function') {
+          const roots = await promisifyChromeApi(bookmarksApi.getTree)
+          const bookmarksBar = getBookmarksBarNode(roots)
+          parentId = bookmarksBar ? bookmarksBar.id : undefined
+        }
+      } catch (error) {}
+      const properties = { title: title || url, url }
+      if (parentId) properties.parentId = parentId
+      return promisifyChromeApi(bookmarksApi.create, properties)
     },
 
     async tileTabs(tabIds, layout) {
@@ -466,14 +518,12 @@ function createTabsApi() {
           const detached = await vivaldiBridge.detachTabsToNewWindow(ids)
           if (detached) return { native: true }
         } catch (e) {
-          console.warn('[svb] vivaldiBridge.detachTabsToNewWindow failed:', e)
         }
       }
 
       // Fallback for Vivaldi 8+ or if bridge fails
       if (windowsApi && typeof windowsApi.create === 'function') {
         try {
-          console.log('[svb] fallback: creating window with tab', ids[0])
           // 1. Create new window with the first tab
           const newWindow = await promisifyChromeApi(windowsApi.create, { tabId: ids[0] })
           if (!newWindow || !newWindow.id) {
@@ -487,7 +537,6 @@ function createTabsApi() {
           if (ids.length > 1) {
             const children = ids.slice(1)
             for (const childId of children) {
-              console.log('[svb] fallback: moving child', childId, 'to window', newWindow.id)
               try {
                 // We use a small delay to prevent Vivaldi from dropping moves
                 await new Promise(resolve => setTimeout(resolve, 150))

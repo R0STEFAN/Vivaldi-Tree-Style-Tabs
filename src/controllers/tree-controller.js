@@ -10,6 +10,7 @@ function createTreeController(api) {
   const treePersistence = createTreePersistence(api)
   const pendingCreatedTabs = new Map()
   const expectedCreations = []
+  const recentlyClosedTabs = []
   let pendingRemovalDirty = false
   let cachedDerivedView = null
   let persistQueue = Promise.resolve()
@@ -155,7 +156,54 @@ function createTreeController(api) {
         sourceActiveTabId,
         expectedCreation,
         fromPinnedTab: !(expectedCreation && expectedCreation.kind === 'root') && !!(meta && meta.fromPinnedTab),
+        nativeIndex: tab.index,
       })
+    },
+
+    recordClosedTab(tab) {
+      if (!tab || !tab.url || tab.pinned) return
+      
+      const parentId = treeStore.getParentId(tab.id)
+      const treeState = treeStore.exportState()
+      
+      let siblingAnchorId = null
+      let isBefore = false
+
+      if (parentId != null) {
+        const parentNode = treeState.nodesById[parentId]
+        if (parentNode && parentNode.childIds) {
+          const idx = parentNode.childIds.indexOf(tab.id)
+          if (idx > 0) {
+            siblingAnchorId = parentNode.childIds[idx - 1]
+            isBefore = false
+          } else if (idx === 0 && parentNode.childIds.length > 1) {
+            siblingAnchorId = parentNode.childIds[1]
+            isBefore = true
+          }
+        }
+      } else {
+        const idx = treeState.rootIds.indexOf(tab.id)
+        if (idx > 0) {
+          siblingAnchorId = treeState.rootIds[idx - 1]
+          isBefore = false
+        } else if (idx === 0 && treeState.rootIds.length > 1) {
+          siblingAnchorId = treeState.rootIds[1]
+          isBefore = true
+        }
+      }
+
+      recentlyClosedTabs.unshift({
+        url: tab.url,
+        parentId,
+        siblingAnchorId,
+        isBefore,
+        nativeIndex: tab.index,
+        timestamp: Date.now()
+      })
+
+      if (recentlyClosedTabs.length > 50) {
+        recentlyClosedTabs.pop()
+      }
     },
 
     handleRemovedTab(tabId) {
@@ -378,8 +426,39 @@ function createTreeController(api) {
 
         const expectedCreation = pendingCreation.expectedCreation || null
         let parentId = null
+        let matchedClosedTab = null
 
-        if (expectedCreation && expectedCreation.kind === 'child' && Number.isFinite(expectedCreation.parentTabId)) {
+        if (!expectedCreation) {
+          let idx = -1
+          if (tab.url && tab.url !== 'chrome://newtab/') {
+            idx = recentlyClosedTabs.findIndex(c => c.url === tab.url)
+          }
+          if (idx === -1 && pendingCreation.nativeIndex != null) {
+            // Fallback: if URL didn't match (e.g. hibernation temporary url), match by exact native index
+            // but only if it was closed within the last 2 seconds (safe window for hibernation)
+            idx = recentlyClosedTabs.findIndex(c => c.nativeIndex === pendingCreation.nativeIndex && (Date.now() - c.timestamp < 2000))
+          }
+          if (idx !== -1) {
+            matchedClosedTab = recentlyClosedTabs[idx]
+            recentlyClosedTabs.splice(idx, 1)
+          }
+        }
+
+        if (matchedClosedTab) {
+          parentId = matchedClosedTab.parentId
+          if (matchedClosedTab.siblingAnchorId != null && treeStore.hasTab(matchedClosedTab.siblingAnchorId)) {
+            const attached = matchedClosedTab.isBefore
+              ? treeStore.attachBefore(tab.id, matchedClosedTab.siblingAnchorId)
+              : treeStore.attachAfter(tab.id, matchedClosedTab.siblingAnchorId)
+            
+            persistenceDirty = attached || persistenceDirty
+            structuralDirty = attached || structuralDirty
+            if (attached) {
+              pendingCreatedTabs.delete(tab.id)
+              continue
+            }
+          }
+        } else if (expectedCreation && expectedCreation.kind === 'child' && Number.isFinite(expectedCreation.parentTabId)) {
           parentId = expectedCreation.parentTabId
         } else if (expectedCreation && expectedCreation.kind === 'sibling' && Number.isFinite(expectedCreation.parentTabId)) {
           const siblingAnchorId = expectedCreation.parentTabId
@@ -409,7 +488,7 @@ function createTreeController(api) {
           treeStore.moveRoot(tab.id, 0)
           persistenceDirty = true
           structuralDirty = true
-        } else if (!(expectedCreation && expectedCreation.kind === 'root')) {
+        } else if (!(expectedCreation && expectedCreation.kind === 'root') && !matchedClosedTab) {
           const currentTreeState = treeStore.exportState()
           const looksLikeRootStartPage = isStartPageUrl(tab.url || '')
           parentId = resolveNewTabParent({

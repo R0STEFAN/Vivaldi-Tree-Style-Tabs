@@ -2,6 +2,49 @@ function readCssVar(style, name) {
   return style.getPropertyValue(name).trim()
 }
 
+// Resolve any CSS color string (hex / named / rgb / hsl / var-resolved value)
+// to {r,g,b,a} by letting the browser normalize it through a probe element.
+function createColorParser() {
+  const probe = document.createElement('span')
+  probe.style.display = 'none'
+  probe.style.position = 'absolute'
+  document.documentElement.appendChild(probe)
+
+  return function toRgb(value) {
+    if (value == null) return null
+    const input = String(value).trim()
+    if (!input) return null
+
+    // Sentinel lets us detect strings the browser rejects (it keeps the prior value).
+    probe.style.color = 'rgb(1, 2, 3)'
+    probe.style.color = input
+    const computed = getComputedStyle(probe).color
+    if (computed === 'rgb(1, 2, 3)' && input.replace(/\s+/g, '') !== 'rgb(1,2,3)') {
+      return null
+    }
+
+    const match = computed.match(/rgba?\(([^)]+)\)/)
+    if (!match) return null
+    const parts = match[1].split(',').map(part => parseFloat(part.trim()))
+    if (parts.length < 3 || parts.some(n => Number.isNaN(n))) return null
+    return { r: parts[0], g: parts[1], b: parts[2], a: parts.length > 3 ? parts[3] : 1 }
+  }
+}
+
+function relativeLuminance({ r, g, b }) {
+  const channel = value => {
+    const v = value / 255
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+  }
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+}
+
+function contrastRatio(lumA, lumB) {
+  const lighter = Math.max(lumA, lumB)
+  const darker = Math.min(lumA, lumB)
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
 function isTransparentColor(value) {
   if (!value) return true
 
@@ -55,6 +98,21 @@ function createThemeAdapter(root) {
   }
 
   const browserStyle = () => getComputedStyle(browserEl)
+  const toRgb = createColorParser()
+
+  // Keep `fg` only if it reads clearly on `bg`; otherwise fall back to a
+  // luminance-appropriate color. This is a no-op when the theme already
+  // provides a contrasting foreground (e.g. the default dark theme).
+  function pickReadableFg(bg, fg, minContrast, darkFallback, lightFallback) {
+    const bgRgb = toRgb(bg)
+    if (!bgRgb) return fg || lightFallback
+    const bgLum = relativeLuminance(bgRgb)
+    const fgRgb = toRgb(fg)
+    if (fgRgb && contrastRatio(relativeLuminance(fgRgb), bgLum) >= minContrast) {
+      return fg
+    }
+    return bgLum > 0.42 ? darkFallback : lightFallback
+  }
 
   function resolveThemeValues() {
     const b = browserStyle()
@@ -152,10 +210,28 @@ function createThemeAdapter(root) {
       '5px',
     ], '5px', { allowTransparent: true })
 
+    // What the panel text visually sits on. In transparent / blur mode the
+    // panel shows the window behind it, so panelBg (a theme surface color) is
+    // the wrong luminance reference and can be dark while the real backdrop is
+    // light. Prefer the window/browser background in that case.
+    const referenceBg = firstUsable([
+      isTransparent && windowBg,
+      isTransparent && browserBg,
+      panelBg,
+      windowBg,
+      browserBg,
+    ], '#232629')
+
+    // Guarantee readable text regardless of light/dark theme. In the default
+    // dark theme the inherited colors already contrast, so these are no-ops.
+    const panelFgReadable = pickReadableFg(referenceBg, panelFg, 4, '#1b1d21', '#dcdee0')
+    const panelFgStrong = pickReadableFg(referenceBg, activeTabFg, 4.5, '#0f1216', '#f5f6f7')
+
     return {
       panelBg,
       panelBorder,
-      panelFg,
+      panelFg: panelFgReadable,
+      panelFgStrong,
       tabBg,
       tabHoverBg,
       activeTabBg,
@@ -177,6 +253,7 @@ function createThemeAdapter(root) {
     setVar(style, '--svb-theme-panel-bg', vars.isTransparent ? 'transparent' : vars.panelBg)
     setVar(style, '--svb-theme-panel-border', vars.panelBorder)
     setVar(style, '--svb-theme-panel-fg', vars.panelFg)
+    setVar(style, '--svb-theme-panel-fg-strong', vars.panelFgStrong)
     setVar(style, '--svb-theme-tab-bg', vars.tabBg)
     setVar(style, '--svb-theme-tab-hover-bg', vars.tabHoverBg)
     setVar(style, '--svb-theme-tab-active-bg', vars.activeTabBg)

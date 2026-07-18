@@ -105,6 +105,9 @@ async function main() {
       if (!selectedIds.includes(id)) {
         selectionStore.selectSingle(id)
       }
+      if (store.refreshWorkspaces) {
+        return store.refreshWorkspaces()
+      }
     },
     onContextMenuAction: (action, payload) => {
       const tabId = payload && payload.tabId
@@ -127,6 +130,18 @@ async function main() {
         void store.togglePinnedForSelection(tabId, selectedIds)
       } else if (action === 'toggle-mute') {
         void store.toggleMutedForSelection(tabId, selectedIds)
+      } else if (action === 'hibernate') {
+        void store.hibernateSelection(tabId, selectedIds)
+      } else if (action === 'reload') {
+        void store.reloadSelection(tabId, selectedIds)
+      } else if (action === 'bookmark-tab') {
+        void store.bookmarkSelection(tabId, selectedIds)
+      } else if (action === 'copy-url') {
+        void store.copySelectionUrl(tabId, selectedIds)
+      } else if (action === 'copy-title') {
+        void store.copySelectionTitle(tabId, selectedIds)
+      } else if (action === 'copy-markdown') {
+        void store.copySelectionMarkdown(tabId, selectedIds)
       } else if (action === 'set-color') {
         void store.setColorForSelection(tabId, selectedIds, payload.colorKey)
       } else if (action === 'duplicate') {
