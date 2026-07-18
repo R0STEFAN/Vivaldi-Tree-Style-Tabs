@@ -88,7 +88,7 @@ const STYLE_TEXT = `
   transform: translateX(0) !important;
 }
 
-.svb-layout-host.svb-position-right #svb-root-trigger.svb-edge-trigger {
+#svb-root-trigger.svb-edge-trigger.svb-position-right {
   left: auto !important;
   right: 0 !important;
 }
@@ -6651,6 +6651,7 @@ function createLayoutAdapter(options) {
 
     const panelPosition = settingsStore.get('panelPosition')
     currentHost.classList.toggle('svb-position-right', panelPosition === 'right')
+    trigger.classList.toggle('svb-position-right', panelPosition === 'right')
 
     root.classList.toggle('is-revealed', !fullscreen && (currentPinned || revealed))
     trigger.classList.toggle('is-enabled', !fullscreen && !currentPinned)

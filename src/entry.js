@@ -273,7 +273,7 @@ async function main() {
 
   unsubscribers.push(selectionStore.subscribe(state => {
     latestSelectionState = state
-    if (state.selectedIds && state.selectedIds.length > 1) {
+    if (state.selectedIds && state.selectedIds.length > 0) {
       api.syncNativeSelection(state.selectedIds)
     }
     syncView()
