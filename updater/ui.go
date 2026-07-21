@@ -2,9 +2,13 @@ package main
 
 import (
 	"log"
+	_ "embed"
 
 	"fyne.io/systray"
 )
+
+//go:embed icon.png
+var iconBytes []byte
 
 var (
 	mStatus      *systray.MenuItem
@@ -29,7 +33,7 @@ func onReady(
 	onForcePatch func(),
 	onQuit func(),
 ) {
-	// Set icon (you would normally load an icon byte slice here, we will just set a title for now if icon fails)
+	systray.SetIcon(iconBytes)
 	systray.SetTitle("SvbTabs Updater")
 	systray.SetTooltip("Vivaldi Tree Style Tabs Updater")
 

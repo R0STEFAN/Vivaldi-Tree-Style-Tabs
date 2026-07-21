@@ -11,6 +11,20 @@ func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	log.Println("SvbTabs Updater started")
 
+	// Check if this is the first run
+	cfg := LoadConfig()
+	if cfg.LatestVersion == "" && cfg.LastCheck.IsZero() {
+		// First run: enable autostart by default
+		if err := SetAutostart(true); err != nil {
+			log.Printf("Failed to enable autostart on first run: %v", err)
+		} else {
+			log.Println("Autostart enabled by default on first run")
+		}
+		// Save an initial config so we don't trigger this again
+		cfg.LatestVersion = "init"
+		SaveConfig(cfg)
+	}
+
 	// Create callbacks
 	onCheckUpdate := func() {
 		UpdateStatus("Checking for updates...")
