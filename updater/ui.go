@@ -5,6 +5,7 @@ import (
 	_ "embed"
 
 	"fyne.io/systray"
+	"github.com/go-toast/toast"
 )
 
 //go:embed icon.ico
@@ -17,6 +18,19 @@ var (
 	mAutostart   *systray.MenuItem
 	mQuit        *systray.MenuItem
 )
+
+// NotifyUser shows a Windows 10/11 toast notification
+func NotifyUser(title, message string) {
+	notification := toast.Notification{
+		AppID:   "SvbTabs Updater",
+		Title:   title,
+		Message: message,
+	}
+	err := notification.Push()
+	if err != nil {
+		log.Printf("Failed to push notification: %v", err)
+	}
+}
 
 func InitSystray(
 	onCheckUpdate func(),

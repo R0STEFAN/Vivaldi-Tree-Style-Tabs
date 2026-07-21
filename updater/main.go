@@ -34,6 +34,7 @@ func main() {
 		if err != nil {
 			log.Printf("Error checking for updates: %v", err)
 			UpdateStatus("Update check failed")
+			NotifyUser("Error", "Update check failed: "+err.Error())
 			return
 		}
 
@@ -56,17 +57,20 @@ func main() {
 			if err != nil || downloadUrl == "" {
 				log.Printf("Failed to get download URL for forcing patch: %v", err)
 				UpdateStatus("Patch failed")
+				NotifyUser("Error", "Failed to get download URL. Ensure the latest release has a mod.zip file attached.")
 				return
 			}
 		}
 
 		log.Printf("Found version to apply: %s. Downloading...", latestTag)
 		UpdateStatus("Downloading " + latestTag + "...")
+		NotifyUser("Update Found", "Downloading Vivaldi Tree Style Tabs version "+latestTag)
 		
 		tmpDir, err := DownloadAndExtract(downloadUrl)
 		if err != nil {
 			log.Printf("Error downloading update: %v", err)
 			UpdateStatus("Download failed")
+			NotifyUser("Error", "Failed to download update: "+err.Error())
 			return
 		}
 		defer os.RemoveAll(tmpDir)
@@ -76,11 +80,13 @@ func main() {
 		if err != nil {
 			log.Printf("Error patching Vivaldi: %v", err)
 			UpdateStatus("Patch failed")
+			NotifyUser("Error", "Failed to patch Vivaldi: "+err.Error())
 			return
 		}
 
 		log.Println("Successfully updated and patched!")
 		UpdateStatus("Up to date (" + latestTag + ")")
+		NotifyUser("Success", "Vivaldi successfully patched! Please restart your browser.")
 		
 		cfg.LatestVersion = latestTag
 		cfg.LastCheck = time.Now()
@@ -90,18 +96,15 @@ func main() {
 	onForcePatch := func() {
 		UpdateStatus("Patching Vivaldi...")
 		
-		// In a forced patch, we just want to ensure browser.html is patched.
-		// If we don't have the mod files locally, we might need to just inject the script tag
-		// assuming the files are already there, or we can trigger a full update check.
-		// For now, we'll try to patch using a dummy empty dir, which will just inject the script tag
-		// and skip missing files.
 		err := PatchVivaldi("")
 		if err != nil {
 			log.Printf("Force patch failed: %v", err)
 			UpdateStatus("Patch failed")
+			NotifyUser("Error", "Force patch failed: "+err.Error())
 		} else {
 			log.Println("Force patch successful")
 			UpdateStatus("Active")
+			NotifyUser("Success", "Vivaldi successfully patched! Please restart your browser.")
 		}
 	}
 
