@@ -1,6 +1,26 @@
 const TREE_NAMESPACE_KEY = 'svbTree'
 const TREE_VERSION = 1
 
+const BACKUP_KEY = 'svbTreeBackup'
+
+function readBackup() {
+  try {
+    const raw = window.localStorage.getItem(BACKUP_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch (e) {
+    console.warn('Failed to read svbTreeBackup', e)
+  }
+  return {}
+}
+
+function writeBackup(backupObj) {
+  try {
+    window.localStorage.setItem(BACKUP_KEY, JSON.stringify(backupObj))
+  } catch (e) {
+    console.warn('Failed to write svbTreeBackup', e)
+  }
+}
+
 const treeMetadataCache = new Map()
 
 function updateMetadataCache(tabId, record) {
@@ -82,6 +102,13 @@ function getTreeRecord(tab) {
     if (tab && tab.discarded) {
       const cached = getCachedMetadata(tab.id)
       if (cached) return cached
+
+      const backup = readBackup()
+      if (backup[tab.id]) {
+        const restored = backup[tab.id]
+        restored.pendingRestore = true
+        return restored
+      }
     }
     return null
   }
@@ -164,12 +191,16 @@ function buildVivExtDataPayloads(contextKey, treeState, tabs) {
       order: ordersByTabId.get(tab.id) || 0,
     }
 
-    const changed = !currentRecord
+    let changed = !currentRecord
       || currentRecord.contextKey !== nextRecord.contextKey
       || currentRecord.nodeId !== nextRecord.nodeId
       || currentRecord.parentNodeId !== nextRecord.parentNodeId
       || currentRecord.collapsed !== nextRecord.collapsed
       || currentRecord.order !== nextRecord.order
+
+    if (currentRecord && currentRecord.pendingRestore && tab.discarded) {
+      changed = false
+    }
 
     const nextVivExtData = cloneVivExtData(tab.vivExtData)
     nextVivExtData[TREE_NAMESPACE_KEY] = nextRecord
@@ -185,6 +216,15 @@ function buildVivExtDataPayloads(contextKey, treeState, tabs) {
       vivExtData: nextVivExtData,
     })
   }
+
+  // Update LocalStorage Backup with the new tree state
+  const backup = readBackup()
+  for (const payload of payloads) {
+    if (payload.vivExtData && payload.vivExtData[TREE_NAMESPACE_KEY]) {
+      backup[payload.tabId] = payload.vivExtData[TREE_NAMESPACE_KEY]
+    }
+  }
+  writeBackup(backup)
 
   return payloads
 }
