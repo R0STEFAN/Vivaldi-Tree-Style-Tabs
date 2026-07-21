@@ -12,6 +12,7 @@ import (
 
 type GitHubRelease struct {
 	TagName string        `json:"tag_name"`
+	Body    string        `json:"body"`
 	Assets  []GitHubAsset `json:"assets"`
 }
 
@@ -22,25 +23,25 @@ type GitHubAsset struct {
 
 const RepoUrl = "https://api.github.com/repos/R0STEFAN/Vivaldi-Tree-Style-Tabs/releases/latest"
 
-// CheckForUpdates returns the latest tag and the download URL for mod.zip if available
-func CheckForUpdates(currentVersion string) (string, string, error) {
+// CheckForUpdates returns the latest tag, download URL, release notes, and error
+func CheckForUpdates(currentVersion string) (string, string, string, error) {
 	resp, err := http.Get(RepoUrl)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("GitHub API returned status: %d", resp.StatusCode)
+		return "", "", "", fmt.Errorf("GitHub API returned status: %d", resp.StatusCode)
 	}
 
 	var release GitHubRelease
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 
 	if release.TagName == currentVersion {
-		return currentVersion, "", nil // Up to date
+		return currentVersion, "", release.Body, nil // Up to date, but might return body if forced
 	}
 
 	var downloadUrl string
@@ -52,13 +53,13 @@ func CheckForUpdates(currentVersion string) (string, string, error) {
 	}
 
 	if downloadUrl == "" {
-		return release.TagName, "", fmt.Errorf("mod.zip asset not found in latest release")
+		return "", "", "", fmt.Errorf("could not find mod.zip or svb-updater.exe in release assets")
 	}
 
-	return release.TagName, downloadUrl, nil
+	return release.TagName, downloadUrl, release.Body, nil
 }
 
-// DownloadAndExtract downloads the zip and extracts it to a temporary directory
+// DownloadAndExtract downloads the update ZIP and extracts it to a temporary directory
 func DownloadAndExtract(downloadUrl string) (string, error) {
 	resp, err := http.Get(downloadUrl)
 	if err != nil {

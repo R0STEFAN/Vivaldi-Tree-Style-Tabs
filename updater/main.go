@@ -30,7 +30,7 @@ func main() {
 		UpdateStatus("Checking for updates...")
 		cfg := LoadConfig()
 		
-		latestTag, downloadUrl, err := CheckForUpdates(cfg.LatestVersion)
+		latestTag, downloadUrl, releaseNotes, err := CheckForUpdates(cfg.LatestVersion)
 		if err != nil {
 			log.Printf("Error checking for updates: %v", err)
 			UpdateStatus("Update check failed")
@@ -56,9 +56,8 @@ func main() {
 
 		if downloadUrl == "" && needsPatch {
 			// Version matches, but we need to re-download because files are missing.
-			// Let's explicitly fetch the latest release again to get the URL
 			log.Println("Vivaldi is unpatched. Forcing re-download of current version.")
-			latestTag, downloadUrl, err = CheckForUpdates("") // pass empty to force url return
+			latestTag, downloadUrl, releaseNotes, err = CheckForUpdates("") // pass empty to force url return
 			if err != nil || downloadUrl == "" {
 				log.Printf("Failed to get download URL for forcing patch: %v", err)
 				UpdateStatus("Patch failed")
@@ -67,9 +66,17 @@ func main() {
 			}
 		}
 
-		log.Printf("Found version to apply: %s. Downloading...", latestTag)
+		log.Printf("Found version to apply: %s. Prompting user...", latestTag)
+		
+		// Prompt the user interactively!
+		if !AskUserToUpdate(latestTag, releaseNotes) {
+			log.Println("User declined the update.")
+			UpdateStatus("Update declined")
+			return
+		}
+
 		UpdateStatus("Downloading " + latestTag + "...")
-		NotifyUser("Update Found", "Downloading Vivaldi Tree Style Tabs version "+latestTag)
+		NotifyUser("Update Starting", "Downloading Vivaldi Tree Style Tabs version "+latestTag)
 		
 		tmpDir, err := DownloadAndExtract(downloadUrl)
 		if err != nil {

@@ -6,6 +6,7 @@ import (
 
 	"fyne.io/systray"
 	"github.com/go-toast/toast"
+	"golang.org/x/sys/windows"
 )
 
 //go:embed icon.ico
@@ -18,6 +19,22 @@ var (
 	mAutostart   *systray.MenuItem
 	mQuit        *systray.MenuItem
 )
+
+// AskUserToUpdate shows a native Yes/No dialog with release notes
+func AskUserToUpdate(version, releaseNotes string) bool {
+	title := "New Version Available: " + version
+	msg := "A new version of Vivaldi Tree Style Tabs is available!\n\nRelease Notes:\n" + releaseNotes + "\n\nDo you want to download and install this update?"
+	
+	ret, _ := windows.MessageBox(
+		0,
+		windows.StringToUTF16Ptr(msg),
+		windows.StringToUTF16Ptr(title),
+		windows.MB_YESNO|windows.MB_ICONQUESTION|windows.MB_TOPMOST,
+	)
+	
+	// IDYES = 6
+	return ret == 6
+}
 
 // NotifyUser shows a Windows 10/11 toast notification
 func NotifyUser(title, message string) {
