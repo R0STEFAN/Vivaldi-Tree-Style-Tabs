@@ -37,8 +37,10 @@ func main() {
 			return
 		}
 
-		if downloadUrl == "" {
-			log.Println("No new updates found")
+		// If Vivaldi is unpatched (e.g., fresh install), we must download even if versions match
+		needsPatch := !IsVivaldiPatched()
+		if downloadUrl == "" && !needsPatch {
+			log.Println("No new updates found and Vivaldi is already patched")
 			UpdateStatus("Up to date")
 			
 			cfg.LastCheck = time.Now()
@@ -46,7 +48,19 @@ func main() {
 			return
 		}
 
-		log.Printf("Found new version: %s. Downloading...", latestTag)
+		if downloadUrl == "" && needsPatch {
+			// Version matches, but we need to re-download because files are missing.
+			// Let's explicitly fetch the latest release again to get the URL
+			log.Println("Vivaldi is unpatched. Forcing re-download of current version.")
+			latestTag, downloadUrl, err = CheckForUpdates("") // pass empty to force url return
+			if err != nil || downloadUrl == "" {
+				log.Printf("Failed to get download URL for forcing patch: %v", err)
+				UpdateStatus("Patch failed")
+				return
+			}
+		}
+
+		log.Printf("Found version to apply: %s. Downloading...", latestTag)
 		UpdateStatus("Downloading " + latestTag + "...")
 		
 		tmpDir, err := DownloadAndExtract(downloadUrl)
@@ -115,6 +129,10 @@ func main() {
 
 	// Periodically check GitHub for mod updates (e.g., every 4 hours)
 	go func() {
+		// Do an initial check 3 seconds after startup
+		time.Sleep(3 * time.Second)
+		onCheckUpdate()
+
 		for {
 			time.Sleep(4 * time.Hour)
 			onCheckUpdate()

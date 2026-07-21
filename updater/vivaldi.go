@@ -132,3 +132,24 @@ func PatchVivaldi(modDir string) error {
 
 	return PatchBrowserHtml(versionPath)
 }
+
+// IsVivaldiPatched checks if the current Vivaldi installation is patched
+func IsVivaldiPatched() bool {
+	appPath, err := FindVivaldiAppPath()
+	if err != nil {
+		return false
+	}
+
+	versionPath, err := GetLatestVersionPath(appPath)
+	if err != nil {
+		return false
+	}
+
+	indexPath := filepath.Join(versionPath, "resources", "vivaldi", "window.html")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		return false
+	}
+
+	return bytes.Contains(data, []byte(`<script src="custom.js"></script>`))
+}
