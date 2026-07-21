@@ -4790,7 +4790,11 @@ function createTabStore(api) {
 
     closeTab(tabId) {
       if (!state.canCloseVisibleTabs) return
-      const closeTargetIds = treeController.getCloseTargetIds(tabId)
+      
+      const tab = getTabById(tabId)
+      const isFolder = tab && tab.vivExtData && tab.vivExtData.isFolder
+      const closeTargetIds = isFolder ? treeController.getSubtreeTargetIds(tabId) : treeController.getCloseTargetIds(tabId)
+      
       if (closeTargetIds.length === 0) return
       pendingNativeReconcileReason = 'close'
       lockCurrentContext()
@@ -5420,7 +5424,9 @@ function createTabStore(api) {
       const targetIds = getActionTargetIds(tabId, selectedIds)
       const expandedTargetIds = []
       for (const targetId of targetIds) {
-        const closeIds = treeController.getCloseTargetIds(targetId)
+        const tab = getTabById(targetId)
+        const isFolder = tab && tab.vivExtData && tab.vivExtData.isFolder
+        const closeIds = isFolder ? treeController.getSubtreeTargetIds(targetId) : treeController.getCloseTargetIds(targetId)
         expandedTargetIds.push(...(closeIds.length ? closeIds : [targetId]))
       }
       closeTabIds(expandedTargetIds)
