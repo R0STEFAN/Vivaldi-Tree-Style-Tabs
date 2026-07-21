@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -12,6 +13,9 @@ func main() {
 	// Initialize logging
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	log.Println("SvbTabs Updater started")
+	
+	// Clean up any leftover updater files from previous updates
+	CleanupOldUpdater()
 
 	// Single Instance Check using Windows Mutex
 	mutexName, _ := windows.UTF16PtrFromString("SvbTabsUpdater_SingleInstance_Mutex")
@@ -117,6 +121,21 @@ func main() {
 		cfg.LatestVersion = latestTag
 		cfg.LastCheck = time.Now()
 		SaveConfig(cfg)
+
+		// Self-update check: if the downloaded archive contains a new updater executable
+		newUpdaterPath := filepath.Join(tmpDir, "svb-updater.exe")
+		if _, err := os.Stat(newUpdaterPath); err == nil {
+			log.Println("New updater executable found in archive. Initiating self-update...")
+			UpdateStatus("Restarting updater...")
+			if err := SelfUpdate(newUpdaterPath); err != nil {
+				log.Printf("Self-update failed: %v", err)
+				NotifyUser("Update Error", "Failed to self-update the client: "+err.Error())
+			} else {
+				// Exit gracefully so the new process can take over
+				log.Println("Self-update successful. Exiting old process.")
+				os.Exit(0)
+			}
+		}
 	}
 
 	onForcePatch := func() {
