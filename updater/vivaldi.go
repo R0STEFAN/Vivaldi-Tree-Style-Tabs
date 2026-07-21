@@ -145,11 +145,26 @@ func IsVivaldiPatched() bool {
 		return false
 	}
 
-	indexPath := filepath.Join(versionPath, "resources", "vivaldi", "window.html")
+	uiPath := filepath.Join(versionPath, "resources", "vivaldi")
+	indexPath := filepath.Join(uiPath, "window.html")
+	
 	data, err := os.ReadFile(indexPath)
 	if err != nil {
 		return false
 	}
 
-	return bytes.Contains(data, []byte(`<script src="custom.js"></script>`))
+	// Check if the HTML is patched
+	if !bytes.Contains(data, []byte(`<script src="custom.js"></script>`)) {
+		return false
+	}
+
+	// Also verify that the required mod files actually exist in the folder
+	requiredFiles := []string{"custom.js", "svb-folder.html"}
+	for _, f := range requiredFiles {
+		if _, err := os.Stat(filepath.Join(uiPath, f)); err != nil {
+			return false // File is missing, so it's not fully patched
+		}
+	}
+
+	return true
 }
