@@ -153,6 +153,7 @@ function buildVivExtDataPayloads(contextKey, treeState, tabs) {
   const payloads = []
 
   for (const tab of tabsById.values()) {
+    const currentRecord = getTreeRecord(tab)
     const node = safeTreeState.nodesById[tab.id] || { parentId: null, collapsed: false }
     const nextRecord = {
       version: TREE_VERSION,
@@ -163,7 +164,6 @@ function buildVivExtDataPayloads(contextKey, treeState, tabs) {
       order: ordersByTabId.get(tab.id) || 0,
     }
 
-    const currentRecord = getTreeRecord(tab)
     const changed = !currentRecord
       || currentRecord.contextKey !== nextRecord.contextKey
       || currentRecord.nodeId !== nextRecord.nodeId

@@ -352,6 +352,7 @@ function createTreeController(api) {
           title: tab.title || tab.url,
           url: tab.url,
           collapsed: !!(node && node.collapsed),
+          isFolder: !!(tab.vivExtData && tab.vivExtData.isFolder),
           children: childIds.map(buildNode).filter(Boolean),
         }
       }

@@ -91,6 +91,7 @@ async function main() {
     },
     onCloseTab: id => store.closeTab(id),
     onCreateTab: () => store.createTab(),
+    onCreateFolderTab: () => store.createFolderTab(),
     onCreateChildTab: id => store.createChildTab(id),
     onRenameTab: (id, title) => { void store.renameTab(id, title) },
     onTogglePinned: () => panelStore.togglePinned(),
@@ -120,6 +121,12 @@ async function main() {
         store.createChildTab(tabId)
       } else if (action === 'new-sibling') {
         store.createSiblingTab(tabId)
+      } else if (action === 'new-folder-child') {
+        store.createFolderTabAt(tabId, 'inside')
+      } else if (action === 'new-folder-sibling') {
+        store.createFolderTabAt(tabId, 'after')
+      } else if (action === 'new-folder-above') {
+        store.createFolderTabAt(tabId, 'before')
       } else if (action === 'move-window') {
         void store.moveSelectionToNewWindow(tabId, selectedIds)
       } else if (action === 'move-workspace') {

@@ -497,14 +497,25 @@ body.svb-is-resizing {
 }
 
 #svb-root .svb-tab-list {
-  display: flex;
+  display: block;
   min-height: 0;
   flex: 1;
-  flex-direction: column;
-  gap: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 0;
   padding-bottom: 2px;
+}
+
+#svb-root .svb-pinned-folder-group {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: var(--colorBg, var(--svb-bg, #232629));
+  border-bottom: 1px solid color-mix(in srgb, var(--svb-text) 15%, transparent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  border-bottom-left-radius: var(--svb-radius, 4px);
+  border-bottom-right-radius: var(--svb-radius, 4px);
+  margin-bottom: 6px;
 }
 
 #svb-root .svb-tab {
@@ -767,6 +778,12 @@ body.svb-is-resizing {
   transform: rotate(-90deg);
 }
 
+#svb-root .svb-tab.is-folder .svb-tab__exp-icon {
+  display: none !important;
+}
+
+
+
 #svb-root .svb-tab.is-active .svb-tab__exp-icon,
 #svb-root .svb-tab__lead:hover .svb-tab__exp-icon {
   color: var(--svb-text-strong);
@@ -782,8 +799,8 @@ body.svb-is-resizing {
   opacity: 1;
 }
 
-#svb-root .svb-tab[data-parent="true"] .svb-tab__lead:hover .svb-tab__favicon,
-#svb-root .svb-tab[data-parent="true"][data-folded="true"] .svb-tab__favicon {
+#svb-root .svb-tab:not(.is-folder)[data-parent="true"] .svb-tab__lead:hover .svb-tab__favicon,
+#svb-root .svb-tab:not(.is-folder)[data-parent="true"][data-folded="true"] .svb-tab__favicon {
   opacity: 0.2;
 }
 
@@ -965,17 +982,28 @@ body.svb-is-resizing {
   display: block;
 }
 
-#svb-root .svb-frame.has-scroll .svb-new-tab-button.is-inline {
+#svb-root .svb-frame.has-scroll .svb-new-tab-button.is-inline,
+#svb-root .svb-frame.has-scroll .svb-new-item-buttons.is-inline {
   display: none;
 }
 
-#svb-root .svb-new-tab-button {
+#svb-root .svb-new-item-buttons {
+  display: flex;
+  gap: 4px;
+  margin: 0 2px 2px;
+}
+
+#svb-root .svb-new-item-buttons.is-inline {
+  margin: 4px 2px 2px;
+}
+
+#svb-root .svb-new-tab-button,
+#svb-root .svb-new-folder-button {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  width: calc(100% - 4px);
   min-height: 30px;
-  margin: 0 2px 2px;
   padding: 0 10px;
   border: 1px solid transparent;
   border-radius: var(--svb-radius);
@@ -986,7 +1014,17 @@ body.svb-is-resizing {
   text-align: left;
 }
 
-#svb-root .svb-new-tab-button:hover {
+#svb-root .svb-new-tab-button {
+  flex: 1;
+}
+
+#svb-root .svb-new-folder-button {
+  flex: 0 0 32px;
+  padding: 0;
+}
+
+#svb-root .svb-new-tab-button:hover,
+#svb-root .svb-new-folder-button:hover {
   background: var(--svb-panel-hover);
 }
 

@@ -57,6 +57,13 @@ function serializeVivExtData(vivExtData) {
     payload.fixedTitle = vivExtData.fixedTitle.trim()
   }
 
+  if (vivExtData.isFolder === true) {
+    payload.isFolder = true
+    if (vivExtData.folderColor) {
+      payload.folderColor = vivExtData.folderColor
+    }
+  }
+
   return Object.keys(payload).length ? JSON.stringify(payload) : undefined
 }
 
@@ -126,7 +133,21 @@ function getFallbackFaviconUrl(tab) {
 }
 
 function normalizeTab(tab) {
-  const vivExtData = parseVivExtData(tab.vivExtData)
+  let vivExtData = parseVivExtData(tab.vivExtData)
+  
+  // Intercept Folder restoration from bookmarks via URL hash
+  if (tab.url && tab.url.startsWith('data:text/html') && tab.url.includes('#svb-folder:')) {
+    const isFolder = true
+    let folderColor = 'blue'
+    const colorMatch = tab.url.match(/#svb-folder:color=([^&]+)/)
+    if (colorMatch) folderColor = colorMatch[1]
+
+    if (!vivExtData || typeof vivExtData !== 'object') vivExtData = {}
+    if (!vivExtData.isFolder) {
+      vivExtData.isFolder = isFolder
+      vivExtData.folderColor = folderColor
+    }
+  }
 
   return {
     id: tab.id,
@@ -425,9 +446,10 @@ function createTabsApi() {
       }
 
       async function createTreeFolder(node, parentId) {
+        const titleSuffix = node.isFolder ? '[Folder] ' : ''
         const folder = await promisifyChromeApi(bookmarksApi.create, {
           ...(parentId ? { parentId } : {}),
-          title: `${TREE_BOOKMARK_PREFIX}${node.title || 'Saved Tree'}`,
+          title: `${TREE_BOOKMARK_PREFIX}${titleSuffix}${node.title || 'Saved Tree'}`,
         })
         await promisifyChromeApi(bookmarksApi.create, {
           parentId: folder.id,
@@ -471,6 +493,7 @@ function createTabsApi() {
         const parsed = {
           title: parentBookmark.title || getTreeBookmarkTitle(folder.title) || parentBookmark.url,
           url: parentBookmark.url,
+          isFolder: !!(parentBookmark.url && parentBookmark.url.includes('#svb-folder:data=')),
           children: [],
         }
         let skippedParent = false
@@ -491,6 +514,7 @@ function createTabsApi() {
             parsed.children.push({
               title: child.title || child.url,
               url: child.url,
+              isFolder: !!(child.url && child.url.includes('#svb-folder:data=')),
               children: [],
             })
           }

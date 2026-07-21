@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Folder</title>
+  <style id="svb-folder-style">
+    body {
+      background: var(--colorBg, #1e1e1e);
+      color: var(--colorFg, #fff);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 40px;
+      margin: 0;
+    }
+    .svb-placeholder {
+      opacity: 0.5;
+      font-size: 16px;
+      padding: 24px 0;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div id="svb-root">
+    <div class="svb-placeholder">Loading folder...</div>
+  </div>
+  <script>
+    function renderFromHash() {
+      const hash = window.location.hash;
+      if (hash && hash.startsWith('#svb-folder:data=')) {
+        try {
+          const base64 = hash.substring('#svb-folder:data='.length);
+          const jsonStr = decodeURIComponent(escape(atob(base64)));
+          const data = JSON.parse(jsonStr);
+          
+          if (data.title) document.title = data.title;
+          if (data.style) {
+            let styleEl = document.getElementById('svb-folder-dynamic-style');
+            if (!styleEl) {
+              styleEl = document.createElement('style');
+              styleEl.id = 'svb-folder-dynamic-style';
+              document.head.appendChild(styleEl);
+            }
+            styleEl.textContent = data.style;
+          }
+          if (data.html) {
+            document.getElementById('svb-root').innerHTML = data.html;
+          }
+        } catch (e) {
+          console.error('[svb] failed to parse folder data', e);
+        }
+      }
+    }
+    window.addEventListener('hashchange', renderFromHash);
+    renderFromHash();
+  </script>
+</body>
+</html>

@@ -531,14 +531,25 @@ body.svb-is-resizing {
 }
 
 #svb-root .svb-tab-list {
-  display: flex;
+  display: block;
   min-height: 0;
   flex: 1;
-  flex-direction: column;
-  gap: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 0;
   padding-bottom: 2px;
+}
+
+#svb-root .svb-pinned-folder-group {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: var(--colorBg, var(--svb-bg, #232629));
+  border-bottom: 1px solid color-mix(in srgb, var(--svb-text) 15%, transparent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  border-bottom-left-radius: var(--svb-radius, 4px);
+  border-bottom-right-radius: var(--svb-radius, 4px);
+  margin-bottom: 6px;
 }
 
 #svb-root .svb-tab {
@@ -801,6 +812,12 @@ body.svb-is-resizing {
   transform: rotate(-90deg);
 }
 
+#svb-root .svb-tab.is-folder .svb-tab__exp-icon {
+  display: none !important;
+}
+
+
+
 #svb-root .svb-tab.is-active .svb-tab__exp-icon,
 #svb-root .svb-tab__lead:hover .svb-tab__exp-icon {
   color: var(--svb-text-strong);
@@ -816,8 +833,8 @@ body.svb-is-resizing {
   opacity: 1;
 }
 
-#svb-root .svb-tab[data-parent="true"] .svb-tab__lead:hover .svb-tab__favicon,
-#svb-root .svb-tab[data-parent="true"][data-folded="true"] .svb-tab__favicon {
+#svb-root .svb-tab:not(.is-folder)[data-parent="true"] .svb-tab__lead:hover .svb-tab__favicon,
+#svb-root .svb-tab:not(.is-folder)[data-parent="true"][data-folded="true"] .svb-tab__favicon {
   opacity: 0.2;
 }
 
@@ -999,17 +1016,28 @@ body.svb-is-resizing {
   display: block;
 }
 
-#svb-root .svb-frame.has-scroll .svb-new-tab-button.is-inline {
+#svb-root .svb-frame.has-scroll .svb-new-tab-button.is-inline,
+#svb-root .svb-frame.has-scroll .svb-new-item-buttons.is-inline {
   display: none;
 }
 
-#svb-root .svb-new-tab-button {
+#svb-root .svb-new-item-buttons {
+  display: flex;
+  gap: 4px;
+  margin: 0 2px 2px;
+}
+
+#svb-root .svb-new-item-buttons.is-inline {
+  margin: 4px 2px 2px;
+}
+
+#svb-root .svb-new-tab-button,
+#svb-root .svb-new-folder-button {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  width: calc(100% - 4px);
   min-height: 30px;
-  margin: 0 2px 2px;
   padding: 0 10px;
   border: 1px solid transparent;
   border-radius: var(--svb-radius);
@@ -1020,7 +1048,17 @@ body.svb-is-resizing {
   text-align: left;
 }
 
-#svb-root .svb-new-tab-button:hover {
+#svb-root .svb-new-tab-button {
+  flex: 1;
+}
+
+#svb-root .svb-new-folder-button {
+  flex: 0 0 32px;
+  padding: 0;
+}
+
+#svb-root .svb-new-tab-button:hover,
+#svb-root .svb-new-folder-button:hover {
   background: var(--svb-panel-hover);
 }
 
@@ -2178,6 +2216,7 @@ function buildVivExtDataPayloads(contextKey, treeState, tabs) {
   const payloads = []
 
   for (const tab of tabsById.values()) {
+    const currentRecord = getTreeRecord(tab)
     const node = safeTreeState.nodesById[tab.id] || { parentId: null, collapsed: false }
     const nextRecord = {
       version: TREE_VERSION,
@@ -2188,7 +2227,6 @@ function buildVivExtDataPayloads(contextKey, treeState, tabs) {
       order: ordersByTabId.get(tab.id) || 0,
     }
 
-    const currentRecord = getTreeRecord(tab)
     const changed = !currentRecord
       || currentRecord.contextKey !== nextRecord.contextKey
       || currentRecord.nodeId !== nextRecord.nodeId
@@ -3006,6 +3044,7 @@ function createTreeController(api) {
           title: tab.title || tab.url,
           url: tab.url,
           collapsed: !!(node && node.collapsed),
+          isFolder: !!(tab.vivExtData && tab.vivExtData.isFolder),
           children: childIds.map(buildNode).filter(Boolean),
         }
       }
@@ -3529,12 +3568,180 @@ function createNativeReconcile(api) {
 module.exports = { createNativeReconcile }
 
     },
+    "ui/folder-page.js": function(require, module, exports) {
+function escapeHtml(value) {
+  if (typeof value !== 'string') return ''
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function generateFolderPageUrl(tabState, folderTabId) {
+  const activeTab = tabState.tabs.find(t => t.id === folderTabId)
+  if (!activeTab || !activeTab.vivExtData || !activeTab.vivExtData.isFolder) {
+    return new URL('svb-folder.html', location.href).href
+  }
+
+  const folderNodeId = activeTab.vivExtData && activeTab.vivExtData.svbTree && activeTab.vivExtData.svbTree.nodeId
+  const descendants = []
+  
+  if (folderNodeId) {
+    const childrenByParent = new Map()
+    for (const t of tabState.tabs) {
+      const parentId = t.vivExtData && t.vivExtData.svbTree && t.vivExtData.svbTree.parentNodeId
+      if (parentId) {
+        if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, [])
+        childrenByParent.get(parentId).push(t)
+      }
+    }
+
+    function collectDescendants(parentId) {
+      const children = childrenByParent.get(parentId) || []
+      for (const child of children) {
+        descendants.push(child)
+        const isChildFolder = child.vivExtData && child.vivExtData.isFolder
+        const childNodeId = child.vivExtData && child.vivExtData.svbTree && child.vivExtData.svbTree.nodeId
+        if (childNodeId && !isChildFolder) {
+          collectDescendants(childNodeId)
+        }
+      }
+    }
+    collectDescendants(folderNodeId)
+  }
+  let actualColorKey = activeTab.vivExtData.tabColor || activeTab.vivExtData.folderColor
+  
+  let html = `
+<div class="container">
+  <h1 class="header">
+    <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor">
+      <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+    </svg>
+    ${escapeHtml(activeTab.title)}
+  </h1>
+  <div class="grid">
+  `
+
+  if (descendants.length === 0) {
+    html += `<div style="opacity: 0.5; font-size: 16px; padding: 24px 0;">This folder is empty.</div>`
+  } else {
+    for (const childTab of descendants) {
+      let iconHtml = ''
+      if (childTab.vivExtData && childTab.vivExtData.isFolder) {
+        iconHtml = `
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+            <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+          </svg>
+        `
+      } else if (childTab.favIconUrl && (!childTab.favIconUrl.startsWith('data:') || childTab.favIconUrl.length < 5000)) {
+        iconHtml = `<img src="${escapeHtml(childTab.favIconUrl)}" style="width: 24px; height: 24px; border-radius: 4px;">`
+      } else {
+        iconHtml = `<div style="width: 24px; height: 24px; border-radius: 4px; background: rgba(128,128,128,0.2);"></div>`
+      }
+
+      // Use an anchor tag that changes the hash
+      html += `
+        <a class="card" href="#svb-activate:${childTab.id}">
+          <div class="icon-box">${iconHtml}</div>
+          <div class="title">${escapeHtml(childTab.title)}</div>
+        </a>
+      `
+    }
+  }
+
+  html += `
+  </div>
+</div>
+  `
+
+  const style = `
+  body {
+    background: var(--colorBg, #1e1e1e);
+    color: var(--colorFg, #fff);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 40px;
+    margin: 0;
+  }
+  .container {
+    max-width: 1000px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .header {
+    margin-top: 0;
+    font-size: 28px;
+    margin-bottom: 32px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-weight: 500;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--colorBgIntense, rgba(128,128,128,0.05));
+    border: 1px solid var(--colorBorder, rgba(128,128,128,0.1));
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+    color: inherit;
+    transition: background 0.2s, transform 0.1s;
+  }
+  .card:hover {
+    background: var(--colorBgHover, rgba(128,128,128,0.1));
+    transform: translateY(-2px);
+  }
+  .icon-box {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: var(--colorBg, transparent);
+  }
+  .title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 15px;
+  }
+  `
+
+  const dataStr = JSON.stringify({
+    title: activeTab.title || 'Folder',
+    style: style,
+    html: html
+  })
+  
+  const base64 = btoa(unescape(encodeURIComponent(dataStr)))
+  return new URL('svb-folder.html', location.href).href + '#svb-folder:data=' + base64
+}
+
+module.exports = {
+  generateFolderPageUrl
+}
+
+    },
     "store/tab-store.js": function(require, module, exports) {
 const { settingsStore } = require('../store/settings-store.js')
 const { createTreeController } = require('../controllers/tree-controller.js')
 const { createNativeReconcile } = require('../controllers/native-reconcile.js')
+const { generateFolderPageUrl } = require('../ui/folder-page.js')
 
 const TREE_NAMESPACE_KEY = 'svbTree'
+
+const lastFolderUrlUpdates = new Map()
 
 function createTreeNodeId() {
   return `svb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
@@ -4172,10 +4379,14 @@ function createTabStore(api) {
       const tab = tabsById.get(tabId)
       if (!tab) continue
       const nextData = buildVivExtData(tab)
+      tab.vivExtData = nextData
       tasks.push(api.updateVivExtData(tabId, nextData))
     }
 
     await Promise.all(tasks)
+    
+    // Give Vivaldi backend a moment to commit the vivExtData so getTabs doesn't return stale data
+    await new Promise(resolve => setTimeout(resolve, 150))
     await syncTabs({ preserveContext: true })
   }
 
@@ -4421,6 +4632,30 @@ function createTabStore(api) {
       canCloseVisibleTabs,
     })
 
+    // Update folder dashboard if it's the active tab
+    const nextActiveTabId = state.activeTabId
+    if (nextActiveTabId && previousVisibleActiveTab && previousVisibleActiveTab.id === nextActiveTabId) {
+      // It was already active, or we just activated it
+      const activeTab = state.tabs.find(t => t.id === nextActiveTabId)
+      if (activeTab && activeTab.vivExtData && activeTab.vivExtData.isFolder) {
+        const newUrl = generateFolderPageUrl(state, nextActiveTabId)
+        if (activeTab.url !== newUrl && lastFolderUrlUpdates.get(nextActiveTabId) !== newUrl) {
+          lastFolderUrlUpdates.set(nextActiveTabId, newUrl)
+          api.updateTab(nextActiveTabId, { url: newUrl }).catch(() => {})
+        }
+      }
+    } else if (nextActiveTabId) {
+      // It's a new active tab
+      const activeTab = state.tabs.find(t => t.id === nextActiveTabId)
+      if (activeTab && activeTab.vivExtData && activeTab.vivExtData.isFolder) {
+        const newUrl = generateFolderPageUrl(state, nextActiveTabId)
+        if (activeTab.url !== newUrl && lastFolderUrlUpdates.get(nextActiveTabId) !== newUrl) {
+          lastFolderUrlUpdates.set(nextActiveTabId, newUrl)
+          api.updateTab(nextActiveTabId, { url: newUrl }).catch(() => {})
+        }
+      }
+    }
+
     if (actionReconcileReason) {
       nativeReconcile.scheduleAfterAction(actionReconcileReason)
     } else if (shouldScheduleStartupReconcile) {
@@ -4460,6 +4695,17 @@ function createTabStore(api) {
       if (nativeReconcile.isOwnOpenerUpdate(tabId, changeInfo)) {
         return
       }
+      
+      // Intercept clicks on dashboard cards
+      if (changeInfo && changeInfo.url && changeInfo.url.includes('#svb-activate:')) {
+        const match = changeInfo.url.match(/#svb-activate:(\d+)/)
+        if (match) {
+          const targetId = parseInt(match[1], 10)
+          lastFolderUrlUpdates.delete(tabId)
+          api.activateTab(targetId)
+        }
+      }
+
       refreshPreservingContext(tabId, changeInfo)
     }
 
@@ -4590,6 +4836,66 @@ function createTabStore(api) {
         vivExtData: kind === 'child' 
           ? getCreateVivExtDataForChild(state, targetId)
           : getCreateVivExtDataForState(state),
+      })
+    },
+
+    createFolderTab() {
+      if (state.windowId == null) return
+      const folderName = 'New Folder'
+      const folderColor = 'blue'
+      const url = new URL('svb-folder.html', location.href).href + '#svb-folder:color=' + folderColor
+      
+      const vivExtData = {
+        isFolder: true,
+        folderColor,
+        fixedTitle: folderName
+      }
+      
+      treeController.registerExpectedCreation({ kind: 'root' })
+      pendingNativeReconcileReason = 'create-root'
+      api.createTab(state.windowId, {
+        url,
+        vivExtData: {
+          ...getCreateVivExtDataForState(state),
+          ...vivExtData
+        }
+      })
+    },
+
+    createFolderTabAt(targetId, position) {
+      if (state.windowId == null || !Number.isFinite(targetId) || !position) return
+      
+      const folderName = 'New Folder'
+      const folderColor = 'blue'
+      const url = new URL('svb-folder.html', location.href).href + '#svb-folder:color=' + folderColor
+      
+      const vivExtData = {
+        isFolder: true,
+        folderColor,
+        fixedTitle: folderName
+      }
+      
+      const kind = position === 'inside' ? 'child' : 'sibling'
+      treeController.registerExpectedCreation({
+        kind,
+        parentTabId: targetId,
+        position,
+      })
+
+      const index = position === 'inside' 
+        ? treeController.getCreateChildIndex(targetId, state.tabs)
+        : position === 'before'
+          ? getTabById(targetId).index
+          : treeController.getCreateSiblingIndex(targetId, state.tabs)
+
+      pendingNativeReconcileReason = `create-${kind}-at`
+      api.createChildTab(state.windowId, targetId, {
+        url,
+        index,
+        vivExtData: {
+          ...(kind === 'child' ? getCreateVivExtDataForChild(state, targetId) : getCreateVivExtDataForState(state)),
+          ...vivExtData
+        }
       })
     },
 
@@ -4797,7 +5103,50 @@ function createTabStore(api) {
     async togglePinnedForSelection(tabId, selectedIds) {
       const targetIds = getActionTargetIds(tabId, selectedIds)
       const tab = getTabById(tabId)
-      await updateTabs(targetIds, { pinned: !(tab && tab.pinned) })
+      const isFolder = tab && tab.vivExtData && tab.vivExtData.isFolder
+
+      if (isFolder) {
+        const currentlyPinned = tab.vivExtData && tab.vivExtData.pinnedFolder
+        const nextPinned = !currentlyPinned
+
+        // Store pinnedFolder at top level of vivExtData (not inside svbTree)
+        // so tree persistence doesn't overwrite it
+        await updateVivExtDataForTabs([tabId], targetTab => {
+          const previousData = targetTab && targetTab.vivExtData && typeof targetTab.vivExtData === 'object' ? targetTab.vivExtData : {}
+          return {
+            ...previousData,
+            pinnedFolder: nextPinned
+          }
+        })
+
+        // If pinning, physically move folder to the very top of the tree
+        if (nextPinned) {
+          const firstRootTab = state.treeTabs.find(item => item.depth === 0 && item.id !== tabId)
+          if (firstRootTab) {
+            await treeController.moveTab(tabId, firstRootTab.id, 'before', state.tabs)
+          }
+        } else {
+          // If unpinning, physically move folder below the last pinned folder
+          const firstUnpinnedRootTab = state.treeTabs.find(item => {
+            if (item.depth !== 0 || item.id === tabId) return false
+            const t = getTabById(item.id)
+            return !(t && t.vivExtData && t.vivExtData.pinnedFolder)
+          })
+          if (firstUnpinnedRootTab) {
+            await treeController.moveTab(tabId, firstUnpinnedRootTab.id, 'before', state.tabs)
+          } else {
+            const lastRootTab = state.treeTabs.slice().reverse().find(item => item.depth === 0 && item.id !== tabId)
+            if (lastRootTab) {
+              await treeController.moveTab(tabId, lastRootTab.id, 'after', state.tabs)
+            }
+          }
+        }
+
+        pendingNativeReconcileReason = 'toggle-pinned-folder'
+        await syncTabs({ preserveContext: true }, 'toggle-pinned-folder')
+      } else {
+        await updateTabs(targetIds, { pinned: !(tab && tab.pinned) })
+      }
     },
 
     async toggleMutedForSelection(tabId, selectedIds) {
@@ -5006,12 +5355,18 @@ function createTabStore(api) {
       let createdCount = 0
 
       async function createNode(node, parentId) {
+        let folderUrl = node.url
+        if (node.isFolder) {
+          folderUrl = new URL('svb-folder.html', location.href).href + '#svb-folder:color=blue'
+        }
+
         const tab = await api.createRestoredTab(state.windowId, {
-          url: node.url,
-          active: createdCount === 0,
+          url: folderUrl,
+          active: createdCount === 0 && !node.isFolder,
           vivExtData: {
             ...baseVivExtData,
             fixedTitle: node.title,
+            ...(node.isFolder ? { isFolder: true, folderColor: 'blue' } : {})
           },
         })
         const tabId = tab && Number(tab.id)
@@ -6122,6 +6477,13 @@ function serializeVivExtData(vivExtData) {
     payload.fixedTitle = vivExtData.fixedTitle.trim()
   }
 
+  if (vivExtData.isFolder === true) {
+    payload.isFolder = true
+    if (vivExtData.folderColor) {
+      payload.folderColor = vivExtData.folderColor
+    }
+  }
+
   return Object.keys(payload).length ? JSON.stringify(payload) : undefined
 }
 
@@ -6191,7 +6553,21 @@ function getFallbackFaviconUrl(tab) {
 }
 
 function normalizeTab(tab) {
-  const vivExtData = parseVivExtData(tab.vivExtData)
+  let vivExtData = parseVivExtData(tab.vivExtData)
+  
+  // Intercept Folder restoration from bookmarks via URL hash
+  if (tab.url && tab.url.startsWith('data:text/html') && tab.url.includes('#svb-folder:')) {
+    const isFolder = true
+    let folderColor = 'blue'
+    const colorMatch = tab.url.match(/#svb-folder:color=([^&]+)/)
+    if (colorMatch) folderColor = colorMatch[1]
+
+    if (!vivExtData || typeof vivExtData !== 'object') vivExtData = {}
+    if (!vivExtData.isFolder) {
+      vivExtData.isFolder = isFolder
+      vivExtData.folderColor = folderColor
+    }
+  }
 
   return {
     id: tab.id,
@@ -6490,9 +6866,10 @@ function createTabsApi() {
       }
 
       async function createTreeFolder(node, parentId) {
+        const titleSuffix = node.isFolder ? '[Folder] ' : ''
         const folder = await promisifyChromeApi(bookmarksApi.create, {
           ...(parentId ? { parentId } : {}),
-          title: `${TREE_BOOKMARK_PREFIX}${node.title || 'Saved Tree'}`,
+          title: `${TREE_BOOKMARK_PREFIX}${titleSuffix}${node.title || 'Saved Tree'}`,
         })
         await promisifyChromeApi(bookmarksApi.create, {
           parentId: folder.id,
@@ -6536,6 +6913,7 @@ function createTabsApi() {
         const parsed = {
           title: parentBookmark.title || getTreeBookmarkTitle(folder.title) || parentBookmark.url,
           url: parentBookmark.url,
+          isFolder: !!(parentBookmark.url && parentBookmark.url.includes('#svb-folder:data=')),
           children: [],
         }
         let skippedParent = false
@@ -6556,6 +6934,7 @@ function createTabsApi() {
             parsed.children.push({
               title: child.title || child.url,
               url: child.url,
+              isFolder: !!(child.url && child.url.includes('#svb-folder:data=')),
               children: [],
             })
           }
@@ -7517,8 +7896,12 @@ function renderContextMenu(tab, state, contextMenu) {
   if (!contextMenu || !tab) return ''
   const selectedIds = Array.isArray(state.selectedIds) ? state.selectedIds : []
   const selectedCount = selectedIds.includes(tab.id) ? selectedIds.length : 1
+  const isFolder = tab && tab.vivExtData && tab.vivExtData.isFolder
+  const isPinnedFolder = isFolder && tab.vivExtData.pinnedFolder
   const closeLabel = selectedCount > 1 ? 'Close Selected Tabs' : 'Close Tab'
-  const pinLabel = tab.pinned ? 'Unpin Tab' : 'Pin Tab'
+  const pinLabel = isFolder 
+    ? (isPinnedFolder ? 'Unpin Folder' : 'Pin Folder')
+    : (tab.pinned ? 'Unpin Tab' : 'Pin Tab')
   const muteLabel = tab.muted ? 'Unmute Tab' : 'Mute Tab'
   const currentColorKey = selectedCount === 1
     && tab.vivExtData
@@ -7568,6 +7951,12 @@ function renderContextMenu(tab, state, contextMenu) {
   const menuX = Math.max(4, contextMenu.x)
   const menuY = Math.max(4, contextMenu.y)
 
+  const folderMenu = `
+    ${renderContextMenuItem({ action: 'new-folder-child', icon: 'child', label: 'New Child Folder', disabled: isPinned })}
+    ${renderContextMenuItem({ action: 'new-folder-sibling', icon: 'add', label: 'New Sibling Folder', disabled: isPinned })}
+    ${renderContextMenuItem({ action: 'new-folder-above', icon: 'add', label: 'New Folder Above', disabled: isPinned })}
+  `
+
   return `
     <div
       class="svb-menu"
@@ -7579,6 +7968,7 @@ function renderContextMenu(tab, state, contextMenu) {
       ${renderContextMenuItem({ action: 'restore-closed', icon: 'restore', label: 'Reopen Last Closed Tab' })}
       ${renderContextMenuItem({ action: 'new-child', icon: 'child', label: 'New Child Tab', disabled: isPinned })}
       ${renderContextMenuItem({ action: 'new-sibling', icon: 'add', label: 'New Sibling Tab Below', disabled: isPinned })}
+      ${renderContextMenuItem({ icon: 'folder', label: 'New Folder...', submenu: folderMenu, disabled: isPinned })}
       ${renderContextMenuItem({ icon: 'copy', label: 'Copy', submenu: copySubmenu })}
       <div class="svb-menu__separator"></div>
       ${renderContextMenuItem({ action: 'bookmark-tab', icon: 'bookmark', label: 'Bookmark Tab' })}
@@ -7622,7 +8012,7 @@ function renderExpander(item) {
 function renderChildCount(item) {
   const branchCount = item && item.subtreeSize ? Math.max(0, item.subtreeSize - 1) : 0
   if (!item || !item.hasChildren || !item.collapsed || !branchCount) return ''
-  return `<span class="svb-tab__child-count" aria-hidden="true">${branchCount}</span>`
+  return `<span class="svb-tab__child-count" data-role="toggle-collapse" data-tab-id="${item.id}" aria-hidden="true" style="cursor:pointer;" title="Click to expand">${branchCount}</span>`
 }
 
 function renderDropIndicator(dropPosition) {
@@ -7675,6 +8065,30 @@ function syncOptionalDirectChild(parent, selector, html, insertBeforeNode = null
 
 function syncTabLeadIcon(lead, tab) {
   const current = Array.from(lead.children).find(child => child.matches('.svb-tab__spinner, .svb-tab__favicon'))
+    
+  if (tab.vivExtData && tab.vivExtData.isFolder) {
+    let actualColorKey = tab.vivExtData.tabColor || tab.vivExtData.folderColor
+    const folderColor = actualColorKey && TAB_COLOR_SWATCHES[actualColorKey]
+      ? TAB_COLOR_SWATCHES[actualColorKey]
+      : 'currentColor'
+
+    if (current && current.matches('.svb-tab__favicon.is-folder')) {
+      current.style.color = folderColor
+      return current
+    }
+
+    const folderIcon = createNodeFromHtml(`
+      <span class="svb-tab__favicon is-folder" style="color: ${folderColor};">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+          <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+        </svg>
+      </span>
+    `)
+    if (current) current.replaceWith(folderIcon)
+    else lead.appendChild(folderIcon)
+    return folderIcon
+  }
+
   if (tab.loading) {
     if (current && current.matches('.svb-tab__spinner')) return current
 
@@ -7729,7 +8143,7 @@ function renderTabBadge(tab) {
   return ''
 }
 
-function syncTabContent(content, tab, editing) {
+function syncTabContent(content, tab, editing, item) {
   if (editing) {
     let input = findDirectChild(content, '.svb-tab__title-input')
     if (!input) {
@@ -7755,8 +8169,11 @@ function syncTabContent(content, tab, editing) {
     content.innerHTML = '<span class="svb-tab__title"></span>'
     titleNode = findDirectChild(content, '.svb-tab__title')
   }
-  if (titleNode && titleNode.textContent !== tab.title) {
-    titleNode.textContent = tab.title
+  
+  let displayTitle = tab.title
+
+  if (titleNode && titleNode.textContent !== displayTitle) {
+    titleNode.textContent = displayTitle
   }
 
   syncOptionalDirectChild(content, '.svb-tab__badge', renderTabBadge(tab), null)
@@ -7766,9 +8183,7 @@ function getTabVisualStyle(tab) {
   const styles = []
   const tiling = tab && tab.vivExtData && tab.vivExtData.tiling
   const tileId = tiling && tiling.id ? String(tiling.id) : ''
-  const tabColorKey = tab && tab.vivExtData && typeof tab.vivExtData.tabColor === 'string'
-    ? tab.vivExtData.tabColor
-    : ''
+  const tabColorKey = tab && tab.vivExtData && (typeof tab.vivExtData.tabColor === 'string' ? tab.vivExtData.tabColor : (typeof tab.vivExtData.folderColor === 'string' ? tab.vivExtData.folderColor : ''))
   const tabColor = tabColorKey && TAB_COLOR_SWATCHES[tabColorKey] ? TAB_COLOR_SWATCHES[tabColorKey] : ''
 
   if (tabColor) {
@@ -7826,11 +8241,26 @@ function getTabVisualState(tabId, item, visualState) {
 }
 
 function renderTab(tab, compact, canClose, item, editing, visualState) {
-  const icon = tab.loading
-    ? `<span class="svb-tab__spinner" aria-hidden="true"></span>`
-    : tab.favIconUrl
-      ? `<img class="svb-tab__favicon" src="${escapeHtml(tab.favIconUrl)}" alt="">`
-      : `<span class="svb-tab__favicon svb-tab__favicon--fallback"></span>`
+  let icon = ''
+  if (tab.vivExtData && tab.vivExtData.isFolder) {
+    let actualColorKey = tab.vivExtData.tabColor || tab.vivExtData.folderColor
+    const folderColor = actualColorKey && TAB_COLOR_SWATCHES[actualColorKey]
+      ? TAB_COLOR_SWATCHES[actualColorKey]
+      : 'currentColor'
+    icon = `
+      <span class="svb-tab__favicon is-folder" style="color: ${folderColor};">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+          <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+        </svg>
+      </span>
+    `
+  } else {
+    icon = tab.loading
+      ? `<span class="svb-tab__spinner" aria-hidden="true"></span>`
+      : tab.favIconUrl
+        ? `<img class="svb-tab__favicon" src="${escapeHtml(tab.favIconUrl)}" alt="">`
+        : `<span class="svb-tab__favicon svb-tab__favicon--fallback"></span>`
+  }
 
   const media = renderTabBadge(tab)
 
@@ -7841,21 +8271,22 @@ function renderTab(tab, compact, canClose, item, editing, visualState) {
   const tiling = tab.vivExtData && tab.vivExtData.tiling
   const isTiled = !!(tiling && (tiling.id || tiling.layout))
   const tiledClass = isTiled ? ' is-tiled' : ''
+  const folderClass = tab.vivExtData && tab.vivExtData.isFolder ? ' is-folder' : ''
+  const collapsedClass = item && item.collapsed ? ' is-collapsed' : ''
   const tabClass = compact
-    ? `svb-tab svb-pinned-tab is-compact${discardedClass}${tiledClass}`
-    : `svb-tab${discardedClass}${tiledClass}${hasClose ? ' has-close' : ''}${hasAdd ? ' has-add' : ''}${rowVisualState.isSelected ? ' is-selected' : ''}${rowVisualState.isDragging ? ' is-dragging' : ''}${rowVisualState.isDropTarget ? ' is-drop-target' : ''}`
+    ? `svb-tab svb-pinned-tab is-compact${folderClass}${discardedClass}${tiledClass}`
+    : `svb-tab${folderClass}${discardedClass}${tiledClass}${hasClose ? ' has-close' : ''}${hasAdd ? ' has-add' : ''}${rowVisualState.isSelected ? ' is-selected' : ''}${rowVisualState.isDragging ? ' is-dragging' : ''}${rowVisualState.isDropTarget ? ' is-drop-target' : ''}${collapsedClass}`
   const depth = item && !compact ? item.depth : 0
   const visibleIndex = item && !compact ? item.visibleIndex : -1
   const subtreeSize = item && !compact ? item.subtreeSize : 1
-  const parentId = item && !compact && item.parentId != null ? item.parentId : ''
+  const parentId = item && !compact && item.parentId != null ? item.parentId : -1
   const ancestorIds = item && !compact && Array.isArray(item.ancestorIds) ? item.ancestorIds.join(',') : ''
   const dropPosition = item && !compact && rowVisualState.dropPosition ? rowVisualState.dropPosition : ''
   const hasChildren = !!(item && item.hasChildren)
   const isCollapsed = !!(item && item.collapsed)
   const visibleBranchSize = item && !compact ? item.visibleBranchSize || 1 : 1
-  const coloredClass = tab.vivExtData && tab.vivExtData.tabColor && TAB_COLOR_SWATCHES[tab.vivExtData.tabColor]
-    ? ' is-colored'
-    : ''
+  const colorKey = tab.vivExtData && (tab.vivExtData.tabColor || tab.vivExtData.folderColor)
+  const coloredClass = colorKey && TAB_COLOR_SWATCHES[colorKey] ? ' is-colored' : ''
   const visualStyle = (tiledClass || coloredClass) ? getTabVisualStyle(tab) : ''
   const title = editing
     ? `<input class="svb-tab__title-input" data-role="rename-input" data-tab-id="${tab.id}" value="${escapeHtml(tab.title)}" spellcheck="false">`
@@ -7888,14 +8319,25 @@ function renderTab(tab, compact, canClose, item, editing, visualState) {
 
 function renderNewTabButton(inline) {
   return `
-    <button
-      class="svb-new-tab-button${inline ? ' is-inline' : ' is-sticky'}"
-      data-role="create-tab"
-      title="New tab"
-    >
-      <span class="svb-new-tab-button__icon">+</span>
-      <span class="svb-new-tab-button__label">New Tab</span>
-    </button>
+    <div class="svb-new-item-buttons${inline ? ' is-inline' : ' is-sticky'}">
+      <button
+        class="svb-new-tab-button"
+        data-role="create-tab"
+        title="New tab"
+      >
+        <span class="svb-new-tab-button__icon">+</span>
+        <span class="svb-new-tab-button__label">New Tab</span>
+      </button>
+      <button
+        class="svb-new-folder-button"
+        data-role="create-folder"
+        title="New Folder"
+      >
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+          <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2zm5 9h-3v3h-2v-3H7v-2h3V8h2v3h3v2z"/>
+        </svg>
+      </button>
+    </div>
   `
 }
 
@@ -7927,13 +8369,36 @@ function createNodeFromHtml(html) {
 }
 
 function createSidebarRenderer(options) {
-  const { root, dragShield, onActivateTab, onCloseTab, onCreateTab, onCreateChildTab, onRenameTab, onTogglePinned, onToggleMute, onToggleCollapse, onCollapseAll, onSelectTab, onOpenContextMenu, onContextMenuAction, onStartDrag, onUpdateDropTarget, onCommitDrop, onCommitExternalDrop, onCommitExternalContentDrop, onClearDrag } = options
+  const {
+    root,
+    dragShield,
+    onActivateTab,
+    onCloseTab,
+    onCreateTab,
+    onCreateFolderTab,
+    onCreateChildTab,
+    onRenameTab,
+    onTogglePinned,
+    onToggleMute,
+    onToggleCollapse,
+    onCollapseAll,
+    onSelectTab,
+    onOpenContextMenu,
+    onContextMenuAction,
+    onStartDrag,
+    onUpdateDropTarget,
+    onCommitDrop,
+    onCommitExternalDrop,
+    onCommitExternalContentDrop,
+    onClearDrag
+  } = options
   let pendingScrollToActive = false
   let pendingScrollSourceTabId = null
   let currentVisibleIds = []
   let previousActiveTabId = null
   let previousPinnedTabsSnapshot = null
   let previousTreeTabsSnapshot = null
+  let previousPinnedFolderIds = new Set()
   let previousCanCloseVisibleTabs = null
   let previousPanelPinned = null
   let previousIsSettingsOpen = false
@@ -8289,7 +8754,6 @@ function createSidebarRenderer(options) {
     currentShell.pinButton.title = state.panelPinned ? 'Unpin panel' : 'Pin panel'
     currentShell.pinButton.innerHTML = renderPinIcon(state.panelPinned)
     currentShell.settingsButton.innerHTML = renderMenuIcon('settings')
-    currentShell.pinnedSection.style.display = state.pinnedTabs.length ? '' : 'none'
     currentShell.mainView.style.display = isSettingsOpen ? 'none' : 'flex'
     currentShell.settingsView.style.display = isSettingsOpen ? 'flex' : 'none'
 
@@ -8408,9 +8872,11 @@ function createSidebarRenderer(options) {
     const tiling = tab.vivExtData && tab.vivExtData.tiling
     const isTiled = !!(tiling && (tiling.id || tiling.layout))
     const tiledClass = isTiled ? ' is-tiled' : ''
+    const isFolder = tab.vivExtData && tab.vivExtData.isFolder
+    const folderClass = isFolder ? ' is-folder' : ''
     const tabClass = compact
-      ? `svb-tab svb-pinned-tab is-compact${discardedClass}${tiledClass}`
-      : `svb-tab${discardedClass}${tiledClass}${hasClose ? ' has-close' : ''}${hasAdd ? ' has-add' : ''}${isActuallyMultiSelected ? ' is-selected' : ''}${rowVisualState.isDragging ? ' is-dragging' : ''}${rowVisualState.isDropTarget ? ' is-drop-target' : ''}`
+      ? `svb-tab svb-pinned-tab is-compact${discardedClass}${tiledClass}${folderClass}`
+      : `svb-tab${discardedClass}${tiledClass}${folderClass}${hasClose ? ' has-close' : ''}${hasAdd ? ' has-add' : ''}${isActuallyMultiSelected ? ' is-selected' : ''}${rowVisualState.isDragging ? ' is-dragging' : ''}${rowVisualState.isDropTarget ? ' is-drop-target' : ''}`
     const depth = item && !compact ? item.depth : 0
     const visibleIndex = item && !compact ? item.visibleIndex : -1
     const subtreeSize = item && !compact ? item.subtreeSize : 1
@@ -8420,9 +8886,8 @@ function createSidebarRenderer(options) {
     const hasChildren = !!(item && item.hasChildren)
     const isCollapsed = !!(item && item.collapsed)
     const visibleBranchSize = item && !compact ? item.visibleBranchSize || 1 : 1
-    const coloredClass = tab.vivExtData && tab.vivExtData.tabColor && TAB_COLOR_SWATCHES[tab.vivExtData.tabColor]
-      ? ' is-colored'
-      : ''
+    const colorKey = tab.vivExtData && (tab.vivExtData.tabColor || tab.vivExtData.folderColor)
+    const coloredClass = colorKey && TAB_COLOR_SWATCHES[colorKey] ? ' is-colored' : ''
     const visualStyle = (tiledClass || coloredClass) ? getTabVisualStyle(tab) : ''
 
     node.className = `${tabClass}${coloredClass}${rowVisualState.isActive ? ' is-active' : ''}`
@@ -8468,7 +8933,7 @@ function createSidebarRenderer(options) {
         contentNode = createNodeFromHtml('<span class="svb-tab__content"></span>')
         body.insertBefore(contentNode, addNode || closeNode || null)
       }
-      syncTabContent(contentNode, tab, editing)
+      syncTabContent(contentNode, tab, editing, item)
     }
 
     syncOptionalDirectChild(body, '.svb-tab__add', hasAdd ? renderAddButton(tab.id) : '', null)
@@ -8962,6 +9427,13 @@ function createSidebarRenderer(options) {
         : null
       onCreateTab()
     }
+    if (role === 'create-folder') {
+      pendingScrollToActive = true
+      pendingScrollSourceTabId = latestState && Number.isFinite(latestState.activeTabId)
+        ? latestState.activeTabId
+        : null
+      onCreateFolderTab()
+    }
     if (role === 'create-child-tab' && Number.isFinite(tabId)) {
       pendingScrollToActive = true
       pendingScrollSourceTabId = latestState && Number.isFinite(latestState.activeTabId)
@@ -9295,7 +9767,17 @@ function createSidebarRenderer(options) {
       const visualState = buildVisualState(state)
       const treeTabs = Array.isArray(state.treeTabs) ? state.treeTabs : []
       const isDragging = visualState.draggedIdSet.size > 0
-      const structureChanged = !areTabOrdersEqual(previousPinnedTabsSnapshot, state.pinnedTabs)
+      const currentPinnedFolderIds = new Set()
+      for (const item of treeTabs) {
+        const tab = findTab(item.id)
+        if (tab && tab.vivExtData && tab.vivExtData.pinnedFolder) {
+          currentPinnedFolderIds.add(item.id)
+        }
+      }
+      const pinnedFolderChanged = currentPinnedFolderIds.size !== previousPinnedFolderIds.size
+        || [...currentPinnedFolderIds].some(id => !previousPinnedFolderIds.has(id))
+      const structureChanged = pinnedFolderChanged
+        || !areTabOrdersEqual(previousPinnedTabsSnapshot, state.pinnedTabs)
         || !isSameTreeShape(previousTreeTabsSnapshot, treeTabs)
       const contentChangedIds = structureChanged
         ? new Set()
@@ -9330,12 +9812,44 @@ function createSidebarRenderer(options) {
           activeKeys.add(getTabKey(tab, true))
           return getOrUpdateTabNode(tab, true, state.canCloseVisibleTabs, null, visualState)
         })
-        const regularNodes = treeTabs.map(item => {
-          activeKeys.add(getTabKey(item.tab, false))
-          return getOrUpdateTabNode(item.tab, false, state.canCloseVisibleTabs, item, visualState)
-        })
+
+        const pinnedFolderIds = new Set()
+        for (const item of treeTabs) {
+          const tab = findTab(item.id)
+          if (tab && tab.vivExtData && tab.vivExtData.pinnedFolder) {
+            pinnedFolderIds.add(item.id)
+          }
+        }
+
+        const regularNodes = []
+        let currentStickyGroup = null
+
+        for (const item of treeTabs) {
+          const tab = findTab(item.id)
+          if (!tab) continue
+          activeKeys.add(getTabKey(tab, false))
+          const node = getOrUpdateTabNode(tab, false, state.canCloseVisibleTabs, item, visualState)
+
+          const belongsToPinnedFolder = pinnedFolderIds.has(item.id) || (item.ancestorIds && item.ancestorIds.some(id => pinnedFolderIds.has(id)))
+
+          if (belongsToPinnedFolder) {
+            if (!currentStickyGroup) {
+              currentStickyGroup = document.createElement('div')
+              currentStickyGroup.className = 'svb-pinned-folder-group'
+              regularNodes.push(currentStickyGroup)
+            }
+            currentStickyGroup.appendChild(node)
+          } else {
+            currentStickyGroup = null
+            regularNodes.push(node)
+          }
+        }
+
+        pruneTabNodes(activeKeys)
 
         syncChildren(currentShell.pinnedGrid, pinnedNodes)
+        currentShell.pinnedSection.style.display = state.pinnedTabs.length ? '' : 'none'
+
         const listNodes = empty
           ? [currentShell.emptyMessage, currentShell.inlineNewTabButton]
           : regularNodes.concat(currentShell.inlineNewTabButton)
@@ -9343,7 +9857,6 @@ function createSidebarRenderer(options) {
           currentShell.emptyMessage.textContent = emptyMessage
         }
         syncChildren(currentShell.tabList, listNodes)
-        pruneTabNodes(activeKeys)
         updateContextMenu(currentShell, state)
 
         syncOverflowState()
@@ -9357,6 +9870,7 @@ function createSidebarRenderer(options) {
 
       previousPinnedTabsSnapshot = state.pinnedTabs
       previousTreeTabsSnapshot = treeTabs
+      previousPinnedFolderIds = currentPinnedFolderIds
       previousActiveTabId = state.activeTabId
       previousCanCloseVisibleTabs = state.canCloseVisibleTabs
       previousPanelPinned = state.panelPinned
@@ -9485,6 +9999,7 @@ async function main() {
     },
     onCloseTab: id => store.closeTab(id),
     onCreateTab: () => store.createTab(),
+    onCreateFolderTab: () => store.createFolderTab(),
     onCreateChildTab: id => store.createChildTab(id),
     onRenameTab: (id, title) => { void store.renameTab(id, title) },
     onTogglePinned: () => panelStore.togglePinned(),
@@ -9514,6 +10029,12 @@ async function main() {
         store.createChildTab(tabId)
       } else if (action === 'new-sibling') {
         store.createSiblingTab(tabId)
+      } else if (action === 'new-folder-child') {
+        store.createFolderTabAt(tabId, 'inside')
+      } else if (action === 'new-folder-sibling') {
+        store.createFolderTabAt(tabId, 'after')
+      } else if (action === 'new-folder-above') {
+        store.createFolderTabAt(tabId, 'before')
       } else if (action === 'move-window') {
         void store.moveSelectionToNewWindow(tabId, selectedIds)
       } else if (action === 'move-workspace') {

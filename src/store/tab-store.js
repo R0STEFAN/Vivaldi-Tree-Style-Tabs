@@ -1,8 +1,11 @@
 const { settingsStore } = require('../store/settings-store.js')
 const { createTreeController } = require('../controllers/tree-controller.js')
 const { createNativeReconcile } = require('../controllers/native-reconcile.js')
+const { generateFolderPageUrl } = require('../ui/folder-page.js')
 
 const TREE_NAMESPACE_KEY = 'svbTree'
+
+const lastFolderUrlUpdates = new Map()
 
 function createTreeNodeId() {
   return `svb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
@@ -640,10 +643,14 @@ function createTabStore(api) {
       const tab = tabsById.get(tabId)
       if (!tab) continue
       const nextData = buildVivExtData(tab)
+      tab.vivExtData = nextData
       tasks.push(api.updateVivExtData(tabId, nextData))
     }
 
     await Promise.all(tasks)
+    
+    // Give Vivaldi backend a moment to commit the vivExtData so getTabs doesn't return stale data
+    await new Promise(resolve => setTimeout(resolve, 150))
     await syncTabs({ preserveContext: true })
   }
 
@@ -889,6 +896,30 @@ function createTabStore(api) {
       canCloseVisibleTabs,
     })
 
+    // Update folder dashboard if it's the active tab
+    const nextActiveTabId = state.activeTabId
+    if (nextActiveTabId && previousVisibleActiveTab && previousVisibleActiveTab.id === nextActiveTabId) {
+      // It was already active, or we just activated it
+      const activeTab = state.tabs.find(t => t.id === nextActiveTabId)
+      if (activeTab && activeTab.vivExtData && activeTab.vivExtData.isFolder) {
+        const newUrl = generateFolderPageUrl(state, nextActiveTabId)
+        if (activeTab.url !== newUrl && lastFolderUrlUpdates.get(nextActiveTabId) !== newUrl) {
+          lastFolderUrlUpdates.set(nextActiveTabId, newUrl)
+          api.updateTab(nextActiveTabId, { url: newUrl }).catch(() => {})
+        }
+      }
+    } else if (nextActiveTabId) {
+      // It's a new active tab
+      const activeTab = state.tabs.find(t => t.id === nextActiveTabId)
+      if (activeTab && activeTab.vivExtData && activeTab.vivExtData.isFolder) {
+        const newUrl = generateFolderPageUrl(state, nextActiveTabId)
+        if (activeTab.url !== newUrl && lastFolderUrlUpdates.get(nextActiveTabId) !== newUrl) {
+          lastFolderUrlUpdates.set(nextActiveTabId, newUrl)
+          api.updateTab(nextActiveTabId, { url: newUrl }).catch(() => {})
+        }
+      }
+    }
+
     if (actionReconcileReason) {
       nativeReconcile.scheduleAfterAction(actionReconcileReason)
     } else if (shouldScheduleStartupReconcile) {
@@ -928,6 +959,17 @@ function createTabStore(api) {
       if (nativeReconcile.isOwnOpenerUpdate(tabId, changeInfo)) {
         return
       }
+      
+      // Intercept clicks on dashboard cards
+      if (changeInfo && changeInfo.url && changeInfo.url.includes('#svb-activate:')) {
+        const match = changeInfo.url.match(/#svb-activate:(\d+)/)
+        if (match) {
+          const targetId = parseInt(match[1], 10)
+          lastFolderUrlUpdates.delete(tabId)
+          api.activateTab(targetId)
+        }
+      }
+
       refreshPreservingContext(tabId, changeInfo)
     }
 
@@ -1058,6 +1100,66 @@ function createTabStore(api) {
         vivExtData: kind === 'child' 
           ? getCreateVivExtDataForChild(state, targetId)
           : getCreateVivExtDataForState(state),
+      })
+    },
+
+    createFolderTab() {
+      if (state.windowId == null) return
+      const folderName = 'New Folder'
+      const folderColor = 'blue'
+      const url = new URL('svb-folder.html', location.href).href + '#svb-folder:color=' + folderColor
+      
+      const vivExtData = {
+        isFolder: true,
+        folderColor,
+        fixedTitle: folderName
+      }
+      
+      treeController.registerExpectedCreation({ kind: 'root' })
+      pendingNativeReconcileReason = 'create-root'
+      api.createTab(state.windowId, {
+        url,
+        vivExtData: {
+          ...getCreateVivExtDataForState(state),
+          ...vivExtData
+        }
+      })
+    },
+
+    createFolderTabAt(targetId, position) {
+      if (state.windowId == null || !Number.isFinite(targetId) || !position) return
+      
+      const folderName = 'New Folder'
+      const folderColor = 'blue'
+      const url = new URL('svb-folder.html', location.href).href + '#svb-folder:color=' + folderColor
+      
+      const vivExtData = {
+        isFolder: true,
+        folderColor,
+        fixedTitle: folderName
+      }
+      
+      const kind = position === 'inside' ? 'child' : 'sibling'
+      treeController.registerExpectedCreation({
+        kind,
+        parentTabId: targetId,
+        position,
+      })
+
+      const index = position === 'inside' 
+        ? treeController.getCreateChildIndex(targetId, state.tabs)
+        : position === 'before'
+          ? getTabById(targetId).index
+          : treeController.getCreateSiblingIndex(targetId, state.tabs)
+
+      pendingNativeReconcileReason = `create-${kind}-at`
+      api.createChildTab(state.windowId, targetId, {
+        url,
+        index,
+        vivExtData: {
+          ...(kind === 'child' ? getCreateVivExtDataForChild(state, targetId) : getCreateVivExtDataForState(state)),
+          ...vivExtData
+        }
       })
     },
 
@@ -1265,7 +1367,50 @@ function createTabStore(api) {
     async togglePinnedForSelection(tabId, selectedIds) {
       const targetIds = getActionTargetIds(tabId, selectedIds)
       const tab = getTabById(tabId)
-      await updateTabs(targetIds, { pinned: !(tab && tab.pinned) })
+      const isFolder = tab && tab.vivExtData && tab.vivExtData.isFolder
+
+      if (isFolder) {
+        const currentlyPinned = tab.vivExtData && tab.vivExtData.pinnedFolder
+        const nextPinned = !currentlyPinned
+
+        // Store pinnedFolder at top level of vivExtData (not inside svbTree)
+        // so tree persistence doesn't overwrite it
+        await updateVivExtDataForTabs([tabId], targetTab => {
+          const previousData = targetTab && targetTab.vivExtData && typeof targetTab.vivExtData === 'object' ? targetTab.vivExtData : {}
+          return {
+            ...previousData,
+            pinnedFolder: nextPinned
+          }
+        })
+
+        // If pinning, physically move folder to the very top of the tree
+        if (nextPinned) {
+          const firstRootTab = state.treeTabs.find(item => item.depth === 0 && item.id !== tabId)
+          if (firstRootTab) {
+            await treeController.moveTab(tabId, firstRootTab.id, 'before', state.tabs)
+          }
+        } else {
+          // If unpinning, physically move folder below the last pinned folder
+          const firstUnpinnedRootTab = state.treeTabs.find(item => {
+            if (item.depth !== 0 || item.id === tabId) return false
+            const t = getTabById(item.id)
+            return !(t && t.vivExtData && t.vivExtData.pinnedFolder)
+          })
+          if (firstUnpinnedRootTab) {
+            await treeController.moveTab(tabId, firstUnpinnedRootTab.id, 'before', state.tabs)
+          } else {
+            const lastRootTab = state.treeTabs.slice().reverse().find(item => item.depth === 0 && item.id !== tabId)
+            if (lastRootTab) {
+              await treeController.moveTab(tabId, lastRootTab.id, 'after', state.tabs)
+            }
+          }
+        }
+
+        pendingNativeReconcileReason = 'toggle-pinned-folder'
+        await syncTabs({ preserveContext: true }, 'toggle-pinned-folder')
+      } else {
+        await updateTabs(targetIds, { pinned: !(tab && tab.pinned) })
+      }
     },
 
     async toggleMutedForSelection(tabId, selectedIds) {
@@ -1474,12 +1619,18 @@ function createTabStore(api) {
       let createdCount = 0
 
       async function createNode(node, parentId) {
+        let folderUrl = node.url
+        if (node.isFolder) {
+          folderUrl = new URL('svb-folder.html', location.href).href + '#svb-folder:color=blue'
+        }
+
         const tab = await api.createRestoredTab(state.windowId, {
-          url: node.url,
-          active: createdCount === 0,
+          url: folderUrl,
+          active: createdCount === 0 && !node.isFolder,
           vivExtData: {
             ...baseVivExtData,
             fixedTitle: node.title,
+            ...(node.isFolder ? { isFolder: true, folderColor: 'blue' } : {})
           },
         })
         const tabId = tab && Number(tab.id)

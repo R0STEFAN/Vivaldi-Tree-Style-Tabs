@@ -53,6 +53,8 @@ echo Шлях ресурсів: !VIVALDI_PATH!
 
 set "CUSTOM_JS_SRC=%~dp0dist\custom.js"
 set "CUSTOM_JS_DEST=!VIVALDI_PATH!\custom.js"
+set "FOLDER_HTML_SRC=%~dp0dist\svb-folder.html"
+set "FOLDER_HTML_DEST=!VIVALDI_PATH!\svb-folder.html"
 set "WINDOW_HTML=!VIVALDI_PATH!\window.html"
 
 :: 1. Copy custom.js
@@ -81,11 +83,22 @@ if "!SHOULD_COPY!" == "1" (
     echo Копіюємо custom.js...
     copy /y "!CUSTOM_JS_SRC!" "!CUSTOM_JS_DEST!" >nul
     if !errorlevel! neq 0 (
-        echo ПОМИЛКА: Не вдалося скопіювати файл. Можливо, Vivaldi запущений або бракує прав.
+        echo ПОМИЛКА: Не вдалося скопіювати файл custom.js. Можливо, Vivaldi запущений або бракує прав.
         pause
         exit /b 1
     )
     echo [OK] custom.js оновлено.
+
+    if exist "!FOLDER_HTML_SRC!" (
+        echo Копіюємо svb-folder.html...
+        copy /y "!FOLDER_HTML_SRC!" "!FOLDER_HTML_DEST!" >nul
+        if !errorlevel! neq 0 (
+            echo ПОМИЛКА: Не вдалося скопіювати файл svb-folder.html.
+            pause
+            exit /b 1
+        )
+        echo [OK] svb-folder.html оновлено.
+    )
 )
 
 :: 2. Patch window.html

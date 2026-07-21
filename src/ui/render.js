@@ -131,8 +131,12 @@ function renderContextMenu(tab, state, contextMenu) {
   if (!contextMenu || !tab) return ''
   const selectedIds = Array.isArray(state.selectedIds) ? state.selectedIds : []
   const selectedCount = selectedIds.includes(tab.id) ? selectedIds.length : 1
+  const isFolder = tab && tab.vivExtData && tab.vivExtData.isFolder
+  const isPinnedFolder = isFolder && tab.vivExtData.pinnedFolder
   const closeLabel = selectedCount > 1 ? 'Close Selected Tabs' : 'Close Tab'
-  const pinLabel = tab.pinned ? 'Unpin Tab' : 'Pin Tab'
+  const pinLabel = isFolder 
+    ? (isPinnedFolder ? 'Unpin Folder' : 'Pin Folder')
+    : (tab.pinned ? 'Unpin Tab' : 'Pin Tab')
   const muteLabel = tab.muted ? 'Unmute Tab' : 'Mute Tab'
   const currentColorKey = selectedCount === 1
     && tab.vivExtData
@@ -182,6 +186,12 @@ function renderContextMenu(tab, state, contextMenu) {
   const menuX = Math.max(4, contextMenu.x)
   const menuY = Math.max(4, contextMenu.y)
 
+  const folderMenu = `
+    ${renderContextMenuItem({ action: 'new-folder-child', icon: 'child', label: 'New Child Folder', disabled: isPinned })}
+    ${renderContextMenuItem({ action: 'new-folder-sibling', icon: 'add', label: 'New Sibling Folder', disabled: isPinned })}
+    ${renderContextMenuItem({ action: 'new-folder-above', icon: 'add', label: 'New Folder Above', disabled: isPinned })}
+  `
+
   return `
     <div
       class="svb-menu"
@@ -193,6 +203,7 @@ function renderContextMenu(tab, state, contextMenu) {
       ${renderContextMenuItem({ action: 'restore-closed', icon: 'restore', label: 'Reopen Last Closed Tab' })}
       ${renderContextMenuItem({ action: 'new-child', icon: 'child', label: 'New Child Tab', disabled: isPinned })}
       ${renderContextMenuItem({ action: 'new-sibling', icon: 'add', label: 'New Sibling Tab Below', disabled: isPinned })}
+      ${renderContextMenuItem({ icon: 'folder', label: 'New Folder...', submenu: folderMenu, disabled: isPinned })}
       ${renderContextMenuItem({ icon: 'copy', label: 'Copy', submenu: copySubmenu })}
       <div class="svb-menu__separator"></div>
       ${renderContextMenuItem({ action: 'bookmark-tab', icon: 'bookmark', label: 'Bookmark Tab' })}
@@ -236,7 +247,7 @@ function renderExpander(item) {
 function renderChildCount(item) {
   const branchCount = item && item.subtreeSize ? Math.max(0, item.subtreeSize - 1) : 0
   if (!item || !item.hasChildren || !item.collapsed || !branchCount) return ''
-  return `<span class="svb-tab__child-count" aria-hidden="true">${branchCount}</span>`
+  return `<span class="svb-tab__child-count" data-role="toggle-collapse" data-tab-id="${item.id}" aria-hidden="true" style="cursor:pointer;" title="Click to expand">${branchCount}</span>`
 }
 
 function renderDropIndicator(dropPosition) {
@@ -289,6 +300,30 @@ function syncOptionalDirectChild(parent, selector, html, insertBeforeNode = null
 
 function syncTabLeadIcon(lead, tab) {
   const current = Array.from(lead.children).find(child => child.matches('.svb-tab__spinner, .svb-tab__favicon'))
+    
+  if (tab.vivExtData && tab.vivExtData.isFolder) {
+    let actualColorKey = tab.vivExtData.tabColor || tab.vivExtData.folderColor
+    const folderColor = actualColorKey && TAB_COLOR_SWATCHES[actualColorKey]
+      ? TAB_COLOR_SWATCHES[actualColorKey]
+      : 'currentColor'
+
+    if (current && current.matches('.svb-tab__favicon.is-folder')) {
+      current.style.color = folderColor
+      return current
+    }
+
+    const folderIcon = createNodeFromHtml(`
+      <span class="svb-tab__favicon is-folder" style="color: ${folderColor};">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+          <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+        </svg>
+      </span>
+    `)
+    if (current) current.replaceWith(folderIcon)
+    else lead.appendChild(folderIcon)
+    return folderIcon
+  }
+
   if (tab.loading) {
     if (current && current.matches('.svb-tab__spinner')) return current
 
@@ -343,7 +378,7 @@ function renderTabBadge(tab) {
   return ''
 }
 
-function syncTabContent(content, tab, editing) {
+function syncTabContent(content, tab, editing, item) {
   if (editing) {
     let input = findDirectChild(content, '.svb-tab__title-input')
     if (!input) {
@@ -369,8 +404,11 @@ function syncTabContent(content, tab, editing) {
     content.innerHTML = '<span class="svb-tab__title"></span>'
     titleNode = findDirectChild(content, '.svb-tab__title')
   }
-  if (titleNode && titleNode.textContent !== tab.title) {
-    titleNode.textContent = tab.title
+  
+  let displayTitle = tab.title
+
+  if (titleNode && titleNode.textContent !== displayTitle) {
+    titleNode.textContent = displayTitle
   }
 
   syncOptionalDirectChild(content, '.svb-tab__badge', renderTabBadge(tab), null)
@@ -380,9 +418,7 @@ function getTabVisualStyle(tab) {
   const styles = []
   const tiling = tab && tab.vivExtData && tab.vivExtData.tiling
   const tileId = tiling && tiling.id ? String(tiling.id) : ''
-  const tabColorKey = tab && tab.vivExtData && typeof tab.vivExtData.tabColor === 'string'
-    ? tab.vivExtData.tabColor
-    : ''
+  const tabColorKey = tab && tab.vivExtData && (typeof tab.vivExtData.tabColor === 'string' ? tab.vivExtData.tabColor : (typeof tab.vivExtData.folderColor === 'string' ? tab.vivExtData.folderColor : ''))
   const tabColor = tabColorKey && TAB_COLOR_SWATCHES[tabColorKey] ? TAB_COLOR_SWATCHES[tabColorKey] : ''
 
   if (tabColor) {
@@ -440,11 +476,26 @@ function getTabVisualState(tabId, item, visualState) {
 }
 
 function renderTab(tab, compact, canClose, item, editing, visualState) {
-  const icon = tab.loading
-    ? `<span class="svb-tab__spinner" aria-hidden="true"></span>`
-    : tab.favIconUrl
-      ? `<img class="svb-tab__favicon" src="${escapeHtml(tab.favIconUrl)}" alt="">`
-      : `<span class="svb-tab__favicon svb-tab__favicon--fallback"></span>`
+  let icon = ''
+  if (tab.vivExtData && tab.vivExtData.isFolder) {
+    let actualColorKey = tab.vivExtData.tabColor || tab.vivExtData.folderColor
+    const folderColor = actualColorKey && TAB_COLOR_SWATCHES[actualColorKey]
+      ? TAB_COLOR_SWATCHES[actualColorKey]
+      : 'currentColor'
+    icon = `
+      <span class="svb-tab__favicon is-folder" style="color: ${folderColor};">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+          <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+        </svg>
+      </span>
+    `
+  } else {
+    icon = tab.loading
+      ? `<span class="svb-tab__spinner" aria-hidden="true"></span>`
+      : tab.favIconUrl
+        ? `<img class="svb-tab__favicon" src="${escapeHtml(tab.favIconUrl)}" alt="">`
+        : `<span class="svb-tab__favicon svb-tab__favicon--fallback"></span>`
+  }
 
   const media = renderTabBadge(tab)
 
@@ -455,21 +506,22 @@ function renderTab(tab, compact, canClose, item, editing, visualState) {
   const tiling = tab.vivExtData && tab.vivExtData.tiling
   const isTiled = !!(tiling && (tiling.id || tiling.layout))
   const tiledClass = isTiled ? ' is-tiled' : ''
+  const folderClass = tab.vivExtData && tab.vivExtData.isFolder ? ' is-folder' : ''
+  const collapsedClass = item && item.collapsed ? ' is-collapsed' : ''
   const tabClass = compact
-    ? `svb-tab svb-pinned-tab is-compact${discardedClass}${tiledClass}`
-    : `svb-tab${discardedClass}${tiledClass}${hasClose ? ' has-close' : ''}${hasAdd ? ' has-add' : ''}${rowVisualState.isSelected ? ' is-selected' : ''}${rowVisualState.isDragging ? ' is-dragging' : ''}${rowVisualState.isDropTarget ? ' is-drop-target' : ''}`
+    ? `svb-tab svb-pinned-tab is-compact${folderClass}${discardedClass}${tiledClass}`
+    : `svb-tab${folderClass}${discardedClass}${tiledClass}${hasClose ? ' has-close' : ''}${hasAdd ? ' has-add' : ''}${rowVisualState.isSelected ? ' is-selected' : ''}${rowVisualState.isDragging ? ' is-dragging' : ''}${rowVisualState.isDropTarget ? ' is-drop-target' : ''}${collapsedClass}`
   const depth = item && !compact ? item.depth : 0
   const visibleIndex = item && !compact ? item.visibleIndex : -1
   const subtreeSize = item && !compact ? item.subtreeSize : 1
-  const parentId = item && !compact && item.parentId != null ? item.parentId : ''
+  const parentId = item && !compact && item.parentId != null ? item.parentId : -1
   const ancestorIds = item && !compact && Array.isArray(item.ancestorIds) ? item.ancestorIds.join(',') : ''
   const dropPosition = item && !compact && rowVisualState.dropPosition ? rowVisualState.dropPosition : ''
   const hasChildren = !!(item && item.hasChildren)
   const isCollapsed = !!(item && item.collapsed)
   const visibleBranchSize = item && !compact ? item.visibleBranchSize || 1 : 1
-  const coloredClass = tab.vivExtData && tab.vivExtData.tabColor && TAB_COLOR_SWATCHES[tab.vivExtData.tabColor]
-    ? ' is-colored'
-    : ''
+  const colorKey = tab.vivExtData && (tab.vivExtData.tabColor || tab.vivExtData.folderColor)
+  const coloredClass = colorKey && TAB_COLOR_SWATCHES[colorKey] ? ' is-colored' : ''
   const visualStyle = (tiledClass || coloredClass) ? getTabVisualStyle(tab) : ''
   const title = editing
     ? `<input class="svb-tab__title-input" data-role="rename-input" data-tab-id="${tab.id}" value="${escapeHtml(tab.title)}" spellcheck="false">`
@@ -502,14 +554,25 @@ function renderTab(tab, compact, canClose, item, editing, visualState) {
 
 function renderNewTabButton(inline) {
   return `
-    <button
-      class="svb-new-tab-button${inline ? ' is-inline' : ' is-sticky'}"
-      data-role="create-tab"
-      title="New tab"
-    >
-      <span class="svb-new-tab-button__icon">+</span>
-      <span class="svb-new-tab-button__label">New Tab</span>
-    </button>
+    <div class="svb-new-item-buttons${inline ? ' is-inline' : ' is-sticky'}">
+      <button
+        class="svb-new-tab-button"
+        data-role="create-tab"
+        title="New tab"
+      >
+        <span class="svb-new-tab-button__icon">+</span>
+        <span class="svb-new-tab-button__label">New Tab</span>
+      </button>
+      <button
+        class="svb-new-folder-button"
+        data-role="create-folder"
+        title="New Folder"
+      >
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+          <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2zm5 9h-3v3h-2v-3H7v-2h3V8h2v3h3v2z"/>
+        </svg>
+      </button>
+    </div>
   `
 }
 
@@ -541,13 +604,36 @@ function createNodeFromHtml(html) {
 }
 
 function createSidebarRenderer(options) {
-  const { root, dragShield, onActivateTab, onCloseTab, onCreateTab, onCreateChildTab, onRenameTab, onTogglePinned, onToggleMute, onToggleCollapse, onCollapseAll, onSelectTab, onOpenContextMenu, onContextMenuAction, onStartDrag, onUpdateDropTarget, onCommitDrop, onCommitExternalDrop, onCommitExternalContentDrop, onClearDrag } = options
+  const {
+    root,
+    dragShield,
+    onActivateTab,
+    onCloseTab,
+    onCreateTab,
+    onCreateFolderTab,
+    onCreateChildTab,
+    onRenameTab,
+    onTogglePinned,
+    onToggleMute,
+    onToggleCollapse,
+    onCollapseAll,
+    onSelectTab,
+    onOpenContextMenu,
+    onContextMenuAction,
+    onStartDrag,
+    onUpdateDropTarget,
+    onCommitDrop,
+    onCommitExternalDrop,
+    onCommitExternalContentDrop,
+    onClearDrag
+  } = options
   let pendingScrollToActive = false
   let pendingScrollSourceTabId = null
   let currentVisibleIds = []
   let previousActiveTabId = null
   let previousPinnedTabsSnapshot = null
   let previousTreeTabsSnapshot = null
+  let previousPinnedFolderIds = new Set()
   let previousCanCloseVisibleTabs = null
   let previousPanelPinned = null
   let previousIsSettingsOpen = false
@@ -903,7 +989,6 @@ function createSidebarRenderer(options) {
     currentShell.pinButton.title = state.panelPinned ? 'Unpin panel' : 'Pin panel'
     currentShell.pinButton.innerHTML = renderPinIcon(state.panelPinned)
     currentShell.settingsButton.innerHTML = renderMenuIcon('settings')
-    currentShell.pinnedSection.style.display = state.pinnedTabs.length ? '' : 'none'
     currentShell.mainView.style.display = isSettingsOpen ? 'none' : 'flex'
     currentShell.settingsView.style.display = isSettingsOpen ? 'flex' : 'none'
 
@@ -1022,9 +1107,11 @@ function createSidebarRenderer(options) {
     const tiling = tab.vivExtData && tab.vivExtData.tiling
     const isTiled = !!(tiling && (tiling.id || tiling.layout))
     const tiledClass = isTiled ? ' is-tiled' : ''
+    const isFolder = tab.vivExtData && tab.vivExtData.isFolder
+    const folderClass = isFolder ? ' is-folder' : ''
     const tabClass = compact
-      ? `svb-tab svb-pinned-tab is-compact${discardedClass}${tiledClass}`
-      : `svb-tab${discardedClass}${tiledClass}${hasClose ? ' has-close' : ''}${hasAdd ? ' has-add' : ''}${isActuallyMultiSelected ? ' is-selected' : ''}${rowVisualState.isDragging ? ' is-dragging' : ''}${rowVisualState.isDropTarget ? ' is-drop-target' : ''}`
+      ? `svb-tab svb-pinned-tab is-compact${discardedClass}${tiledClass}${folderClass}`
+      : `svb-tab${discardedClass}${tiledClass}${folderClass}${hasClose ? ' has-close' : ''}${hasAdd ? ' has-add' : ''}${isActuallyMultiSelected ? ' is-selected' : ''}${rowVisualState.isDragging ? ' is-dragging' : ''}${rowVisualState.isDropTarget ? ' is-drop-target' : ''}`
     const depth = item && !compact ? item.depth : 0
     const visibleIndex = item && !compact ? item.visibleIndex : -1
     const subtreeSize = item && !compact ? item.subtreeSize : 1
@@ -1034,9 +1121,8 @@ function createSidebarRenderer(options) {
     const hasChildren = !!(item && item.hasChildren)
     const isCollapsed = !!(item && item.collapsed)
     const visibleBranchSize = item && !compact ? item.visibleBranchSize || 1 : 1
-    const coloredClass = tab.vivExtData && tab.vivExtData.tabColor && TAB_COLOR_SWATCHES[tab.vivExtData.tabColor]
-      ? ' is-colored'
-      : ''
+    const colorKey = tab.vivExtData && (tab.vivExtData.tabColor || tab.vivExtData.folderColor)
+    const coloredClass = colorKey && TAB_COLOR_SWATCHES[colorKey] ? ' is-colored' : ''
     const visualStyle = (tiledClass || coloredClass) ? getTabVisualStyle(tab) : ''
 
     node.className = `${tabClass}${coloredClass}${rowVisualState.isActive ? ' is-active' : ''}`
@@ -1082,7 +1168,7 @@ function createSidebarRenderer(options) {
         contentNode = createNodeFromHtml('<span class="svb-tab__content"></span>')
         body.insertBefore(contentNode, addNode || closeNode || null)
       }
-      syncTabContent(contentNode, tab, editing)
+      syncTabContent(contentNode, tab, editing, item)
     }
 
     syncOptionalDirectChild(body, '.svb-tab__add', hasAdd ? renderAddButton(tab.id) : '', null)
@@ -1576,6 +1662,13 @@ function createSidebarRenderer(options) {
         : null
       onCreateTab()
     }
+    if (role === 'create-folder') {
+      pendingScrollToActive = true
+      pendingScrollSourceTabId = latestState && Number.isFinite(latestState.activeTabId)
+        ? latestState.activeTabId
+        : null
+      onCreateFolderTab()
+    }
     if (role === 'create-child-tab' && Number.isFinite(tabId)) {
       pendingScrollToActive = true
       pendingScrollSourceTabId = latestState && Number.isFinite(latestState.activeTabId)
@@ -1909,7 +2002,17 @@ function createSidebarRenderer(options) {
       const visualState = buildVisualState(state)
       const treeTabs = Array.isArray(state.treeTabs) ? state.treeTabs : []
       const isDragging = visualState.draggedIdSet.size > 0
-      const structureChanged = !areTabOrdersEqual(previousPinnedTabsSnapshot, state.pinnedTabs)
+      const currentPinnedFolderIds = new Set()
+      for (const item of treeTabs) {
+        const tab = findTab(item.id)
+        if (tab && tab.vivExtData && tab.vivExtData.pinnedFolder) {
+          currentPinnedFolderIds.add(item.id)
+        }
+      }
+      const pinnedFolderChanged = currentPinnedFolderIds.size !== previousPinnedFolderIds.size
+        || [...currentPinnedFolderIds].some(id => !previousPinnedFolderIds.has(id))
+      const structureChanged = pinnedFolderChanged
+        || !areTabOrdersEqual(previousPinnedTabsSnapshot, state.pinnedTabs)
         || !isSameTreeShape(previousTreeTabsSnapshot, treeTabs)
       const contentChangedIds = structureChanged
         ? new Set()
@@ -1944,12 +2047,44 @@ function createSidebarRenderer(options) {
           activeKeys.add(getTabKey(tab, true))
           return getOrUpdateTabNode(tab, true, state.canCloseVisibleTabs, null, visualState)
         })
-        const regularNodes = treeTabs.map(item => {
-          activeKeys.add(getTabKey(item.tab, false))
-          return getOrUpdateTabNode(item.tab, false, state.canCloseVisibleTabs, item, visualState)
-        })
+
+        const pinnedFolderIds = new Set()
+        for (const item of treeTabs) {
+          const tab = findTab(item.id)
+          if (tab && tab.vivExtData && tab.vivExtData.pinnedFolder) {
+            pinnedFolderIds.add(item.id)
+          }
+        }
+
+        const regularNodes = []
+        let currentStickyGroup = null
+
+        for (const item of treeTabs) {
+          const tab = findTab(item.id)
+          if (!tab) continue
+          activeKeys.add(getTabKey(tab, false))
+          const node = getOrUpdateTabNode(tab, false, state.canCloseVisibleTabs, item, visualState)
+
+          const belongsToPinnedFolder = pinnedFolderIds.has(item.id) || (item.ancestorIds && item.ancestorIds.some(id => pinnedFolderIds.has(id)))
+
+          if (belongsToPinnedFolder) {
+            if (!currentStickyGroup) {
+              currentStickyGroup = document.createElement('div')
+              currentStickyGroup.className = 'svb-pinned-folder-group'
+              regularNodes.push(currentStickyGroup)
+            }
+            currentStickyGroup.appendChild(node)
+          } else {
+            currentStickyGroup = null
+            regularNodes.push(node)
+          }
+        }
+
+        pruneTabNodes(activeKeys)
 
         syncChildren(currentShell.pinnedGrid, pinnedNodes)
+        currentShell.pinnedSection.style.display = state.pinnedTabs.length ? '' : 'none'
+
         const listNodes = empty
           ? [currentShell.emptyMessage, currentShell.inlineNewTabButton]
           : regularNodes.concat(currentShell.inlineNewTabButton)
@@ -1957,7 +2092,6 @@ function createSidebarRenderer(options) {
           currentShell.emptyMessage.textContent = emptyMessage
         }
         syncChildren(currentShell.tabList, listNodes)
-        pruneTabNodes(activeKeys)
         updateContextMenu(currentShell, state)
 
         syncOverflowState()
@@ -1971,6 +2105,7 @@ function createSidebarRenderer(options) {
 
       previousPinnedTabsSnapshot = state.pinnedTabs
       previousTreeTabsSnapshot = treeTabs
+      previousPinnedFolderIds = currentPinnedFolderIds
       previousActiveTabId = state.activeTabId
       previousCanCloseVisibleTabs = state.canCloseVisibleTabs
       previousPanelPinned = state.panelPinned
