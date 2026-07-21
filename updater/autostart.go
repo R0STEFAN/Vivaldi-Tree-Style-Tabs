@@ -3,7 +3,6 @@ package main
 import (
 	"os"
 	"os/exec"
-	"strings"
 )
 
 const registryKey = `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`

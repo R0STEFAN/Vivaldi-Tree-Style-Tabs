@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 )
 
 // FindVivaldiAppPath returns the path to Vivaldi/Application
