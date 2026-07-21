@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/fyne-io/systray"
+	"fyne.io/systray"
 )
 
 var (
