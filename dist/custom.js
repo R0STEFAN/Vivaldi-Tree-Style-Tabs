@@ -4346,20 +4346,22 @@ function createTabStore(api) {
   function closeTabIds(tabIds) {
     const targetIds = normalizeUniqueIds(tabIds)
     if (targetIds.length === 0) return
-    const visibleIds = getPanelOrderIds()
-    if (visibleIds.length <= 1) return
-    const visibleTargetIds = targetIds.filter(tabId => visibleIds.includes(tabId))
-    if (visibleTargetIds.length === 0) return
-    if (visibleTargetIds.length >= visibleIds.length) return
+    
+    const allIds = state.pinnedTabs.map(tab => tab.id).concat(state.tabs.map(tab => tab.id))
+    if (allIds.length <= 1) return
+    
+    const validTargetIds = targetIds.filter(tabId => allIds.includes(tabId))
+    if (validTargetIds.length === 0) return
+    if (validTargetIds.length >= allIds.length) return
 
     pendingNativeReconcileReason = 'close'
     lockCurrentContext()
-    activateBeforeCloseIfNeeded(visibleTargetIds)
-    if (visibleTargetIds.length === 1) {
-      api.closeTab(visibleTargetIds[0])
+    activateBeforeCloseIfNeeded(validTargetIds)
+    if (validTargetIds.length === 1) {
+      api.closeTab(validTargetIds[0])
       return
     }
-    api.closeTabs(visibleTargetIds)
+    api.closeTabs(validTargetIds)
   }
 
   async function updateTabs(tabIds, properties) {
