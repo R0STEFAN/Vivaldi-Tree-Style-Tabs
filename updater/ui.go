@@ -7,7 +7,7 @@ import (
 	"fyne.io/systray"
 )
 
-//go:embed icon.png
+//go:embed icon.ico
 var iconBytes []byte
 
 var (
