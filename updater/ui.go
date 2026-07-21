@@ -10,6 +10,7 @@ var (
 	mStatus      *systray.MenuItem
 	mCheckUpdate *systray.MenuItem
 	mForcePatch  *systray.MenuItem
+	mAutostart   *systray.MenuItem
 	mQuit        *systray.MenuItem
 )
 
@@ -42,6 +43,10 @@ func onReady(
 	
 	systray.AddSeparator()
 	
+	mAutostart = systray.AddMenuItemCheckbox("Run at system startup", "Start this updater automatically with Windows", IsAutostartEnabled())
+	
+	systray.AddSeparator()
+	
 	mQuit = systray.AddMenuItem("Quit", "Exit the updater")
 
 	go func() {
@@ -53,6 +58,21 @@ func onReady(
 			case <-mForcePatch.ClickedCh:
 				log.Println("User clicked: Force Patch Vivaldi")
 				onForcePatch()
+			case <-mAutostart.ClickedCh:
+				log.Println("User clicked: Toggle Autostart")
+				if mAutostart.Checked() {
+					if err := SetAutostart(false); err == nil {
+						mAutostart.Uncheck()
+					} else {
+						log.Printf("Failed to disable autostart: %v", err)
+					}
+				} else {
+					if err := SetAutostart(true); err == nil {
+						mAutostart.Check()
+					} else {
+						log.Printf("Failed to enable autostart: %v", err)
+					}
+				}
 			case <-mQuit.ClickedCh:
 				log.Println("User clicked: Quit")
 				systray.Quit()
@@ -70,5 +90,15 @@ func onExit() {
 func UpdateStatus(status string) {
 	if mStatus != nil {
 		mStatus.SetTitle("Status: " + status)
+	}
+}
+
+func SetAutostartMenuState(enabled bool) {
+	if mAutostart != nil {
+		if enabled {
+			mAutostart.Check()
+		} else {
+			mAutostart.Uncheck()
+		}
 	}
 }
