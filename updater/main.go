@@ -4,12 +4,26 @@ import (
 	"log"
 	"os"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 func main() {
 	// Initialize logging
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	log.Println("SvbTabs Updater started")
+
+	// Single Instance Check using Windows Mutex
+	mutexName, _ := windows.UTF16PtrFromString("SvbTabsUpdater_SingleInstance_Mutex")
+	handle, err := windows.CreateMutex(nil, false, mutexName)
+	if err != nil {
+		if err == windows.ERROR_ALREADY_EXISTS {
+			log.Println("Updater is already running. Exiting...")
+			NotifyUser("Updater is already running", "Another instance of SvbTabs Updater is already running in the system tray.")
+			os.Exit(0)
+		}
+	}
+	defer windows.CloseHandle(handle)
 
 	// Check if this is the first run
 	cfg := LoadConfig()
