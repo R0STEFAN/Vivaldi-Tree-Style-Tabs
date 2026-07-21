@@ -75,9 +75,9 @@ func CopyFile(src, dst string) error {
 
 // PatchBrowserHtml ensures that <script src="custom.js"></script> is injected
 func PatchBrowserHtml(versionPath string) error {
-	indexPath := filepath.Join(versionPath, "resources", "vivaldi", "browser.html")
+	indexPath := filepath.Join(versionPath, "resources", "vivaldi", "window.html")
 	if _, err := os.Stat(indexPath); err != nil {
-		return fmt.Errorf("browser.html not found: %v", err)
+		return fmt.Errorf("window.html not found: %v", err)
 	}
 
 	data, err := os.ReadFile(indexPath)
@@ -93,7 +93,7 @@ func PatchBrowserHtml(versionPath string) error {
 	// Insert before </body>
 	bodyClose := []byte(`</body>`)
 	if !bytes.Contains(data, bodyClose) {
-		return fmt.Errorf("</body> not found in browser.html")
+		return fmt.Errorf("</body> not found in window.html")
 	}
 
 	newData := bytes.Replace(data, bodyClose, append(injection, bodyClose...), 1)
