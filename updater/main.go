@@ -26,7 +26,7 @@ func main() {
 	}
 
 	// Create callbacks
-	onCheckUpdate := func() {
+	onCheckUpdate := func(isManual bool) {
 		UpdateStatus("Checking for updates...")
 		cfg := LoadConfig()
 		
@@ -34,7 +34,9 @@ func main() {
 		if err != nil {
 			log.Printf("Error checking for updates: %v", err)
 			UpdateStatus("Update check failed")
-			NotifyUser("Error", "Update check failed: "+err.Error())
+			if isManual {
+				NotifyUser("Error", "Update check failed: "+err.Error())
+			}
 			return
 		}
 
@@ -43,6 +45,9 @@ func main() {
 		if downloadUrl == "" && !needsPatch {
 			log.Println("No new updates found and Vivaldi is already patched")
 			UpdateStatus("Up to date")
+			if isManual {
+				NotifyUser("Up to Date", "You have the latest version of the mod.")
+			}
 			
 			cfg.LastCheck = time.Now()
 			SaveConfig(cfg)
@@ -134,11 +139,11 @@ func main() {
 	go func() {
 		// Do an initial check 3 seconds after startup
 		time.Sleep(3 * time.Second)
-		onCheckUpdate()
+		onCheckUpdate(false)
 
 		for {
 			time.Sleep(4 * time.Hour)
-			onCheckUpdate()
+			onCheckUpdate(false)
 		}
 	}()
 

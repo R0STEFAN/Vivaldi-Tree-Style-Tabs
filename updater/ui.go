@@ -33,7 +33,7 @@ func NotifyUser(title, message string) {
 }
 
 func InitSystray(
-	onCheckUpdate func(),
+	onCheckUpdate func(isManual bool),
 	onForcePatch func(),
 	onQuit func(),
 ) {
@@ -43,7 +43,7 @@ func InitSystray(
 }
 
 func onReady(
-	onCheckUpdate func(),
+	onCheckUpdate func(isManual bool),
 	onForcePatch func(),
 	onQuit func(),
 ) {
@@ -72,7 +72,7 @@ func onReady(
 			select {
 			case <-mCheckUpdate.ClickedCh:
 				log.Println("User clicked: Check for Mod Updates")
-				onCheckUpdate()
+				onCheckUpdate(true)
 			case <-mForcePatch.ClickedCh:
 				log.Println("User clicked: Force Patch Vivaldi")
 				onForcePatch()
