@@ -4,6 +4,13 @@ TreeTabsVivaldi is a custom Vivaldi browser UI mod that adds a Sidebery-inspired
 
 It is not a browser extension. It is a `custom.js` UI modification loaded into Vivaldi's `window.html`.
 
+## 🔥 Latest Updates (v2.0)
+
+- **Native Windows Auto-Updater (`svb-updater.exe`)**: A lightweight background tray application that automatically checks for mod updates on GitHub, fetches release notes, and interactively asks if you want to install them. It completely automates the hassle of manually copying files after every Vivaldi update!
+- **Folders for Tabs**: You can now group your tabs into fully functional, collapsible folders (just like Sidebery) that integrate seamlessly with the native Vivaldi workspace system.
+- **Enhanced Context Menu**: The custom context menu has been completely redesigned. It now supports bulk actions for multiple selected tabs, moving entire trees between workspaces/windows, saving trees as Vivaldi bookmarks, and closing entire subtrees safely.
+- **Improved Stability & Anti-Orphan Logic**: Deeply improved tab synchronization prevents ghost tabs and infinite loops when Vivaldi naturally moves tabs between workspaces. Context locks prevent UI flickering during rapid bulk tab operations.
+
 ## What It Does
 
 - Adds a vertical tab panel with a Sidebery-like visual style.
