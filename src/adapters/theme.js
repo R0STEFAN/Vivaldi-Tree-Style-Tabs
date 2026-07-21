@@ -269,10 +269,12 @@ function createThemeAdapter(root) {
   }
 
 
+  let observer = null
+
   function start() {
     apply()
 
-    const observer = new MutationObserver(() => {
+    observer = new MutationObserver(() => {
       apply()
     })
 
@@ -282,7 +284,14 @@ function createThemeAdapter(root) {
     })
   }
 
-  return { start, apply }
+  function dispose() {
+    if (observer) {
+      observer.disconnect()
+      observer = null
+    }
+  }
+
+  return { start, apply, dispose }
 }
 
 module.exports = { createThemeAdapter }

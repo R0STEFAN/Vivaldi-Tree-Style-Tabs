@@ -317,6 +317,8 @@ async function main() {
       }
     }
     if (typeof renderer.dispose === 'function') renderer.dispose()
+    if (typeof layout.dispose === 'function') layout.dispose()
+    if (typeof theme.dispose === 'function') theme.dispose()
     if (typeof store.dispose === 'function') store.dispose()
   }
   await store.init()

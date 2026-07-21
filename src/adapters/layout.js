@@ -175,12 +175,24 @@ function createLayoutAdapter(options) {
     apply()
   }
 
+  let windowsApi = null
+  let updateWindowFullscreen = null
+  let rootMouseEnter = null
+  let rootMouseLeave = null
+  let rootPointerLeave = null
+  let hideOnExternalHover = null
+  let globalMouseMove = null
+  let globalMouseLeave = null
+  let clearRevealDelay = null
+  let triggerRevealWithDelay = null
+  let mouseMoveRaf = null
+
   function start() {
     fullscreen = detectFullscreen()
     apply()
 
-    const windowsApi = typeof chrome !== 'undefined' && chrome.windows ? chrome.windows : null
-    const updateWindowFullscreen = win => {
+    windowsApi = typeof chrome !== 'undefined' && chrome.windows ? chrome.windows : null
+    updateWindowFullscreen = win => {
       const nextWindowFullscreen = !!(win && win.state === 'fullscreen')
       if (windowFullscreen === nextWindowFullscreen) return
       windowFullscreen = nextWindowFullscreen
@@ -218,14 +230,14 @@ function createLayoutAdapter(options) {
     let revealTimeout = null
     const REVEAL_DELAY = 150 // Delay in ms before showing panel
 
-    const clearRevealDelay = () => {
+    clearRevealDelay = () => {
       if (revealTimeout) {
         clearTimeout(revealTimeout)
         revealTimeout = null
       }
     }
 
-    const triggerRevealWithDelay = () => {
+    triggerRevealWithDelay = () => {
       if (revealed || currentPinned || fullscreen || dragState) return
       if (!revealTimeout) {
         revealTimeout = setTimeout(() => {
@@ -238,17 +250,21 @@ function createLayoutAdapter(options) {
     trigger.addEventListener('mouseenter', triggerRevealWithDelay)
     trigger.addEventListener('mouseleave', clearRevealDelay)
     
-    root.addEventListener('mouseenter', () => {
+    rootMouseEnter = () => {
       clearRevealDelay()
       setRevealed(true)
-    })
-    root.addEventListener('mouseleave', () => setRevealed(false))
-    root.addEventListener('pointerleave', () => setRevealed(false))
+    }
+    rootMouseLeave = () => setRevealed(false)
+    rootPointerLeave = () => setRevealed(false)
+
+    root.addEventListener('mouseenter', rootMouseEnter)
+    root.addEventListener('mouseleave', rootMouseLeave)
+    root.addEventListener('pointerleave', rootPointerLeave)
     root.addEventListener('pointerdown', startDragging)
 
     // Handle surface crossing where native webviews swallow pointer events and prevent mouseleave.
     // Also handles dynamic webview container creation and moving the mouse out of the panel into other UI.
-    const hideOnExternalHover = event => {
+    hideOnExternalHover = event => {
       if (!revealed || currentPinned || fullscreen || dragState) return
       
       const target = event.target
@@ -260,7 +276,11 @@ function createLayoutAdapter(options) {
     document.addEventListener('mouseover', hideOnExternalHover)
     document.addEventListener('pointerover', hideOnExternalHover)
 
-    document.addEventListener('mousemove', event => {
+    let latestMouseX = 0
+    let mouseMovePending = false
+
+    const performMouseMoveCheck = () => {
+      mouseMovePending = false
       if (revealed || currentPinned || fullscreen || dragState) {
         clearRevealDelay()
         return
@@ -270,18 +290,29 @@ function createLayoutAdapter(options) {
       const isRight = panelPosition === 'right'
       const threshold = 15 // Wider logical trigger zone (doesn't block clicks)
       
-      const inZone = !isRight ? (event.clientX <= threshold) : (event.clientX >= window.innerWidth - threshold)
+      const inZone = !isRight ? (latestMouseX <= threshold) : (latestMouseX >= window.innerWidth - threshold)
       
       if (inZone) {
         triggerRevealWithDelay()
       } else {
         clearRevealDelay()
       }
-    })
+    }
 
-    document.addEventListener('mouseleave', () => {
+    globalMouseMove = event => {
+      latestMouseX = event.clientX
+      if (!mouseMovePending) {
+        mouseMovePending = true
+        mouseMoveRaf = window.requestAnimationFrame(performMouseMoveCheck)
+      }
+    }
+
+    globalMouseLeave = () => {
       clearRevealDelay() // Mouse left the window completely, cancel reveal
-    })
+    }
+
+    document.addEventListener('mousemove', globalMouseMove)
+    document.addEventListener('mouseleave', globalMouseLeave)
 
     unlistenPanel = panelStore.subscribe(nextState => {
       currentPinned = nextState.pinned
@@ -293,7 +324,40 @@ function createLayoutAdapter(options) {
     })
   }
 
-  return { apply, start }
+  function dispose() {
+    if (windowsApi && windowsApi.onBoundsChanged && typeof windowsApi.onBoundsChanged.removeListener === 'function') {
+      windowsApi.onBoundsChanged.removeListener(updateWindowFullscreen)
+    }
+    window.removeEventListener('resize', resizeHandler)
+    if (observer) observer.disconnect()
+    document.removeEventListener('fullscreenchange', refreshFullscreen)
+    document.removeEventListener('webkitfullscreenchange', refreshFullscreen)
+    document.removeEventListener('mozfullscreenchange', refreshFullscreen)
+    document.removeEventListener('MSFullscreenChange', refreshFullscreen)
+    window.removeEventListener('resize', refreshFullscreen)
+
+    trigger.removeEventListener('mouseenter', triggerRevealWithDelay)
+    trigger.removeEventListener('mouseleave', clearRevealDelay)
+    root.removeEventListener('mouseenter', rootMouseEnter)
+    root.removeEventListener('mouseleave', rootMouseLeave)
+    root.removeEventListener('pointerleave', rootPointerLeave)
+    root.removeEventListener('pointerdown', startDragging)
+
+    document.removeEventListener('mouseover', hideOnExternalHover)
+    document.removeEventListener('pointerover', hideOnExternalHover)
+    document.removeEventListener('mousemove', globalMouseMove)
+    document.removeEventListener('mouseleave', globalMouseLeave)
+
+    if (mouseMoveRaf) {
+      window.cancelAnimationFrame(mouseMoveRaf)
+      mouseMoveRaf = null
+    }
+
+    if (clearRevealDelay) clearRevealDelay()
+    if (unlistenPanel) unlistenPanel()
+  }
+
+  return { apply, start, dispose }
 }
 
 module.exports = { createLayoutAdapter }
