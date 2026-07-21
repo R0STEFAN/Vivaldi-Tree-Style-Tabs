@@ -12,6 +12,7 @@ RESOURCES_DIR=""
 WINDOW_HTML=""
 WINDOW_HTML_BAK=""
 CUSTOM_JS_DEST=""
+FOLDER_HTML_DEST=""
 SUDO=""
 ASSUME_YES="${ASSUME_YES:-0}"
 
@@ -55,6 +56,7 @@ Pass a custom path, e.g.:  $0 /Applications/Vivaldi\\ Snapshot.app"
   WINDOW_HTML="$RESOURCES_DIR/window.html"
   WINDOW_HTML_BAK="$RESOURCES_DIR/window.html.bak"
   CUSTOM_JS_DEST="$RESOURCES_DIR/custom.js"
+  FOLDER_HTML_DEST="$RESOURCES_DIR/svb-folder.html"
 
   [[ -d "$RESOURCES_DIR" ]] \
     || die "Vivaldi resources dir missing: $RESOURCES_DIR
