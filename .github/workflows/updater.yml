@@ -40,8 +40,9 @@ jobs:
         go build -ldflags "-H=windowsgui" -o svb-updater.exe .
 
     - name: Zip Mod files
+      working-directory: ./updater
       run: |
-        Compress-Archive -Path dist\custom.js, dist\svb-folder.html, updater\svb-updater.exe -DestinationPath mod.zip
+        Compress-Archive -Path custom.js, svb-folder.html, svb-updater.exe -DestinationPath ..\mod.zip
 
     - name: Release
       uses: softprops/action-gh-release@v1
