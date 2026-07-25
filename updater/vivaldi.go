@@ -5,10 +5,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	_ "embed"
 	"regexp"
 )
 
 // FindVivaldiAppPath returns the path to Vivaldi/Application
+
+//go:embed custom.js
+var customJs []byte
+
+//go:embed svb-folder.html
+var svbFolderHtml []byte
+
 func FindVivaldiAppPath() (string, error) {
 	localApp, err := os.UserConfigDir() // Often AppData/Roaming, we need AppData/Local
 	if err == nil {
@@ -117,16 +125,27 @@ func PatchVivaldi(modDir string) error {
 		return err
 	}
 
-	filesToCopy := []string{"custom.js", "svb-folder.html"}
-	for _, f := range filesToCopy {
-		src := filepath.Join(modDir, f)
-		dst := filepath.Join(uiPath, f)
-		
-		// Ignore copy errors if the source file is missing (e.g., manual patch mode where files aren't in modDir)
-		if _, err := os.Stat(src); err == nil {
-			if err := CopyFile(src, dst); err != nil {
-				return fmt.Errorf("failed to copy %s: %v", f, err)
+	// Try to copy from modDir first (if downloaded from GitHub)
+	// If modDir is empty (e.g., auto-patch after browser update), use embedded files!
+	if modDir != "" {
+		filesToCopy := []string{"custom.js", "svb-folder.html"}
+		for _, f := range filesToCopy {
+			src := filepath.Join(modDir, f)
+			dst := filepath.Join(uiPath, f)
+			
+			if _, err := os.Stat(src); err == nil {
+				if err := CopyFile(src, dst); err != nil {
+					return fmt.Errorf("failed to copy %s: %v", f, err)
+				}
 			}
+		}
+	} else {
+		// Use embedded files
+		if err := os.WriteFile(filepath.Join(uiPath, "custom.js"), customJs, 0644); err != nil {
+			return fmt.Errorf("failed to write embedded custom.js: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(uiPath, "svb-folder.html"), svbFolderHtml, 0644); err != nil {
+			return fmt.Errorf("failed to write embedded svb-folder.html: %v", err)
 		}
 	}
 

@@ -89,7 +89,7 @@ function normalizeOrder(value) {
   return Number.isFinite(order) ? order : 0
 }
 
-function getTreeRecord(tab) {
+function getTreeRecord(tab, contextKey) {
   const vivExtData = tab && tab.vivExtData && typeof tab.vivExtData === 'object'
     ? tab.vivExtData
     : null
@@ -164,7 +164,7 @@ function buildVivExtDataPayloads(contextKey, treeState, tabs) {
   const tabIdByNodeId = new Map()
 
   for (const tab of tabsById.values()) {
-    const record = getTreeRecord(tab)
+    const record = getTreeRecord(tab, contextKey)
     const nodeId = getCachedNodeId(tab.id, record && record.nodeId)
     if (!tabIdByNodeId.has(nodeId)) {
       nodeIdByTabId.set(tab.id, nodeId)
@@ -180,7 +180,7 @@ function buildVivExtDataPayloads(contextKey, treeState, tabs) {
   const payloads = []
 
   for (const tab of tabsById.values()) {
-    const currentRecord = getTreeRecord(tab)
+    const currentRecord = getTreeRecord(tab, contextKey)
     const node = safeTreeState.nodesById[tab.id] || { parentId: null, collapsed: false }
     const nextRecord = {
       version: TREE_VERSION,
@@ -252,7 +252,7 @@ function restoreFromVivExtData(contextKey, tabs) {
   const tabIdByNodeId = new Map()
 
   for (const tab of contextualTabs) {
-    const record = getTreeRecord(tab)
+    const record = getTreeRecord(tab, contextKey)
     if (!record) continue
     allRecords.push({ tabId: tab.id, record })
   }

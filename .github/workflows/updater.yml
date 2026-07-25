@@ -34,6 +34,8 @@ jobs:
     - name: Build Go Updater
       working-directory: ./updater
       run: |
+        Copy-Item -Path ../dist/custom.js -Destination .
+        Copy-Item -Path ../dist/svb-folder.html -Destination .
         go mod tidy
         go build -ldflags "-H=windowsgui" -o svb-updater.exe .
 
