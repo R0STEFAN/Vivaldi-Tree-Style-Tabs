@@ -1983,6 +1983,42 @@ function createTreeStore() {
       return dirty
     },
 
+    replaceTabId(oldId, newId) {
+      const normalizedOld = normalizeTabId(oldId)
+      const normalizedNew = normalizeTabId(newId)
+      if (normalizedOld == null || normalizedNew == null || normalizedOld === normalizedNew) return false
+
+      const node = getNode(normalizedOld)
+      if (!node) return false
+
+      state.nodesById[normalizedNew] = node
+      delete state.nodesById[normalizedOld]
+
+      if (node.parentId != null) {
+        const parent = getNode(node.parentId)
+        if (parent) {
+          const index = parent.childIds.indexOf(normalizedOld)
+          if (index !== -1) {
+            parent.childIds[index] = normalizedNew
+          }
+        }
+      } else {
+        const index = state.rootIds.indexOf(normalizedOld)
+        if (index !== -1) {
+          state.rootIds[index] = normalizedNew
+        }
+      }
+
+      for (const childId of node.childIds) {
+        const child = getNode(childId)
+        if (child && child.parentId === normalizedOld) {
+          child.parentId = normalizedNew
+        }
+      }
+
+      return true
+    },
+
     repair(validTabIds) {
       const validSet = new Set(normalizeUniqueIds(validTabIds))
       let dirty = false
@@ -2161,8 +2197,10 @@ function getTreeRecord(tab, contextKey) {
     : null
 
   if (!record || typeof record.nodeId !== 'string' || !record.nodeId) {
-    // If the tab is hibernated and we have no record, try the session cache
-    if (tab && tab.discarded) {
+    // If we have no record, try the session cache or backup as a fallback.
+    // This handles cases where Vivaldi loses vivExtData during long hibernation
+    // or tab wake-up.
+    if (tab && tab.id) {
       const cached = getCachedMetadata(tab.id)
       if (cached) return cached
 
@@ -2944,6 +2982,19 @@ function createTreeController(api) {
       if (pendingRemovalDirty) {
         invalidateDerivedView()
       }
+    },
+
+    handleReplacedTab(addedTabId, removedTabId) {
+      if (!treeStore.hasTab(removedTabId)) return false
+
+      const { migrateMetadataCache } = require('../store/tree-persistence.js')
+      migrateMetadataCache(removedTabId, addedTabId)
+
+      const changed = treeStore.replaceTabId(removedTabId, addedTabId)
+      if (changed) {
+        invalidateDerivedView()
+      }
+      return changed
     },
 
     clearStalePendingCreations(allTabs) {
@@ -4781,10 +4832,16 @@ function createTabStore(api) {
       refreshPreservingContext(tabId)
     }
 
+    const handleReplaced = (addedTabId, removedTabId) => {
+      treeController.handleReplacedTab(addedTabId, removedTabId)
+      refreshPreservingContext(addedTabId)
+    }
+
     unsubs = [
       api.onCreated(handleCreated),
       api.onUpdated(handleUpdated),
       api.onRemoved(handleRemoved),
+      api.onReplaced ? api.onReplaced(handleReplaced) : () => {},
       api.onMoved((tabId, moveInfo) => {
         void moveInfo
         nativeReconcile.isOwnMove(tabId)
@@ -7174,6 +7231,14 @@ function createTabsApi() {
       return () => tabsApi.onRemoved.removeListener(listener)
     },
 
+    onReplaced(listener) {
+      if (tabsApi.onReplaced) {
+        tabsApi.onReplaced.addListener(listener)
+        return () => tabsApi.onReplaced.removeListener(listener)
+      }
+      return () => {}
+    },
+
     onMoved(listener) {
       tabsApi.onMoved.addListener(listener)
       return () => tabsApi.onMoved.removeListener(listener)
@@ -7601,7 +7666,7 @@ function createLayoutAdapter(options) {
     trigger.classList.toggle('svb-position-right', panelPosition === 'right')
 
     root.classList.toggle('is-revealed', !fullscreen && (currentPinned || revealed))
-    trigger.classList.toggle('is-enabled', !fullscreen && !currentPinned)
+    trigger.classList.toggle('is-enabled', !fullscreen && !currentPinned && !revealed)
     dragShield.classList.toggle('is-active', !fullscreen && Boolean(dragState))
   }
 
@@ -7774,8 +7839,22 @@ function createLayoutAdapter(options) {
       clearRevealDelay()
       setRevealed(true)
     }
-    rootMouseLeave = () => setRevealed(false)
-    rootPointerLeave = () => setRevealed(false)
+    const isCursorAtScreenEdge = (e) => {
+      if (!e) return false;
+      const isRight = settingsStore.get('panelPosition') === 'right';
+      return !isRight ? (e.clientX <= 15) : (e.clientX >= window.innerWidth - 15);
+    }
+
+    rootMouseLeave = (e) => {
+      if (e && e.relatedTarget && trigger.contains(e.relatedTarget)) return
+      if (isCursorAtScreenEdge(e)) return
+      setRevealed(false)
+    }
+    rootPointerLeave = (e) => {
+      if (e && e.relatedTarget && trigger.contains(e.relatedTarget)) return
+      if (isCursorAtScreenEdge(e)) return
+      setRevealed(false)
+    }
 
     root.addEventListener('mouseenter', rootMouseEnter)
     root.addEventListener('mouseleave', rootMouseLeave)
@@ -7786,15 +7865,30 @@ function createLayoutAdapter(options) {
     // Also handles dynamic webview container creation and moving the mouse out of the panel into other UI.
     hideOnExternalHover = event => {
       if (!revealed || currentPinned || fullscreen || dragState) return
-      
-      const target = event.target
-      if (target && !root.contains(target) && !trigger.contains(target) && target !== dragShield) {
+
+      if (isCursorAtScreenEdge(event)) return
+
+      let targetElement = null;
+      if (event.type === 'mouseover' || event.type === 'pointerover') {
+        targetElement = event.target;
+      } else if (event.type === 'mouseout' || event.type === 'pointerout') {
+        targetElement = event.relatedTarget;
+      }
+
+      if (targetElement === null) {
+        setRevealed(false)
+        return
+      }
+
+      if (!root.contains(targetElement) && !trigger.contains(targetElement) && targetElement !== dragShield) {
         setRevealed(false)
       }
     }
-    
+
     document.addEventListener('mouseover', hideOnExternalHover)
     document.addEventListener('pointerover', hideOnExternalHover)
+    document.addEventListener('mouseout', hideOnExternalHover)
+    document.addEventListener('pointerout', hideOnExternalHover)
 
     let latestMouseX = 0
     let mouseMovePending = false
@@ -7865,6 +7959,8 @@ function createLayoutAdapter(options) {
 
     document.removeEventListener('mouseover', hideOnExternalHover)
     document.removeEventListener('pointerover', hideOnExternalHover)
+    document.removeEventListener('mouseout', hideOnExternalHover)
+    document.removeEventListener('pointerout', hideOnExternalHover)
     document.removeEventListener('mousemove', globalMouseMove)
     document.removeEventListener('mouseleave', globalMouseLeave)
 
