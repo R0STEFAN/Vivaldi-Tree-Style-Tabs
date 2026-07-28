@@ -44,53 +44,86 @@ The source code is modular, but the final output is a single file:
 dist/custom.js
 ```
 
-## Install Ready Build
+## Installation
 
-Use this if you only want to install the already built mod.
+### Windows (Recommended)
 
+The easiest way to install and maintain the mod on Windows is using the native **Auto-Updater** (`svb-updater.exe`). It sits quietly in your system tray, detects when Vivaldi updates, and automatically re-applies the mod for you. It also notifies you of new mod updates from GitHub!
+
+1. Download the latest `mod.zip` from the [Releases](https://github.com/R0STEFAN/Vivaldi-Tree-Style-Tabs/releases) page.
+2. Extract the archive to a permanent folder (e.g., `Documents\VivaldiTreeTabs`).
+3. Run `svb-updater.exe`. It will automatically find your Vivaldi installation and apply the mod.
+4. *(Optional)* Right-click the tray icon and enable "Run on Startup" to ensure Vivaldi is always patched automatically.
+
+**Manual Patcher (Alternative)**
+If you are building from source or prefer not to use the background updater:
+- Double-click `patch-windows.bat` or run it from CMD/PowerShell. It will automatically detect your Vivaldi path, copy `custom.js`, and inject the script.
+- *Note: You will need to run `patch-windows.bat` manually after every browser update.*
+
+### Linux (Arch-based)
+
+The project includes an automatic installer that sets up a Pacman Hook to keep the mod active after system updates.
+
+1. **Build the project** (or download the pre-built files):
+   ```bash
+   npm run build
+   ```
+2. **Run the installer:**
+   ```bash
+   bash install-linux.sh
+   ```
+   *What it does:*
+   - Copies `custom.js` to `~/.local/share/vivaldi-patch/`.
+   - Creates a patching script that injects the mod into Vivaldi's `window.html`.
+   - Sets up a **Pacman Hook** (`/etc/pacman.d/hooks/vivaldi-patch.hook`) that automatically re-applies the patch every time Vivaldi is updated via the package manager.
+
+If you don't want the hook and just want a one-time patch, you can use:
+```bash
+sudo bash patch-linux.sh
+```
+
+### macOS
+
+The repo includes `install-macos.sh` and `uninstall-macos.sh`, plus matching npm scripts.
+
+1. **Install:**
+   ```bash
+   npm run install:macos
+   ```
+   *What it does:*
+   - Runs `npm run build` to produce a fresh `dist/custom.js`.
+   - Resolves the Vivaldi resources dir (default `/Applications/Vivaldi.app/Contents/Frameworks/Vivaldi Framework.framework/Versions/Current/Resources/vivaldi`).
+   - Backs up `window.html` to `window.html.bak` (only the first time, so the pristine original is preserved across re-installs).
+   - Copies `dist/custom.js` into the resources dir.
+   - Injects `<script src="custom.js"></script>` before `</body>` in `window.html`.
+   - Auto-detects whether `sudo` is needed based on file ownership and only escalates if necessary.
+
+2. **Uninstall:**
+   ```bash
+   npm run uninstall:macos
+   ```
+   Restores `window.html` from `window.html.bak` if present, otherwise surgically removes the injected `<script>` line, then deletes `custom.js`.
+
+3. **Custom Vivaldi paths** (e.g. Vivaldi Snapshot):
+   ```bash
+   bash install-macos.sh /Applications/Vivaldi Snapshot.app
+   bash uninstall-macos.sh /Applications/Vivaldi Snapshot.app
+   ```
+
+*Notes:*
+- After every Vivaldi auto-update the resources directory is replaced, wiping the mod. Re-run `npm run install:macos` to reapply.
+- Modifying files inside `Vivaldi.app` invalidates the code signature. macOS may show a Gatekeeper warning on first launch after install; dismiss it once and Vivaldi continues to work normally.
+- Pass `-y` / `--yes` to skip the "Vivaldi is currently running" prompt.
+
+### Manual Installation (All platforms)
+
+If you prefer to manually inject the mod without scripts:
 1. Close Vivaldi.
-
-2. Locate Vivaldi's browser UI resources directory.
-
-Common locations:
-
-```text
-Linux stable:
-/opt/vivaldi/resources/vivaldi
-
-Linux snapshot:
-/opt/vivaldi-snapshot/resources/vivaldi
-
-Windows:
-%LOCALAPPDATA%\Vivaldi\Application\<version>\resources\vivaldi
-
-macOS:
-/Applications/Vivaldi.app/Contents/Frameworks/Vivaldi Framework.framework/Versions/<version>/Resources/vivaldi
-```
-
-3. Back up `window.html`.
-
-Example on Linux:
-
-```bash
-sudo cp /opt/vivaldi/resources/vivaldi/window.html /opt/vivaldi/resources/vivaldi/window.html.bak
-```
-
-4. Copy the built bundle:
-
-```bash
-sudo cp dist/custom.js /opt/vivaldi/resources/vivaldi/custom.js
-```
-
-5. Add the script to `window.html` before the closing `</body>` tag if it is not already there:
-
-```html
-<script src="custom.js"></script>
-```
-
-6. Start Vivaldi.
-
-After every Vivaldi update, the application resources folder may be replaced. If the mod disappears, repeat the copy/injection steps.
+2. Locate Vivaldi's browser UI resources directory (`window.html`).
+3. Back up `window.html` to `window.html.bak`.
+4. Copy the built bundle `dist/custom.js` into the resources folder.
+5. Add `<script src="custom.js"></script>` to `window.html` right before `</body>`.
+6. Start Vivaldi. (Repeat after every browser update).
 
 ## Developer Setup
 
@@ -170,79 +203,3 @@ To regenerate the bundle:
 npm run build
 ```
 
-## Automation Scripts (Recommended)
-
-To simplify the installation and maintain the mod after browser updates, you can use the provided automation scripts.
-
-### Linux (Arch-based)
-
-The project includes an automatic installer that sets up a Pacman Hook to keep the mod active after system updates.
-
-1. **Build the project:**
-   ```bash
-   npm run build
-   ```
-2. **Run the installer:**
-   ```bash
-   bash install-linux.sh
-   ```
-   *What it does:*
-   - Copies `custom.js` to `~/.local/share/vivaldi-patch/`.
-   - Creates a patching script that injects the mod into Vivaldi's `window.html`.
-   - Sets up a **Pacman Hook** (`/etc/pacman.d/hooks/vivaldi-patch.hook`) that automatically re-applies the patch every time Vivaldi is updated via the package manager.
-
-If you don't want the hook and just want a one-time patch, you can use:
-```bash
-sudo bash patch-linux.sh
-```
-
-### macOS
-
-The repo includes `install-macos.sh` and `uninstall-macos.sh`, plus matching npm scripts.
-
-1. **Install:**
-   ```bash
-   npm run install:macos
-   ```
-   *What it does:*
-   - Runs `npm run build` to produce a fresh `dist/custom.js`.
-   - Resolves the Vivaldi resources dir (default `/Applications/Vivaldi.app/Contents/Frameworks/Vivaldi Framework.framework/Versions/Current/Resources/vivaldi`).
-   - Backs up `window.html` to `window.html.bak` (only the first time, so the pristine original is preserved across re-installs).
-   - Copies `dist/custom.js` into the resources dir.
-   - Injects `<script src="custom.js"></script>` before `</body>` in `window.html`.
-   - Auto-detects whether `sudo` is needed based on file ownership and only escalates if necessary.
-
-2. **Uninstall:**
-   ```bash
-   npm run uninstall:macos
-   ```
-   Restores `window.html` from `window.html.bak` if present, otherwise surgically removes the injected `<script>` line, then deletes `custom.js`.
-
-3. **Custom Vivaldi paths** (e.g. Vivaldi Snapshot):
-   ```bash
-   bash install-macos.sh /Applications/Vivaldi\ Snapshot.app
-   bash uninstall-macos.sh /Applications/Vivaldi\ Snapshot.app
-   ```
-
-*Notes:*
-- After every Vivaldi auto-update the resources directory is replaced, wiping the mod. Re-run `npm run install:macos` to reapply.
-- Modifying files inside `Vivaldi.app` invalidates the code signature. macOS may show a Gatekeeper warning on first launch after install; dismiss it once and Vivaldi continues to work normally.
-- Pass `-y` / `--yes` to skip the "Vivaldi is currently running" prompt.
-
-### Windows
-
-A batch script is provided to automatically find the latest Vivaldi version folder and apply the mod.
-
-1. **Build the project:**
-   ```bash
-   npm run build
-   ```
-2. **Run the patcher:**
-   - Double-click `patch-windows.bat` or run it from CMD/PowerShell.
-   *What it does:*
-   - Automatically detects the Vivaldi installation path (User or System-wide).
-   - Finds the latest versioned folder (e.g., `6.6.3271.48`).
-   - Copies `dist/custom.js` to the resources folder.
-   - Modifies `window.html` to include the script tag.
-
-*Note: Since Windows updates Vivaldi by creating new versioned folders, you will need to run `patch-windows.bat` again after each browser update.*
