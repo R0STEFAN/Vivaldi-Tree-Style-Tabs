@@ -254,8 +254,14 @@ function createLayoutAdapter(options) {
       clearRevealDelay()
       setRevealed(true)
     }
-    rootMouseLeave = () => setRevealed(false)
-    rootPointerLeave = () => setRevealed(false)
+    rootMouseLeave = (e) => {
+      if (e && e.relatedTarget && trigger.contains(e.relatedTarget)) return
+      setRevealed(false)
+    }
+    rootPointerLeave = (e) => {
+      if (e && e.relatedTarget && trigger.contains(e.relatedTarget)) return
+      setRevealed(false)
+    }
 
     root.addEventListener('mouseenter', rootMouseEnter)
     root.addEventListener('mouseleave', rootMouseLeave)
@@ -266,15 +272,28 @@ function createLayoutAdapter(options) {
     // Also handles dynamic webview container creation and moving the mouse out of the panel into other UI.
     hideOnExternalHover = event => {
       if (!revealed || currentPinned || fullscreen || dragState) return
-      
-      const target = event.target
-      if (target && !root.contains(target) && !trigger.contains(target) && target !== dragShield) {
+
+      let targetElement = null;
+      if (event.type === 'mouseover' || event.type === 'pointerover') {
+        targetElement = event.target;
+      } else if (event.type === 'mouseout' || event.type === 'pointerout') {
+        targetElement = event.relatedTarget;
+      }
+
+      if (targetElement === null) {
+        setRevealed(false)
+        return
+      }
+
+      if (!root.contains(targetElement) && !trigger.contains(targetElement) && targetElement !== dragShield) {
         setRevealed(false)
       }
     }
-    
+
     document.addEventListener('mouseover', hideOnExternalHover)
     document.addEventListener('pointerover', hideOnExternalHover)
+    document.addEventListener('mouseout', hideOnExternalHover)
+    document.addEventListener('pointerout', hideOnExternalHover)
 
     let latestMouseX = 0
     let mouseMovePending = false
@@ -345,6 +364,8 @@ function createLayoutAdapter(options) {
 
     document.removeEventListener('mouseover', hideOnExternalHover)
     document.removeEventListener('pointerover', hideOnExternalHover)
+    document.removeEventListener('mouseout', hideOnExternalHover)
+    document.removeEventListener('pointerout', hideOnExternalHover)
     document.removeEventListener('mousemove', globalMouseMove)
     document.removeEventListener('mouseleave', globalMouseLeave)
 
