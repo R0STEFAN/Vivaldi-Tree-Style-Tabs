@@ -214,6 +214,19 @@ function createTreeController(api) {
       }
     },
 
+    handleReplacedTab(addedTabId, removedTabId) {
+      if (!treeStore.hasTab(removedTabId)) return false
+
+      const { migrateMetadataCache } = require('../store/tree-persistence.js')
+      migrateMetadataCache(removedTabId, addedTabId)
+
+      const changed = treeStore.replaceTabId(removedTabId, addedTabId)
+      if (changed) {
+        invalidateDerivedView()
+      }
+      return changed
+    },
+
     clearStalePendingCreations(allTabs) {
       const currentTabIds = new Set(allTabs.map(tab => tab.id))
       for (const tabId of pendingCreatedTabs.keys()) {

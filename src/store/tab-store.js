@@ -1005,10 +1005,16 @@ function createTabStore(api) {
       refreshPreservingContext(tabId)
     }
 
+    const handleReplaced = (addedTabId, removedTabId) => {
+      treeController.handleReplacedTab(addedTabId, removedTabId)
+      refreshPreservingContext(addedTabId)
+    }
+
     unsubs = [
       api.onCreated(handleCreated),
       api.onUpdated(handleUpdated),
       api.onRemoved(handleRemoved),
+      api.onReplaced ? api.onReplaced(handleReplaced) : () => {},
       api.onMoved((tabId, moveInfo) => {
         void moveInfo
         nativeReconcile.isOwnMove(tabId)

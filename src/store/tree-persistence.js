@@ -98,8 +98,10 @@ function getTreeRecord(tab, contextKey) {
     : null
 
   if (!record || typeof record.nodeId !== 'string' || !record.nodeId) {
-    // If the tab is hibernated and we have no record, try the session cache
-    if (tab && tab.discarded) {
+    // If we have no record, try the session cache or backup as a fallback.
+    // This handles cases where Vivaldi loses vivExtData during long hibernation
+    // or tab wake-up.
+    if (tab && tab.id) {
       const cached = getCachedMetadata(tab.id)
       if (cached) return cached
 

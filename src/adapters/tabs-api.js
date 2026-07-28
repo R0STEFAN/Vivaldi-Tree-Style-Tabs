@@ -706,6 +706,14 @@ function createTabsApi() {
       return () => tabsApi.onRemoved.removeListener(listener)
     },
 
+    onReplaced(listener) {
+      if (tabsApi.onReplaced) {
+        tabsApi.onReplaced.addListener(listener)
+        return () => tabsApi.onReplaced.removeListener(listener)
+      }
+      return () => {}
+    },
+
     onMoved(listener) {
       tabsApi.onMoved.addListener(listener)
       return () => tabsApi.onMoved.removeListener(listener)

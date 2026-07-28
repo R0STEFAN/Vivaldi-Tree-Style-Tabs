@@ -404,6 +404,42 @@ function createTreeStore() {
       return dirty
     },
 
+    replaceTabId(oldId, newId) {
+      const normalizedOld = normalizeTabId(oldId)
+      const normalizedNew = normalizeTabId(newId)
+      if (normalizedOld == null || normalizedNew == null || normalizedOld === normalizedNew) return false
+
+      const node = getNode(normalizedOld)
+      if (!node) return false
+
+      state.nodesById[normalizedNew] = node
+      delete state.nodesById[normalizedOld]
+
+      if (node.parentId != null) {
+        const parent = getNode(node.parentId)
+        if (parent) {
+          const index = parent.childIds.indexOf(normalizedOld)
+          if (index !== -1) {
+            parent.childIds[index] = normalizedNew
+          }
+        }
+      } else {
+        const index = state.rootIds.indexOf(normalizedOld)
+        if (index !== -1) {
+          state.rootIds[index] = normalizedNew
+        }
+      }
+
+      for (const childId of node.childIds) {
+        const child = getNode(childId)
+        if (child && child.parentId === normalizedOld) {
+          child.parentId = normalizedNew
+        }
+      }
+
+      return true
+    },
+
     repair(validTabIds) {
       const validSet = new Set(normalizeUniqueIds(validTabIds))
       let dirty = false
