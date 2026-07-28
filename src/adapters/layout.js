@@ -81,7 +81,7 @@ function createLayoutAdapter(options) {
     trigger.classList.toggle('svb-position-right', panelPosition === 'right')
 
     root.classList.toggle('is-revealed', !fullscreen && (currentPinned || revealed))
-    trigger.classList.toggle('is-enabled', !fullscreen && !currentPinned)
+    trigger.classList.toggle('is-enabled', !fullscreen && !currentPinned && !revealed)
     dragShield.classList.toggle('is-active', !fullscreen && Boolean(dragState))
   }
 
