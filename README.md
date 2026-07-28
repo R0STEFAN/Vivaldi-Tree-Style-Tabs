@@ -50,9 +50,9 @@ dist/custom.js
 
 The easiest way to install and maintain the mod on Windows is using the native **Auto-Updater** (`svb-updater.exe`). It sits quietly in your system tray, detects when Vivaldi updates, and automatically re-applies the mod for you. It also notifies you of new mod updates from GitHub!
 
-1. Download the latest `mod.zip` from the [Releases](https://github.com/R0STEFAN/Vivaldi-Tree-Style-Tabs/releases) page.
-2. Extract the archive to a permanent folder (e.g., `Documents\VivaldiTreeTabs`).
-3. Run `svb-updater.exe`. It will automatically find your Vivaldi installation and apply the mod.
+1. Download the `svb-updater.exe` file from the [Releases](https://github.com/R0STEFAN/Vivaldi-Tree-Style-Tabs/releases) page.
+2. Place the file in a permanent folder where you want to keep it (e.g., `Documents\VivaldiTreeTabs`).
+3. Run `svb-updater.exe`. It will automatically download the required mod files from GitHub, find your Vivaldi installation, and apply the mod.
 4. *(Optional)* Right-click the tray icon and enable "Run on Startup" to ensure Vivaldi is always patched automatically.
 
 **Manual Patcher (Alternative)**
