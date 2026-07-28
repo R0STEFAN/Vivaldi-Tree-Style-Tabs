@@ -254,22 +254,20 @@ function createLayoutAdapter(options) {
       clearRevealDelay()
       setRevealed(true)
     }
+    const isCursorAtScreenEdge = (e) => {
+      if (!e) return false;
+      const isRight = settingsStore.get('panelPosition') === 'right';
+      return !isRight ? (e.clientX <= 15) : (e.clientX >= window.innerWidth - 15);
+    }
+
     rootMouseLeave = (e) => {
       if (e && e.relatedTarget && trigger.contains(e.relatedTarget)) return
-      if (e && !e.relatedTarget) {
-        const isRight = settingsStore.get('panelPosition') === 'right'
-        const inZone = !isRight ? (e.clientX <= 15) : (e.clientX >= window.innerWidth - 15)
-        if (inZone) return
-      }
+      if (isCursorAtScreenEdge(e)) return
       setRevealed(false)
     }
     rootPointerLeave = (e) => {
       if (e && e.relatedTarget && trigger.contains(e.relatedTarget)) return
-      if (e && !e.relatedTarget) {
-        const isRight = settingsStore.get('panelPosition') === 'right'
-        const inZone = !isRight ? (e.clientX <= 15) : (e.clientX >= window.innerWidth - 15)
-        if (inZone) return
-      }
+      if (isCursorAtScreenEdge(e)) return
       setRevealed(false)
     }
 
@@ -283,6 +281,8 @@ function createLayoutAdapter(options) {
     hideOnExternalHover = event => {
       if (!revealed || currentPinned || fullscreen || dragState) return
 
+      if (isCursorAtScreenEdge(event)) return
+
       let targetElement = null;
       if (event.type === 'mouseover' || event.type === 'pointerover') {
         targetElement = event.target;
@@ -291,9 +291,6 @@ function createLayoutAdapter(options) {
       }
 
       if (targetElement === null) {
-        const isRight = settingsStore.get('panelPosition') === 'right'
-        const inZone = !isRight ? (event.clientX <= 15) : (event.clientX >= window.innerWidth - 15)
-        if (inZone) return
         setRevealed(false)
         return
       }
