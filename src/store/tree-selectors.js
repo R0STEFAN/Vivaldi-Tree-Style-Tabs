@@ -168,7 +168,7 @@ function buildTreeView(options) {
   const visibleTabs = []
   let visibleIndex = 0
 
-  function walk(tabId, depth, currentAncestors) {
+  function walk(tabId, depth, currentAncestors, isHidden) {
     const tab = tabsById.get(tabId)
     if (!tab) return { visibleBranchSize: 0, subtreeSize: 0 }
     const node = nodesById[tabId] || { collapsed: false }
@@ -177,7 +177,7 @@ function buildTreeView(options) {
       id: tab.id,
       tab,
       depth,
-      visibleIndex,
+      visibleIndex: isHidden ? -1 : visibleIndex,
       parentId: node.parentId != null ? node.parentId : null,
       hasChildren: childIds.length > 0,
       collapsed: !!node.collapsed,
@@ -187,15 +187,18 @@ function buildTreeView(options) {
       visibleBranchSize: 1,
     }
 
-    visibleTabs.push(item)
-    visibleIndex += 1
+    if (!isHidden) {
+      visibleTabs.push(item)
+      visibleIndex += 1
+    }
 
     const nextAncestors = [...currentAncestors, tab.id]
+    const nextIsHidden = isHidden || !!node.collapsed
     let visibleBranchSize = 1
     let subtreeSize = 1
 
     for (const childId of childIds) {
-      const childResult = walk(childId, depth + 1, nextAncestors)
+      const childResult = walk(childId, depth + 1, nextAncestors, nextIsHidden)
       subtreeSize += childResult.subtreeSize
       if (!node.collapsed) {
         visibleBranchSize += childResult.visibleBranchSize
@@ -208,7 +211,7 @@ function buildTreeView(options) {
   }
 
   for (const rootId of rootIds) {
-    walk(rootId, 0, [])
+    walk(rootId, 0, [], false)
   }
 
   return {
