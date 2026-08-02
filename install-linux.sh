@@ -20,14 +20,21 @@ else
     exit 1
 fi
 
+if [ -f "dist/svb-folder.html" ]; then
+    cp "dist/svb-folder.html" "$INSTALL_DIR/"
+    echo "Актуальний svb-folder.html скопійовано у $INSTALL_DIR"
+fi
+
 # Створюємо автономний скрипт патчування в папці встановлення
 cat << 'EOF' > "$INSTALL_DIR/patch.sh"
 #!/bin/bash
 # Цей скрипт автоматично підключає мод до Vivaldi
 WINDOW_HTML="/opt/vivaldi/resources/vivaldi/window.html"
 CUSTOM_JS_DEST="/opt/vivaldi/resources/vivaldi/custom.js"
+FOLDER_HTML_DEST="/opt/vivaldi/resources/vivaldi/svb-folder.html"
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 SCRIPT_PATH="$DIR/custom.js"
+FOLDER_HTML_PATH="$DIR/svb-folder.html"
 
 if [ ! -f "$WINDOW_HTML" ]; then exit 0; fi
 
@@ -35,6 +42,13 @@ if [ ! -f "$WINDOW_HTML" ]; then exit 0; fi
 if [ ! -f "$CUSTOM_JS_DEST" ] || ! cmp -s "$SCRIPT_PATH" "$CUSTOM_JS_DEST"; then
     cp "$SCRIPT_PATH" "$CUSTOM_JS_DEST"
     echo "Файл custom.js оновлено у папці Vivaldi."
+fi
+
+if [ -f "$FOLDER_HTML_PATH" ]; then
+    if [ ! -f "$FOLDER_HTML_DEST" ] || ! cmp -s "$FOLDER_HTML_PATH" "$FOLDER_HTML_DEST"; then
+        cp "$FOLDER_HTML_PATH" "$FOLDER_HTML_DEST"
+        echo "Файл svb-folder.html оновлено у папці Vivaldi."
+    fi
 fi
 
 # Патчимо window.html якщо підключення відсутнє

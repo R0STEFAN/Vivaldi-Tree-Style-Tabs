@@ -122,6 +122,7 @@ function getTreeRecord(tab, contextKey) {
     parentNodeId: typeof record.parentNodeId === 'string' && record.parentNodeId ? record.parentNodeId : null,
     collapsed: !!record.collapsed,
     order: normalizeOrder(record.order),
+    createdAt: Number(record.createdAt) || Date.now(),
   }
 
   // Update cache with the latest valid data
@@ -191,6 +192,7 @@ function buildVivExtDataPayloads(contextKey, treeState, tabs) {
       parentNodeId: node.parentId != null ? (nodeIdByTabId.get(node.parentId) || null) : null,
       collapsed: !!node.collapsed,
       order: ordersByTabId.get(tab.id) || 0,
+      createdAt: currentRecord ? currentRecord.createdAt : Date.now(),
     }
 
     let changed = !currentRecord
@@ -199,6 +201,7 @@ function buildVivExtDataPayloads(contextKey, treeState, tabs) {
       || currentRecord.parentNodeId !== nextRecord.parentNodeId
       || currentRecord.collapsed !== nextRecord.collapsed
       || currentRecord.order !== nextRecord.order
+      || currentRecord.createdAt !== nextRecord.createdAt
 
     if (currentRecord && currentRecord.pendingRestore && tab.discarded) {
       changed = false

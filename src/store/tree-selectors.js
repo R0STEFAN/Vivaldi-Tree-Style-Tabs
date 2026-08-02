@@ -81,6 +81,9 @@ function buildOrderedStructure(options) {
     const known = new Set()
     const preferredOrder = Array.isArray(node && (node.childIds || node.children)) ? (node.childIds || node.children) : []
 
+    const preferredOrderMap = new Map()
+    preferredOrder.forEach((id, index) => preferredOrderMap.set(id, index))
+
     for (const childId of preferredOrder) {
       if (childIds.includes(childId) && !known.has(childId)) {
         ordered.push(childId)
@@ -96,8 +99,8 @@ function buildOrderedStructure(options) {
     }
 
     ordered.sort((leftId, rightId) => {
-      const leftIndex = preferredOrder.indexOf(leftId)
-      const rightIndex = preferredOrder.indexOf(rightId)
+      const leftIndex = preferredOrderMap.has(leftId) ? preferredOrderMap.get(leftId) : -1
+      const rightIndex = preferredOrderMap.has(rightId) ? preferredOrderMap.get(rightId) : -1
       if (leftIndex !== -1 || rightIndex !== -1) {
         if (leftIndex === -1) return 1
         if (rightIndex === -1) return -1
@@ -112,9 +115,12 @@ function buildOrderedStructure(options) {
     childIdsByParent.set(parentId, ordered)
   }
 
+  const preferredRootMap = new Map()
+  preferredRootIds.forEach((id, index) => preferredRootMap.set(id, index))
+
   rootIds.sort((leftId, rightId) => {
-    const leftPreferredIndex = preferredRootIds.indexOf(leftId)
-    const rightPreferredIndex = preferredRootIds.indexOf(rightId)
+    const leftPreferredIndex = preferredRootMap.has(leftId) ? preferredRootMap.get(leftId) : -1
+    const rightPreferredIndex = preferredRootMap.has(rightId) ? preferredRootMap.get(rightId) : -1
     if (leftPreferredIndex !== -1 || rightPreferredIndex !== -1) {
       if (leftPreferredIndex === -1) return 1
       if (rightPreferredIndex === -1) return -1
@@ -157,15 +163,14 @@ function getFullTreeOrderIds(options) {
 
 function buildTreeView(options) {
   const structure = buildOrderedStructure(options)
-  const { treeState } = options || {}
   const { nodesById, tabsById, rootIds, childIdsByParent } = structure
 
   const visibleTabs = []
   let visibleIndex = 0
 
-  function walk(tabId, depth) {
+  function walk(tabId, depth, currentAncestors) {
     const tab = tabsById.get(tabId)
-    if (!tab) return 0
+    if (!tab) return { visibleBranchSize: 0, subtreeSize: 0 }
     const node = nodesById[tabId] || { collapsed: false }
     const childIds = childIdsByParent.get(tabId) || []
     const item = {
@@ -177,25 +182,33 @@ function buildTreeView(options) {
       hasChildren: childIds.length > 0,
       collapsed: !!node.collapsed,
       childCount: childIds.length,
-      subtreeSize: getSubtreeIds(tab.id, treeState).length,
-      ancestorIds: getAncestorIds(tab.id, treeState),
+      subtreeSize: 1,
+      ancestorIds: currentAncestors,
       visibleBranchSize: 1,
     }
 
     visibleTabs.push(item)
     visibleIndex += 1
 
-    if (node.collapsed) return 1
+    const nextAncestors = [...currentAncestors, tab.id]
     let visibleBranchSize = 1
+    let subtreeSize = 1
+
     for (const childId of childIds) {
-      visibleBranchSize += walk(childId, depth + 1)
+      const childResult = walk(childId, depth + 1, nextAncestors)
+      subtreeSize += childResult.subtreeSize
+      if (!node.collapsed) {
+        visibleBranchSize += childResult.visibleBranchSize
+      }
     }
+
+    item.subtreeSize = subtreeSize
     item.visibleBranchSize = visibleBranchSize
-    return visibleBranchSize
+    return { visibleBranchSize, subtreeSize }
   }
 
   for (const rootId of rootIds) {
-    walk(rootId, 0)
+    walk(rootId, 0, [])
   }
 
   return {

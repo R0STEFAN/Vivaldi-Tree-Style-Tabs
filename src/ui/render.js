@@ -783,6 +783,35 @@ function createSidebarRenderer(options) {
                 </label>
               </div>
             </div>
+            <div class="svb-settings-group">
+              <label class="svb-settings-label">Auto-close old tabs & trees</label>
+              <div class="svb-settings-options">
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoCloseTabsDays" value="0">
+                  <span>Never</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoCloseTabsDays" value="1">
+                  <span>1 day</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoCloseTabsDays" value="7">
+                  <span>1 week</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoCloseTabsDays" value="14">
+                  <span>2 weeks</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoCloseTabsDays" value="21">
+                  <span>3 weeks</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoCloseTabsDays" value="30">
+                  <span>1 month</span>
+                </label>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1000,7 +1029,7 @@ function createSidebarRenderer(options) {
           if (input.type === 'checkbox') {
             input.checked = !!settings[input.name]
           } else {
-            input.checked = settings[input.name] === input.value
+            input.checked = String(settings[input.name]) === input.value
           }
         }
       }
@@ -1692,7 +1721,8 @@ function createSidebarRenderer(options) {
     const input = event.target.closest('.svb-settings-view input')
     if (!input || !input.name) return
 
-    const value = input.type === 'checkbox' ? input.checked : input.value
+    const rawValue = input.type === 'checkbox' ? input.checked : input.value
+    const value = input.name === 'autoCloseTabsDays' ? Number(rawValue) : rawValue
     settingsStore.set(input.name, value)
     renderCurrent()
   }, eventOptions)

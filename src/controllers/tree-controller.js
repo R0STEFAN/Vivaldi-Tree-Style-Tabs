@@ -139,6 +139,12 @@ function createTreeController(api) {
         position: creation.position || null,
         createdAt: Date.now(),
       })
+
+      setTimeout(() => {
+        while (expectedCreations.length > 0 && Date.now() - expectedCreations[0].createdAt > 5000) {
+          expectedCreations.shift()
+        }
+      }, 5500)
     },
 
     capturePendingCreation(tab, sourceActiveTabId, meta = {}) {

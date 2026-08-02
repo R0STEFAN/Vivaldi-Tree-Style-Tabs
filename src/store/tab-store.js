@@ -997,6 +997,7 @@ function createTabStore(api) {
     }
 
     const handleRemoved = tabId => {
+      lastFolderUrlUpdates.delete(tabId)
       const closedTab = state.tabs.find(t => t.id === tabId) || state.pinnedTabs.find(t => t.id === tabId)
       if (closedTab && treeController.recordClosedTab) {
         treeController.recordClosedTab(closedTab)
@@ -1006,6 +1007,7 @@ function createTabStore(api) {
     }
 
     const handleReplaced = (addedTabId, removedTabId) => {
+      lastFolderUrlUpdates.delete(removedTabId)
       treeController.handleReplacedTab(addedTabId, removedTabId)
       refreshPreservingContext(addedTabId)
     }
@@ -1042,6 +1044,7 @@ function createTabStore(api) {
       state = { ...state, windowId }
       bindEvents()
       await syncTabs({}, 'init')
+      this.startAutoCloseJob()
     },
 
     async reload() {
@@ -1052,6 +1055,42 @@ function createTabStore(api) {
       resetListeners()
       listeners.clear()
       releaseContextLock()
+      if (this._autoCloseTimer) clearInterval(this._autoCloseTimer)
+    },
+
+    startAutoCloseJob() {
+      if (this._autoCloseTimer) clearInterval(this._autoCloseTimer)
+      this.runAutoCloseJob()
+      // Check every hour
+      this._autoCloseTimer = setInterval(() => this.runAutoCloseJob(), 3600 * 1000)
+    },
+
+    runAutoCloseJob() {
+      const days = Number(settingsStore.get('autoCloseTabsDays'))
+      if (!days || days <= 0) return
+
+      const thresholdMs = days * 24 * 60 * 60 * 1000
+      const now = Date.now()
+      const expandedTargetIds = []
+
+      for (const rootId of state.treeState.rootIds) {
+        const tab = state.tabs.find(t => t.id === rootId) || state.pinnedTabs.find(t => t.id === rootId)
+        if (!tab || tab.pinned) continue
+
+        const record = tab.vivExtData && typeof tab.vivExtData === 'object' && tab.vivExtData['svbTree']
+        if (record && record.createdAt) {
+          const age = now - Number(record.createdAt)
+          if (age > thresholdMs) {
+            const isFolder = tab.vivExtData.isFolder
+            const closeIds = isFolder ? treeController.getSubtreeTargetIds(rootId) : treeController.getCloseTargetIds(rootId)
+            expandedTargetIds.push(...(closeIds.length ? closeIds : [rootId]))
+          }
+        }
+      }
+
+      if (expandedTargetIds.length > 0) {
+        api.closeTabs(expandedTargetIds)
+      }
     },
 
     activateTab(tabId) {

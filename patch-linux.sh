@@ -4,10 +4,12 @@
 # Path to window.html in Vivaldi resources
 WINDOW_HTML="/opt/vivaldi/resources/vivaldi/window.html"
 CUSTOM_JS_DEST="/opt/vivaldi/resources/vivaldi/custom.js"
+FOLDER_HTML_DEST="/opt/vivaldi/resources/vivaldi/svb-folder.html"
 
 # Get the directory where the script is located
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 SCRIPT_PATH="$DIR/dist/custom.js"
+FOLDER_HTML_PATH="$DIR/dist/svb-folder.html"
 
 # Check if script is run with sudo
 if [ "$EUID" -ne 0 ]; then 
@@ -26,6 +28,11 @@ if [ -f "$SCRIPT_PATH" ]; then
   echo "Файл custom.js скопійовано до $CUSTOM_JS_DEST"
 else
   echo "Попередження: Файл dist/custom.js не знайдено. Переконайтеся, що ви зібрали проект (npm run build)."
+fi
+
+if [ -f "$FOLDER_HTML_PATH" ]; then
+  cp "$FOLDER_HTML_PATH" "$FOLDER_HTML_DEST"
+  echo "Файл svb-folder.html скопійовано до $FOLDER_HTML_DEST"
 fi
 
 # Patch window.html if not already patched

@@ -5,6 +5,7 @@ const DEFAULT_SETTINGS = {
   adaptiveActivation: true,
   doubleClickAction: 'rename',
   panelPosition: 'left',
+  autoCloseTabsDays: 0,
 }
 
 function createSettingsStore() {

@@ -4,11 +4,11 @@ setlocal enabledelayedexpansion
 :: Vivaldi Tree Style Tabs Patcher for Windows
 :: Requires Administrator privileges if Vivaldi is installed in Program Files
 
-echo --- Перевірка прав адміністратора ---
+echo --- Checking Administrator privileges ---
 net session >nul 2>&1
 if %errorlevel% neq 0 (
-    echo ПОМИЛКА: Скрипт потрібно запускати ВІД ІМЕНІ АДМІНІСТРАТОРА.
-    echo Натисніть правою кнопкою на файл і виберіть "Запуск від імені адміністратора".
+    echo ERROR: The script must be run AS ADMINISTRATOR.
+    echo Right-click the file and select "Run as administrator".
     pause
     exit /b 1
 )
@@ -20,12 +20,12 @@ if not exist "!VIVALDI_ROOT!" (
 )
 
 if not exist "!VIVALDI_ROOT!" (
-    echo ПОМИЛКА: Не знайдено директорію Vivaldi ні в LocalAppData, ні в Program Files.
+    echo ERROR: Could not find Vivaldi directory in LocalAppData or Program Files.
     pause
     exit /b 1
 )
 
-echo Шукаємо Vivaldi у: !VIVALDI_ROOT!
+echo Searching for Vivaldi in: !VIVALDI_ROOT!
 
 :: Find the newest version directory
 set "FOUND_PATH="
@@ -43,13 +43,13 @@ for /f "tokens=*" %%i in ('dir /b /ad /o-n "!VIVALDI_ROOT!"') do (
     )
 )
 
-echo ПОМИЛКА: Не знайдено папку з ресурсами Vivaldi (window.html).
+echo ERROR: Could not find Vivaldi resources folder (window.html).
 pause
 exit /b 1
 
 :found
-echo Знайдено версію: !VERSION_DIR!
-echo Шлях ресурсів: !VIVALDI_PATH!
+echo Found version: !VERSION_DIR!
+echo Resources path: !VIVALDI_PATH!
 
 set "CUSTOM_JS_SRC=%~dp0dist\custom.js"
 set "CUSTOM_JS_DEST=!VIVALDI_PATH!\custom.js"
@@ -59,8 +59,8 @@ set "WINDOW_HTML=!VIVALDI_PATH!\window.html"
 
 :: 1. Copy custom.js
 if not exist "!CUSTOM_JS_SRC!" (
-    echo ПОМИЛКА: Не знайдено файл !CUSTOM_JS_SRC!
-    echo Спочатку запустіть "npm run build".
+    echo ERROR: Could not find file !CUSTOM_JS_SRC!
+    echo Please run "npm run build" first.
     pause
     exit /b 1
 )
@@ -68,76 +68,76 @@ if not exist "!CUSTOM_JS_SRC!" (
 set "SHOULD_COPY=0"
 if not exist "!CUSTOM_JS_DEST!" (
     set "SHOULD_COPY=1"
-    echo [INFO] custom.js відсутній.
+    echo [INFO] custom.js is missing.
 ) else (
     fc /b "!CUSTOM_JS_SRC!" "!CUSTOM_JS_DEST!" >nul
     if !errorlevel! neq 0 (
         set "SHOULD_COPY=1"
-        echo [INFO] custom.js застарілий.
+        echo [INFO] custom.js is outdated.
     ) else (
-        echo [OK] custom.js вже актуальний.
+        echo [OK] custom.js is already up to date.
     )
 )
 
 if "!SHOULD_COPY!" == "1" (
-    echo Копіюємо custom.js...
+    echo Copying custom.js...
     copy /y "!CUSTOM_JS_SRC!" "!CUSTOM_JS_DEST!" >nul
     if !errorlevel! neq 0 (
-        echo ПОМИЛКА: Не вдалося скопіювати файл custom.js. Можливо, Vivaldi запущений або бракує прав.
+        echo ERROR: Failed to copy custom.js. Maybe Vivaldi is running or missing privileges.
         pause
         exit /b 1
     )
-    echo [OK] custom.js оновлено.
+    echo [OK] custom.js updated.
 
     if exist "!FOLDER_HTML_SRC!" (
-        echo Копіюємо svb-folder.html...
+        echo Copying svb-folder.html...
         copy /y "!FOLDER_HTML_SRC!" "!FOLDER_HTML_DEST!" >nul
         if !errorlevel! neq 0 (
-            echo ПОМИЛКА: Не вдалося скопіювати файл svb-folder.html.
+            echo ERROR: Failed to copy svb-folder.html.
             pause
             exit /b 1
         )
-        echo [OK] svb-folder.html оновлено.
+        echo [OK] svb-folder.html updated.
     )
 )
 
 :: 2. Patch window.html
-echo Перевірка window.html за шляхом: !WINDOW_HTML!
+echo Checking window.html at path: !WINDOW_HTML!
 
 :: Use PowerShell for both checking and patching to ensure consistency
 powershell -NoProfile -Command ^
     "$path = '!WINDOW_HTML!';" ^
-    "if (-not (Test-Path $path)) { Write-Error 'Файл window.html не знайдено за вказаним шляхом'; exit 1; }" ^
+    "if (-not (Test-Path $path)) { Write-Error 'File window.html not found at specified path'; exit 1; }" ^
     "$content = [IO.File]::ReadAllText($path);" ^
     "if ($content -match 'src=\"custom\.js\"') {" ^
-    "    Write-Host '[OK] window.html вже містить підключення custom.js.';" ^
+    "    Write-Host '[OK] window.html already contains custom.js inclusion.';" ^
     "    exit 0;" ^
     "} else {" ^
-    "    Write-Host 'Шукаємо тег </body>...';" ^
+    "    Write-Host 'Searching for </body> tag...';" ^
     "    if ($content -match '(?i)</body>') {" ^
-    "        Write-Host 'Тег знайдено. Додаємо <script src=\"custom.js\"></script>...';" ^
+    "        Write-Host 'Tag found. Adding <script src=\"custom.js\"></script>...';" ^
     "        $content = $content -replace '(?i)</body>', '<script src=\"custom.js\"></script></body>';" ^
     "        [IO.File]::WriteAllText($path, $content);" ^
-    "        Write-Host '[OK] Зміни успішно записані у window.html.';" ^
+    "        Write-Host '[OK] Changes successfully written to window.html.';" ^
     "        exit 0;" ^
     "    } else {" ^
-    "        Write-Host 'ПОМИЛКА: Не знайдено тег </body> у файлі window.html.';" ^
-    "        Write-Host 'Вміст файлу (перші 100 символів):' $content.Substring(0, [Math]::Min(100, $content.Length));" ^
+    "        Write-Host 'ERROR: Could not find </body> tag in window.html.';" ^
+    "        Write-Host 'File content (first 100 chars):' $content.Substring(0, [Math]::Min(100, $content.Length));" ^
     "        exit 1;" ^
     "    }" ^
     "}"
 
 if !errorlevel! neq 0 (
     echo.
-    echo ПОМИЛКА при патчуванні window.html.
-    echo Спробуйте відкрити window.html вручну і перевірити його вміст.
+    echo ERROR during window.html patching.
+    echo Try to open window.html manually and check its content.
     pause
     exit /b 1
 )
 
 echo.
-echo --- ВСТАНОВЛЕННЯ ЗАВЕРШЕНО УСПІШНО ---
-echo Будь ласка, перезапустіть Vivaldi (повністю закрийте всі вікна).
-echo Якщо мод не запрацював, перевірте, чи з'явився рядок з custom.js в самому низу window.html.
+echo --- INSTALLATION COMPLETED SUCCESSFULLY ---
+echo Please restart Vivaldi (close all windows completely).
+echo If the mod does not work, check if the custom.js line appeared at the very bottom of window.html.
 pause
 exit /b 0

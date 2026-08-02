@@ -1459,6 +1459,7 @@ const DEFAULT_SETTINGS = {
   adaptiveActivation: true,
   doubleClickAction: 'rename',
   panelPosition: 'left',
+  autoCloseTabsDays: 0,
 }
 
 function createSettingsStore() {
@@ -2221,6 +2222,7 @@ function getTreeRecord(tab, contextKey) {
     parentNodeId: typeof record.parentNodeId === 'string' && record.parentNodeId ? record.parentNodeId : null,
     collapsed: !!record.collapsed,
     order: normalizeOrder(record.order),
+    createdAt: Number(record.createdAt) || Date.now(),
   }
 
   // Update cache with the latest valid data
@@ -2290,6 +2292,7 @@ function buildVivExtDataPayloads(contextKey, treeState, tabs) {
       parentNodeId: node.parentId != null ? (nodeIdByTabId.get(node.parentId) || null) : null,
       collapsed: !!node.collapsed,
       order: ordersByTabId.get(tab.id) || 0,
+      createdAt: currentRecord ? currentRecord.createdAt : Date.now(),
     }
 
     let changed = !currentRecord
@@ -2298,6 +2301,7 @@ function buildVivExtDataPayloads(contextKey, treeState, tabs) {
       || currentRecord.parentNodeId !== nextRecord.parentNodeId
       || currentRecord.collapsed !== nextRecord.collapsed
       || currentRecord.order !== nextRecord.order
+      || currentRecord.createdAt !== nextRecord.createdAt
 
     if (currentRecord && currentRecord.pendingRestore && tab.discarded) {
       changed = false
@@ -2556,6 +2560,9 @@ function buildOrderedStructure(options) {
     const known = new Set()
     const preferredOrder = Array.isArray(node && (node.childIds || node.children)) ? (node.childIds || node.children) : []
 
+    const preferredOrderMap = new Map()
+    preferredOrder.forEach((id, index) => preferredOrderMap.set(id, index))
+
     for (const childId of preferredOrder) {
       if (childIds.includes(childId) && !known.has(childId)) {
         ordered.push(childId)
@@ -2571,8 +2578,8 @@ function buildOrderedStructure(options) {
     }
 
     ordered.sort((leftId, rightId) => {
-      const leftIndex = preferredOrder.indexOf(leftId)
-      const rightIndex = preferredOrder.indexOf(rightId)
+      const leftIndex = preferredOrderMap.has(leftId) ? preferredOrderMap.get(leftId) : -1
+      const rightIndex = preferredOrderMap.has(rightId) ? preferredOrderMap.get(rightId) : -1
       if (leftIndex !== -1 || rightIndex !== -1) {
         if (leftIndex === -1) return 1
         if (rightIndex === -1) return -1
@@ -2587,9 +2594,12 @@ function buildOrderedStructure(options) {
     childIdsByParent.set(parentId, ordered)
   }
 
+  const preferredRootMap = new Map()
+  preferredRootIds.forEach((id, index) => preferredRootMap.set(id, index))
+
   rootIds.sort((leftId, rightId) => {
-    const leftPreferredIndex = preferredRootIds.indexOf(leftId)
-    const rightPreferredIndex = preferredRootIds.indexOf(rightId)
+    const leftPreferredIndex = preferredRootMap.has(leftId) ? preferredRootMap.get(leftId) : -1
+    const rightPreferredIndex = preferredRootMap.has(rightId) ? preferredRootMap.get(rightId) : -1
     if (leftPreferredIndex !== -1 || rightPreferredIndex !== -1) {
       if (leftPreferredIndex === -1) return 1
       if (rightPreferredIndex === -1) return -1
@@ -2632,15 +2642,14 @@ function getFullTreeOrderIds(options) {
 
 function buildTreeView(options) {
   const structure = buildOrderedStructure(options)
-  const { treeState } = options || {}
   const { nodesById, tabsById, rootIds, childIdsByParent } = structure
 
   const visibleTabs = []
   let visibleIndex = 0
 
-  function walk(tabId, depth) {
+  function walk(tabId, depth, currentAncestors) {
     const tab = tabsById.get(tabId)
-    if (!tab) return 0
+    if (!tab) return { visibleBranchSize: 0, subtreeSize: 0 }
     const node = nodesById[tabId] || { collapsed: false }
     const childIds = childIdsByParent.get(tabId) || []
     const item = {
@@ -2652,25 +2661,33 @@ function buildTreeView(options) {
       hasChildren: childIds.length > 0,
       collapsed: !!node.collapsed,
       childCount: childIds.length,
-      subtreeSize: getSubtreeIds(tab.id, treeState).length,
-      ancestorIds: getAncestorIds(tab.id, treeState),
+      subtreeSize: 1,
+      ancestorIds: currentAncestors,
       visibleBranchSize: 1,
     }
 
     visibleTabs.push(item)
     visibleIndex += 1
 
-    if (node.collapsed) return 1
+    const nextAncestors = [...currentAncestors, tab.id]
     let visibleBranchSize = 1
+    let subtreeSize = 1
+
     for (const childId of childIds) {
-      visibleBranchSize += walk(childId, depth + 1)
+      const childResult = walk(childId, depth + 1, nextAncestors)
+      subtreeSize += childResult.subtreeSize
+      if (!node.collapsed) {
+        visibleBranchSize += childResult.visibleBranchSize
+      }
     }
+
+    item.subtreeSize = subtreeSize
     item.visibleBranchSize = visibleBranchSize
-    return visibleBranchSize
+    return { visibleBranchSize, subtreeSize }
   }
 
   for (const rootId of rootIds) {
-    walk(rootId, 0)
+    walk(rootId, 0, [])
   }
 
   return {
@@ -2909,6 +2926,12 @@ function createTreeController(api) {
         position: creation.position || null,
         createdAt: Date.now(),
       })
+
+      setTimeout(() => {
+        while (expectedCreations.length > 0 && Date.now() - expectedCreations[0].createdAt > 5000) {
+          expectedCreations.shift()
+        }
+      }, 5500)
     },
 
     capturePendingCreation(tab, sourceActiveTabId, meta = {}) {
@@ -4824,6 +4847,7 @@ function createTabStore(api) {
     }
 
     const handleRemoved = tabId => {
+      lastFolderUrlUpdates.delete(tabId)
       const closedTab = state.tabs.find(t => t.id === tabId) || state.pinnedTabs.find(t => t.id === tabId)
       if (closedTab && treeController.recordClosedTab) {
         treeController.recordClosedTab(closedTab)
@@ -4833,6 +4857,7 @@ function createTabStore(api) {
     }
 
     const handleReplaced = (addedTabId, removedTabId) => {
+      lastFolderUrlUpdates.delete(removedTabId)
       treeController.handleReplacedTab(addedTabId, removedTabId)
       refreshPreservingContext(addedTabId)
     }
@@ -4869,6 +4894,7 @@ function createTabStore(api) {
       state = { ...state, windowId }
       bindEvents()
       await syncTabs({}, 'init')
+      this.startAutoCloseJob()
     },
 
     async reload() {
@@ -4879,6 +4905,42 @@ function createTabStore(api) {
       resetListeners()
       listeners.clear()
       releaseContextLock()
+      if (this._autoCloseTimer) clearInterval(this._autoCloseTimer)
+    },
+
+    startAutoCloseJob() {
+      if (this._autoCloseTimer) clearInterval(this._autoCloseTimer)
+      this.runAutoCloseJob()
+      // Check every hour
+      this._autoCloseTimer = setInterval(() => this.runAutoCloseJob(), 3600 * 1000)
+    },
+
+    runAutoCloseJob() {
+      const days = Number(settingsStore.get('autoCloseTabsDays'))
+      if (!days || days <= 0) return
+
+      const thresholdMs = days * 24 * 60 * 60 * 1000
+      const now = Date.now()
+      const expandedTargetIds = []
+
+      for (const rootId of state.treeState.rootIds) {
+        const tab = state.tabs.find(t => t.id === rootId) || state.pinnedTabs.find(t => t.id === rootId)
+        if (!tab || tab.pinned) continue
+
+        const record = tab.vivExtData && typeof tab.vivExtData === 'object' && tab.vivExtData['svbTree']
+        if (record && record.createdAt) {
+          const age = now - Number(record.createdAt)
+          if (age > thresholdMs) {
+            const isFolder = tab.vivExtData.isFolder
+            const closeIds = isFolder ? treeController.getSubtreeTargetIds(rootId) : treeController.getCloseTargetIds(rootId)
+            expandedTargetIds.push(...(closeIds.length ? closeIds : [rootId]))
+          }
+        }
+      }
+
+      if (expandedTargetIds.length > 0) {
+        api.closeTabs(expandedTargetIds)
+      }
     },
 
     activateTab(tabId) {
@@ -8765,6 +8827,35 @@ function createSidebarRenderer(options) {
                 </label>
               </div>
             </div>
+            <div class="svb-settings-group">
+              <label class="svb-settings-label">Auto-close old tabs & trees</label>
+              <div class="svb-settings-options">
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoCloseTabsDays" value="0">
+                  <span>Never</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoCloseTabsDays" value="1">
+                  <span>1 day</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoCloseTabsDays" value="7">
+                  <span>1 week</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoCloseTabsDays" value="14">
+                  <span>2 weeks</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoCloseTabsDays" value="21">
+                  <span>3 weeks</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoCloseTabsDays" value="30">
+                  <span>1 month</span>
+                </label>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -8982,7 +9073,7 @@ function createSidebarRenderer(options) {
           if (input.type === 'checkbox') {
             input.checked = !!settings[input.name]
           } else {
-            input.checked = settings[input.name] === input.value
+            input.checked = String(settings[input.name]) === input.value
           }
         }
       }
@@ -9674,7 +9765,8 @@ function createSidebarRenderer(options) {
     const input = event.target.closest('.svb-settings-view input')
     if (!input || !input.name) return
 
-    const value = input.type === 'checkbox' ? input.checked : input.value
+    const rawValue = input.type === 'checkbox' ? input.checked : input.value
+    const value = input.name === 'autoCloseTabsDays' ? Number(rawValue) : rawValue
     settingsStore.set(input.name, value)
     renderCurrent()
   }, eventOptions)
