@@ -1908,6 +1908,28 @@ function createSidebarRenderer(options) {
   }, eventOptions)
 
   root.addEventListener('pointerover', event => {
+    const tabNode = event.target.closest('[data-role="activate-tab"][data-created-at]')
+    if (tabNode) {
+      const createdAt = Number(tabNode.getAttribute('data-created-at'))
+      if (createdAt) {
+        const baseTitle = tabNode.getAttribute('data-base-title') || ''
+        const now = Date.now()
+        let title = baseTitle
+        const ageMs = now - createdAt
+        const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24))
+        const ageHours = Math.floor((ageMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+        const ageMinutes = Math.floor((ageMs % (1000 * 60 * 60)) / (1000 * 60))
+        
+        title += '\n\nВідкрито: '
+        if (ageDays > 0) title += `${ageDays} дн. `
+        if (ageHours > 0) title += `${ageHours} год. `
+        if (ageDays === 0 && ageHours === 0) title += `${ageMinutes} хв. `
+        title += 'тому'
+        
+        tabNode.setAttribute('title', title)
+      }
+    }
+
     const menuItem = event.target.closest('.svb-menu__item.has-submenu')
     if (!menuItem) return
     positionSubmenu(menuItem)
@@ -2196,31 +2218,3 @@ function createSidebarRenderer(options) {
 }
 
 module.exports = { createSidebarRenderer }
-
-if (typeof setInterval !== 'undefined') {
-  setInterval(() => {
-    if (typeof document === 'undefined') return
-    const tabs = document.querySelectorAll('[data-role="activate-tab"][data-created-at]')
-    const now = Date.now()
-    for (let i = 0; i < tabs.length; i++) {
-      const tabNode = tabs[i]
-      const createdAt = Number(tabNode.getAttribute('data-created-at'))
-      if (!createdAt) continue
-      const baseTitle = tabNode.getAttribute('data-base-title') || ''
-      
-      let title = baseTitle
-      const ageMs = now - createdAt
-      const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24))
-      const ageHours = Math.floor((ageMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-      const ageMinutes = Math.floor((ageMs % (1000 * 60 * 60)) / (1000 * 60))
-      
-      title += '\n\nВідкрито: '
-      if (ageDays > 0) title += `${ageDays} дн. `
-      if (ageHours > 0) title += `${ageHours} год. `
-      if (ageDays === 0 && ageHours === 0) title += `${ageMinutes} хв. `
-      title += 'тому'
-      
-      tabNode.setAttribute('title', title)
-    }
-  }, 60000)
-}
