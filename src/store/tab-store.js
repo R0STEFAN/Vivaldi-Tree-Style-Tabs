@@ -1072,8 +1072,11 @@ function createTabStore(api) {
       const thresholdMs = days * 24 * 60 * 60 * 1000
       const now = Date.now()
       const expandedTargetIds = []
+      
+      const treeState = treeController.getState()
+      const rootIds = treeState ? treeState.rootIds : []
 
-      for (const rootId of state.treeState.rootIds) {
+      for (const rootId of rootIds) {
         const tab = state.tabs.find(t => t.id === rootId) || state.pinnedTabs.find(t => t.id === rootId)
         if (!tab || tab.pinned) continue
 

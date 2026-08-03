@@ -5,8 +5,10 @@ const BACKUP_KEY = 'svbTreeBackup'
 
 function readBackup() {
   try {
-    const raw = window.localStorage.getItem(BACKUP_KEY)
-    if (raw) return JSON.parse(raw)
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const raw = window.localStorage.getItem(BACKUP_KEY)
+      if (raw) return JSON.parse(raw)
+    }
   } catch (e) {
     console.warn('Failed to read svbTreeBackup', e)
   }
@@ -15,7 +17,9 @@ function readBackup() {
 
 function writeBackup(backupObj) {
   try {
-    window.localStorage.setItem(BACKUP_KEY, JSON.stringify(backupObj))
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(BACKUP_KEY, JSON.stringify(backupObj))
+    }
   } catch (e) {
     console.warn('Failed to write svbTreeBackup', e)
   }
