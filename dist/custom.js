@@ -8067,11 +8067,11 @@ function getTabHoverTitle(tab) {
     const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24))
     const ageHours = Math.floor((ageMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
     const ageMinutes = Math.floor((ageMs % (1000 * 60 * 60)) / (1000 * 60))
-    title += '\n\nВідкрито: '
-    if (ageDays > 0) title += `${ageDays} дн. `
-    if (ageHours > 0) title += `${ageHours} год. `
-    if (ageDays === 0 && ageHours === 0) title += `${ageMinutes} хв. `
-    title += 'тому'
+    title += '\n\nOpened: '
+    if (ageDays > 0) title += `${ageDays}d `
+    if (ageHours > 0) title += `${ageHours}h `
+    if (ageDays === 0 && ageHours === 0) title += `${ageMinutes}m `
+    title += 'ago'
   }
   return title
 }
@@ -9979,11 +9979,11 @@ function createSidebarRenderer(options) {
         const ageHours = Math.floor((ageMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
         const ageMinutes = Math.floor((ageMs % (1000 * 60 * 60)) / (1000 * 60))
         
-        title += '\n\nВідкрито: '
-        if (ageDays > 0) title += `${ageDays} дн. `
-        if (ageHours > 0) title += `${ageHours} год. `
-        if (ageDays === 0 && ageHours === 0) title += `${ageMinutes} хв. `
-        title += 'тому'
+        title += '\n\nOpened: '
+        if (ageDays > 0) title += `${ageDays}d `
+        if (ageHours > 0) title += `${ageHours}h `
+        if (ageDays === 0 && ageHours === 0) title += `${ageMinutes}m `
+        title += 'ago'
         
         tabNode.setAttribute('title', title)
       }
