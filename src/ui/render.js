@@ -1,5 +1,22 @@
 const { settingsStore } = require('../store/settings-store.js')
 
+function getTabHoverTitle(tab) {
+  let title = tab.title || ''
+  const record = tab.vivExtData && typeof tab.vivExtData === 'object' && tab.vivExtData['svbTree']
+  if (record && record.createdAt) {
+    const ageMs = Date.now() - Number(record.createdAt)
+    const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24))
+    const ageHours = Math.floor((ageMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+    const ageMinutes = Math.floor((ageMs % (1000 * 60 * 60)) / (1000 * 60))
+    title += '\n\nВідкрито: '
+    if (ageDays > 0) title += `${ageDays} дн. `
+    if (ageHours > 0) title += `${ageHours} год. `
+    if (ageDays === 0 && ageHours === 0) title += `${ageMinutes} хв. `
+    title += 'тому'
+  }
+  return title
+}
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -528,7 +545,7 @@ function renderTab(tab, compact, canClose, item, editing, visualState) {
     : `<span class="svb-tab__title">${escapeHtml(tab.title)}</span>`
 
   return `
-    <button class="${tabClass}${coloredClass}${rowVisualState.isActive ? ' is-active' : ''}" data-role="activate-tab" data-tab-id="${tab.id}" data-visible-index="${visibleIndex}" data-depth="${depth}" data-parent-id="${parentId}" data-subtree-size="${subtreeSize}" data-ancestor-ids="${escapeHtml(ancestorIds)}" data-drop-position="${dropPosition}" data-parent="${hasChildren}" data-folded="${isCollapsed}" title="${escapeHtml(tab.title)}"${visualStyle ? ` style="${visualStyle}"` : ''}>
+    <button class="${tabClass}${coloredClass}${rowVisualState.isActive ? ' is-active' : ''}" data-role="activate-tab" data-tab-id="${tab.id}" data-visible-index="${visibleIndex}" data-depth="${depth}" data-parent-id="${parentId}" data-subtree-size="${subtreeSize}" data-ancestor-ids="${escapeHtml(ancestorIds)}" data-drop-position="${dropPosition}" data-parent="${hasChildren}" data-folded="${isCollapsed}" title="${escapeHtml(getTabHoverTitle(tab))}"${visualStyle ? ` style="${visualStyle}"` : ''}>
       <span class="svb-tab__outer" style="--svb-depth:${depth};--svb-visible-branch-size:${visibleBranchSize}">
         ${compact ? '' : renderTreeGuides(item)}
         <span class="svb-tab__body">
@@ -1165,7 +1182,7 @@ function createSidebarRenderer(options) {
     node.setAttribute('data-drop-position', dropPosition)
     node.setAttribute('data-parent', hasChildren ? 'true' : 'false')
     node.setAttribute('data-folded', isCollapsed ? 'true' : 'false')
-    node.setAttribute('title', tab.title)
+    node.setAttribute('title', getTabHoverTitle(tab))
     if (visualStyle) node.setAttribute('style', visualStyle)
     else node.removeAttribute('style')
 
