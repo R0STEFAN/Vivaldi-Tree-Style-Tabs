@@ -1060,9 +1060,32 @@ function createTabStore(api) {
 
     startAutoCloseJob() {
       if (this._autoCloseTimer) clearInterval(this._autoCloseTimer)
-      this.runAutoCloseJob()
+      this.repairMissingCreatedAt().then(() => {
+        this.runAutoCloseJob()
+      })
       // Check every hour
       this._autoCloseTimer = setInterval(() => this.runAutoCloseJob(), 3600 * 1000)
+    },
+
+    async repairMissingCreatedAt() {
+      const now = Date.now()
+      const allTabs = state.tabs.concat(state.pinnedTabs)
+      const payloads = []
+
+      for (const tab of allTabs) {
+        if (!tab.vivExtData || typeof tab.vivExtData !== 'object') continue
+        const record = tab.vivExtData['svbTree']
+        if (record && !record.createdAt) {
+          const nextVivExtData = JSON.parse(JSON.stringify(tab.vivExtData))
+          nextVivExtData['svbTree'] = { ...record, createdAt: now }
+          payloads.push({ tabId: tab.id, vivExtData: nextVivExtData })
+        }
+      }
+
+      for (let i = 0; i < payloads.length; i += 10) {
+        const chunk = payloads.slice(i, i + 10)
+        await Promise.all(chunk.map(p => api.setTabExtData(p.tabId, p.vivExtData)))
+      }
     },
 
     runAutoCloseJob() {
