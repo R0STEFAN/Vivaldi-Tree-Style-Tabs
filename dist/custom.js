@@ -4835,9 +4835,20 @@ function createTabStore(api) {
       refreshPreservingContext(tabId, changeInfo)
     }
 
-    const refreshFromActiveTab = (...args) => {
-      void args
+    const refreshFromActiveTab = (activeInfo) => {
       scheduleSync({ preserveContext: false }, 'event-active', 0).catch(error => console.error('[svb] sync failed', error))
+
+      if (activeInfo && activeInfo.tabId) {
+        const tab = state.tabs.find(t => t.id === activeInfo.tabId) || state.pinnedTabs.find(t => t.id === activeInfo.tabId)
+        if (tab && tab.vivExtData && typeof tab.vivExtData === 'object') {
+          const record = tab.vivExtData['svbTree']
+          if (record) {
+            const nextVivExtData = JSON.parse(JSON.stringify(tab.vivExtData))
+            nextVivExtData['svbTree'] = { ...record, createdAt: Date.now() }
+            api.updateVivExtData(tab.id, nextVivExtData).catch(error => console.error('[svb] failed to update active tab time', error))
+          }
+        }
+      }
     }
 
     const refreshBookmarks = () => {
