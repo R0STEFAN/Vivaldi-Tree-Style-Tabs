@@ -8603,8 +8603,12 @@ function renderTab(tab, compact, canClose, item, editing, visualState) {
     ? `<input class="svb-tab__title-input" data-role="rename-input" data-tab-id="${tab.id}" value="${escapeHtml(tab.title)}" spellcheck="false">`
     : `<span class="svb-tab__title">${escapeHtml(tab.title)}</span>`
 
+  const record = tab.vivExtData && typeof tab.vivExtData === 'object' && tab.vivExtData['svbTree']
+  const createdAtAttr = record && record.createdAt ? ` data-created-at="${record.createdAt}"` : ''
+  const baseTitleAttr = ` data-base-title="${escapeHtml(tab.title || '')}"`
+
   return `
-    <button class="${tabClass}${coloredClass}${rowVisualState.isActive ? ' is-active' : ''}" data-role="activate-tab" data-tab-id="${tab.id}" data-visible-index="${visibleIndex}" data-depth="${depth}" data-parent-id="${parentId}" data-subtree-size="${subtreeSize}" data-ancestor-ids="${escapeHtml(ancestorIds)}" data-drop-position="${dropPosition}" data-parent="${hasChildren}" data-folded="${isCollapsed}" title="${escapeHtml(getTabHoverTitle(tab))}"${visualStyle ? ` style="${visualStyle}"` : ''}>
+    <button class="${tabClass}${coloredClass}${rowVisualState.isActive ? ' is-active' : ''}" data-role="activate-tab" data-tab-id="${tab.id}" data-visible-index="${visibleIndex}" data-depth="${depth}" data-parent-id="${parentId}" data-subtree-size="${subtreeSize}" data-ancestor-ids="${escapeHtml(ancestorIds)}" data-drop-position="${dropPosition}" data-parent="${hasChildren}" data-folded="${isCollapsed}" title="${escapeHtml(getTabHoverTitle(tab))}"${createdAtAttr}${baseTitleAttr}${visualStyle ? ` style="${visualStyle}"` : ''}>
       <span class="svb-tab__outer" style="--svb-depth:${depth};--svb-visible-branch-size:${visibleBranchSize}">
         ${compact ? '' : renderTreeGuides(item)}
         <span class="svb-tab__body">
@@ -9242,6 +9246,13 @@ function createSidebarRenderer(options) {
     node.setAttribute('data-parent', hasChildren ? 'true' : 'false')
     node.setAttribute('data-folded', isCollapsed ? 'true' : 'false')
     node.setAttribute('title', getTabHoverTitle(tab))
+    node.setAttribute('data-base-title', tab.title || '')
+    const record = tab.vivExtData && typeof tab.vivExtData === 'object' && tab.vivExtData['svbTree']
+    if (record && record.createdAt) {
+      node.setAttribute('data-created-at', record.createdAt)
+    } else {
+      node.removeAttribute('data-created-at')
+    }
     if (visualStyle) node.setAttribute('style', visualStyle)
     else node.removeAttribute('style')
 
@@ -10244,6 +10255,34 @@ function createSidebarRenderer(options) {
 }
 
 module.exports = { createSidebarRenderer }
+
+if (typeof setInterval !== 'undefined') {
+  setInterval(() => {
+    if (typeof document === 'undefined') return
+    const tabs = document.querySelectorAll('[data-role="activate-tab"][data-created-at]')
+    const now = Date.now()
+    for (let i = 0; i < tabs.length; i++) {
+      const tabNode = tabs[i]
+      const createdAt = Number(tabNode.getAttribute('data-created-at'))
+      if (!createdAt) continue
+      const baseTitle = tabNode.getAttribute('data-base-title') || ''
+      
+      let title = baseTitle
+      const ageMs = now - createdAt
+      const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24))
+      const ageHours = Math.floor((ageMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+      const ageMinutes = Math.floor((ageMs % (1000 * 60 * 60)) / (1000 * 60))
+      
+      title += '\n\nВідкрито: '
+      if (ageDays > 0) title += `${ageDays} дн. `
+      if (ageHours > 0) title += `${ageHours} год. `
+      if (ageDays === 0 && ageHours === 0) title += `${ageMinutes} хв. `
+      title += 'тому'
+      
+      tabNode.setAttribute('title', title)
+    }
+  }, 60000)
+}
 
     },
     "entry.js": function(require, module, exports) {
