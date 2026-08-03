@@ -1084,7 +1084,7 @@ function createTabStore(api) {
 
       for (let i = 0; i < payloads.length; i += 10) {
         const chunk = payloads.slice(i, i + 10)
-        await Promise.all(chunk.map(p => api.setTabExtData(p.tabId, p.vivExtData)))
+        await Promise.all(chunk.map(p => api.updateVivExtData(p.tabId, p.vivExtData)))
       }
     },
 
