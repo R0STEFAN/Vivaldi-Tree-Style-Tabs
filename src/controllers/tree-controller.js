@@ -692,6 +692,9 @@ function createTreeController(api) {
         parentId: position === 'inside' ? targetId : treeStore.getParentId(moveIds[0]),
       }
     },
+    getState() {
+      return treeStore.exportState()
+    },
   }
 }
 
