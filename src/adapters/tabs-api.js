@@ -42,28 +42,7 @@ function serializeVivExtData(vivExtData) {
   if (!vivExtData || typeof vivExtData !== 'object') {
     return undefined
   }
-
-  const payload = {}
-
-  if (typeof vivExtData.workspaceId !== 'undefined' && vivExtData.workspaceId != null) {
-    payload.workspaceId = vivExtData.workspaceId
-  }
-
-  if (typeof vivExtData.group !== 'undefined' && vivExtData.group != null) {
-    payload.group = vivExtData.group
-  }
-
-  if (typeof vivExtData.fixedTitle === 'string' && vivExtData.fixedTitle.trim()) {
-    payload.fixedTitle = vivExtData.fixedTitle.trim()
-  }
-
-  if (vivExtData.isFolder === true) {
-    payload.isFolder = true
-    if (vivExtData.folderColor) {
-      payload.folderColor = vivExtData.folderColor
-    }
-  }
-
+  const payload = { ...vivExtData }
   return Object.keys(payload).length ? JSON.stringify(payload) : undefined
 }
 
