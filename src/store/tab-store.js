@@ -976,18 +976,27 @@ function createTabStore(api) {
     }
 
     const refreshFromActiveTab = (activeInfo) => {
+      const prevActiveId = state.activeTabId
       scheduleSync({ preserveContext: false }, 'event-active', 0).catch(error => console.error('[svb] sync failed', error))
 
-      if (activeInfo && activeInfo.tabId) {
-        const tab = state.tabs.find(t => t.id === activeInfo.tabId) || state.pinnedTabs.find(t => t.id === activeInfo.tabId)
+      const updateTabTime = (tabId, time) => {
+        const tab = state.tabs.find(t => t.id === tabId) || state.pinnedTabs.find(t => t.id === tabId)
         if (tab && tab.vivExtData && typeof tab.vivExtData === 'object') {
           const record = tab.vivExtData['svbTree']
           if (record) {
             const nextVivExtData = JSON.parse(JSON.stringify(tab.vivExtData))
-            nextVivExtData['svbTree'] = { ...record, createdAt: Date.now() }
+            nextVivExtData['svbTree'] = { ...record, createdAt: time }
             api.updateVivExtData(tab.id, nextVivExtData).catch(error => console.error('[svb] failed to update active tab time', error))
           }
         }
+      }
+
+      const now = Date.now()
+      if (activeInfo && activeInfo.tabId) {
+        updateTabTime(activeInfo.tabId, now)
+      }
+      if (prevActiveId && (!activeInfo || prevActiveId !== activeInfo.tabId)) {
+        updateTabTime(prevActiveId, now)
       }
     }
 

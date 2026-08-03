@@ -1,18 +1,22 @@
 const { settingsStore } = require('../store/settings-store.js')
 
-function getTabHoverTitle(tab) {
+function getTabHoverTitle(tab, isActive) {
   let title = tab.title || ''
   const record = tab.vivExtData && typeof tab.vivExtData === 'object' && tab.vivExtData['svbTree']
   if (record && record.createdAt) {
-    const ageMs = Date.now() - Number(record.createdAt)
-    const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24))
-    const ageHours = Math.floor((ageMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-    const ageMinutes = Math.floor((ageMs % (1000 * 60 * 60)) / (1000 * 60))
-    title += '\n\nOpened: '
-    if (ageDays > 0) title += `${ageDays}d `
-    if (ageHours > 0) title += `${ageHours}h `
-    if (ageDays === 0 && ageHours === 0) title += `${ageMinutes}m `
-    title += 'ago'
+    if (isActive) {
+      title += '\n\nOpened: Just now (Active)'
+    } else {
+      const ageMs = Date.now() - Number(record.createdAt)
+      const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24))
+      const ageHours = Math.floor((ageMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+      const ageMinutes = Math.floor((ageMs % (1000 * 60 * 60)) / (1000 * 60))
+      title += '\n\nOpened: '
+      if (ageDays > 0) title += `${ageDays}d `
+      if (ageHours > 0) title += `${ageHours}h `
+      if (ageDays === 0 && ageHours === 0) title += `${ageMinutes}m `
+      title += 'ago'
+    }
   }
   return title
 }
@@ -549,7 +553,7 @@ function renderTab(tab, compact, canClose, item, editing, visualState) {
   const baseTitleAttr = ` data-base-title="${escapeHtml(tab.title || '')}"`
 
   return `
-    <button class="${tabClass}${coloredClass}${rowVisualState.isActive ? ' is-active' : ''}" data-role="activate-tab" data-tab-id="${tab.id}" data-visible-index="${visibleIndex}" data-depth="${depth}" data-parent-id="${parentId}" data-subtree-size="${subtreeSize}" data-ancestor-ids="${escapeHtml(ancestorIds)}" data-drop-position="${dropPosition}" data-parent="${hasChildren}" data-folded="${isCollapsed}" title="${escapeHtml(getTabHoverTitle(tab))}"${createdAtAttr}${baseTitleAttr}${visualStyle ? ` style="${visualStyle}"` : ''}>
+    <button class="${tabClass}${coloredClass}${rowVisualState.isActive ? ' is-active' : ''}" data-role="activate-tab" data-tab-id="${tab.id}" data-visible-index="${visibleIndex}" data-depth="${depth}" data-parent-id="${parentId}" data-subtree-size="${subtreeSize}" data-ancestor-ids="${escapeHtml(ancestorIds)}" data-drop-position="${dropPosition}" data-parent="${hasChildren}" data-folded="${isCollapsed}" title="${escapeHtml(getTabHoverTitle(tab, rowVisualState.isActive))}"${createdAtAttr}${baseTitleAttr}${visualStyle ? ` style="${visualStyle}"` : ''}>
       <span class="svb-tab__outer" style="--svb-depth:${depth};--svb-visible-branch-size:${visibleBranchSize}">
         ${compact ? '' : renderTreeGuides(item)}
         <span class="svb-tab__body">
@@ -1186,7 +1190,7 @@ function createSidebarRenderer(options) {
     node.setAttribute('data-drop-position', dropPosition)
     node.setAttribute('data-parent', hasChildren ? 'true' : 'false')
     node.setAttribute('data-folded', isCollapsed ? 'true' : 'false')
-    node.setAttribute('title', getTabHoverTitle(tab))
+    node.setAttribute('title', getTabHoverTitle(tab, rowVisualState.isActive))
     node.setAttribute('data-base-title', tab.title || '')
     const record = tab.vivExtData && typeof tab.vivExtData === 'object' && tab.vivExtData['svbTree']
     if (record && record.createdAt) {
@@ -1913,18 +1917,23 @@ function createSidebarRenderer(options) {
       const createdAt = Number(tabNode.getAttribute('data-created-at'))
       if (createdAt) {
         const baseTitle = tabNode.getAttribute('data-base-title') || ''
-        const now = Date.now()
         let title = baseTitle
-        const ageMs = now - createdAt
-        const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24))
-        const ageHours = Math.floor((ageMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-        const ageMinutes = Math.floor((ageMs % (1000 * 60 * 60)) / (1000 * 60))
         
-        title += '\n\nOpened: '
-        if (ageDays > 0) title += `${ageDays}d `
-        if (ageHours > 0) title += `${ageHours}h `
-        if (ageDays === 0 && ageHours === 0) title += `${ageMinutes}m `
-        title += 'ago'
+        if (tabNode.classList.contains('is-active')) {
+          title += '\n\nOpened: Just now (Active)'
+        } else {
+          const now = Date.now()
+          const ageMs = now - createdAt
+          const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24))
+          const ageHours = Math.floor((ageMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+          const ageMinutes = Math.floor((ageMs % (1000 * 60 * 60)) / (1000 * 60))
+          
+          title += '\n\nOpened: '
+          if (ageDays > 0) title += `${ageDays}d `
+          if (ageHours > 0) title += `${ageHours}h `
+          if (ageDays === 0 && ageHours === 0) title += `${ageMinutes}m `
+          title += 'ago'
+        }
         
         tabNode.setAttribute('title', title)
       }
