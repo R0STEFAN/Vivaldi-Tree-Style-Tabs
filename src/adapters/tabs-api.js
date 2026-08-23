@@ -516,25 +516,25 @@ function createTabsApi() {
     async moveTabsToNewWindow(tabIds) {
       const ids = Array.isArray(tabIds) ? tabIds.filter(Number.isFinite) : []
       if (ids.length === 0) return null
+      if (!windowsApi || typeof windowsApi.create !== 'function') return null
 
-      if (windowsApi && typeof windowsApi.create === 'function') {
-        try {
-          // 1. Create new window with the first tab
-          const newWindow = await promisifyChromeApi(windowsApi.create, { tabId: ids[0] })
-          if (!newWindow || !newWindow.id) {
-             throw new Error('Failed to create new window')
-          }
-          
-          // 2. Wait a bit for the new window to be ready
-          await new Promise(resolve => setTimeout(resolve, 300))
+      // Get tab info for potential URL fallback
+      let tabObjects = []
+      try {
+        tabObjects = await Promise.all(ids.map(id => promisifyChromeApi(tabsApi.get, id)))
+      } catch (_e) {
+        tabObjects = []
+      }
 
-          // 3. Move remaining tabs one by one with a small delay between each
+      // First attempt: native Chromium move with tabId
+      try {
+        const newWindow = await promisifyChromeApi(windowsApi.create, { tabId: ids[0] })
+        if (newWindow && newWindow.id) {
           if (ids.length > 1) {
-            const children = ids.slice(1)
-            for (const childId of children) {
+            await new Promise(resolve => setTimeout(resolve, 200))
+            for (const childId of ids.slice(1)) {
               try {
-                // We use a small delay to prevent Vivaldi from dropping moves
-                await new Promise(resolve => setTimeout(resolve, 150))
+                await new Promise(resolve => setTimeout(resolve, 100))
                 await promisifyChromeApi(tabsApi.move, childId, {
                   windowId: newWindow.id,
                   index: -1
@@ -544,9 +544,39 @@ function createTabsApi() {
               }
             }
           }
-          return { native: false, windowId: newWindow.id }
-        } catch (error) {
-          console.error('[svb] move to new window failed', error)
+          return { windowId: newWindow.id }
+        }
+      } catch (directMoveError) {
+        console.warn('[svb] windows.create with tabId failed, falling back to URL creation:', directMoveError)
+      }
+
+      // Fallback: create new window with URL and close original tabs
+      if (tabObjects.length > 0 && tabObjects[0] && tabObjects[0].url) {
+        try {
+          const firstTab = tabObjects[0]
+          const createProps = { url: firstTab.url }
+          const newWindow = await promisifyChromeApi(windowsApi.create, createProps)
+          if (newWindow && newWindow.id) {
+            if (tabObjects.length > 1) {
+              await new Promise(resolve => setTimeout(resolve, 200))
+              for (const childTab of tabObjects.slice(1)) {
+                try {
+                  await promisifyChromeApi(tabsApi.create, {
+                    windowId: newWindow.id,
+                    url: childTab.url,
+                    vivExtData: serializeVivExtData(childTab.vivExtData),
+                  })
+                } catch (createErr) {
+                  console.error('[svb] fallback child tab creation failed', createErr)
+                }
+              }
+            }
+            // Close original tabs in the source window
+            await promisifyChromeApi(tabsApi.remove, ids).catch(() => {})
+            return { windowId: newWindow.id }
+          }
+        } catch (fallbackError) {
+          console.error('[svb] fallback new window creation failed', fallbackError)
         }
       }
 

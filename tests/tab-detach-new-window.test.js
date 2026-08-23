@@ -1,6 +1,7 @@
 const { describe, it } = require('node:test')
 const assert = require('node:assert')
 const { createTabStore } = require('../src/store/tab-store.js')
+const { createTabsApi } = require('../src/adapters/tabs-api.js')
 
 describe('tab detach & new window workspace reconciliation', () => {
   it('recovers orphaned tabs in new window when opened outside workspaces', async () => {
@@ -55,7 +56,7 @@ describe('tab detach & new window workspace reconciliation', () => {
     store.dispose()
   })
 
-  it('strips workspaceId when moveSelectionToNewWindow is called', async () => {
+  it('preserves source workspace state during moveSelectionToNewWindow without context poisoning', async () => {
     const mockTabs = [
       {
         id: 205,
@@ -71,7 +72,7 @@ describe('tab detach & new window workspace reconciliation', () => {
       }
     ]
 
-    let updatedPayloads = []
+    let movedIds = []
     const noopUnsub = () => () => {}
     const mockApi = {
       getCurrentWindowId: async () => 1,
@@ -79,11 +80,10 @@ describe('tab detach & new window workspace reconciliation', () => {
       getActiveWorkspaceId: () => 888,
       getWorkspaces: async () => [{ id: 888, name: 'Dev' }],
       updateTab: async () => {},
-      updateVivExtData: async (tabId, data) => {
-        updatedPayloads.push({ tabId, data })
-      },
+      updateVivExtData: async () => {},
       moveTabsToNewWindow: async (ids) => {
-        return { native: true }
+        movedIds = ids
+        return { windowId: 2 }
       },
       onCreated: noopUnsub,
       onUpdated: noopUnsub,
@@ -99,13 +99,69 @@ describe('tab detach & new window workspace reconciliation', () => {
     const store = createTabStore(mockApi)
     await store.init()
 
-    updatedPayloads = [] // Reset after init
     await store.moveSelectionToNewWindow(205, [205])
 
-    const vivExtUpdate = updatedPayloads.find(p => p.tabId === 205)
-    assert.ok(vivExtUpdate, 'updateVivExtData should have been called')
-    assert.strictEqual(vivExtUpdate.data.workspaceId, undefined, 'workspaceId must be stripped for new window')
+    assert.deepStrictEqual(movedIds, [205])
+    const state = store.getState()
+    assert.strictEqual(state.activeWorkspaceId, 888)
+    assert.strictEqual(state.tabs.length, 1)
 
     store.dispose()
+  })
+
+  it('tabsApi falls back to URL window creation when tabId move fails', async () => {
+    const createdWindows = []
+    const removedTabs = []
+
+    const mockWindowsApi = {
+      create: (props, cb) => {
+        if (props.tabId) {
+          // Simulate Vivaldi blocking move across workspace/window
+          const err = new Error('tabId move unsupported')
+          chrome.runtime.lastError = err
+          cb(null)
+          chrome.runtime.lastError = null
+          return
+        }
+        const win = { id: 77, ...props }
+        createdWindows.push(win)
+        cb(win)
+      }
+    }
+
+    const mockTabsApi = {
+      get: (id, cb) => {
+        cb({ id, url: 'https://vivaldi.com', vivExtData: '{}' })
+      },
+      create: (props, cb) => {
+        cb({ id: 999, ...props })
+      },
+      remove: (ids, cb) => {
+        removedTabs.push(...(Array.isArray(ids) ? ids : [ids]))
+        cb()
+      },
+      move: (id, props, cb) => {
+        cb({ id, ...props })
+      }
+    }
+
+    const globalChrome = {
+      runtime: { lastError: null },
+      windows: mockWindowsApi,
+      tabs: mockTabsApi,
+    }
+    global.chrome = globalChrome
+
+    const api = createTabsApi({
+      tabsApi: mockTabsApi,
+      windowsApi: mockWindowsApi,
+    })
+
+    const result = await api.moveTabsToNewWindow([101])
+    assert.ok(result)
+    assert.strictEqual(result.windowId, 77)
+    assert.strictEqual(createdWindows.length, 1)
+    assert.strictEqual(createdWindows[0].url, 'https://vivaldi.com')
+    assert.deepStrictEqual(removedTabs, [101])
   })
 })
