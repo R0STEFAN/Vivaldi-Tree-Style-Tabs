@@ -109,21 +109,14 @@ describe('tab detach & new window workspace reconciliation', () => {
     store.dispose()
   })
 
-  it('tabsApi falls back to URL window creation when tabId move fails', async () => {
+  it('tabsApi moves live tab to new window preserving tab instance', async () => {
     const createdWindows = []
-    const removedTabs = []
+    const movedTabs = []
+    const updatedTabs = []
 
     const mockWindowsApi = {
       create: (props, cb) => {
-        if (props.tabId) {
-          // Simulate Vivaldi blocking move across workspace/window
-          const err = new Error('tabId move unsupported')
-          chrome.runtime.lastError = err
-          cb(null)
-          chrome.runtime.lastError = null
-          return
-        }
-        const win = { id: 77, ...props }
+        const win = { id: 88, ...props }
         createdWindows.push(win)
         cb(win)
       }
@@ -131,17 +124,25 @@ describe('tab detach & new window workspace reconciliation', () => {
 
     const mockTabsApi = {
       get: (id, cb) => {
-        cb({ id, url: 'https://vivaldi.com', vivExtData: '{}' })
+        cb({ id, url: 'https://youtube.com/watch?v=123', vivExtData: '{"workspaceId":555}' })
       },
-      create: (props, cb) => {
-        cb({ id: 999, ...props })
+      update: (id, props, cb) => {
+        updatedTabs.push({ id, ...props })
+        cb && cb({ id, ...props })
       },
-      remove: (ids, cb) => {
-        removedTabs.push(...(Array.isArray(ids) ? ids : [ids]))
-        cb()
+      query: (props, cb) => {
+        // Return moved tab and a dummy startpage tab
+        cb([
+          { id: 101, windowId: 88 },
+          { id: 999, windowId: 88, url: 'chrome://newtab' }
+        ])
       },
       move: (id, props, cb) => {
+        movedTabs.push({ id, ...props })
         cb({ id, ...props })
+      },
+      remove: (ids, cb) => {
+        cb && cb()
       }
     }
 
@@ -159,9 +160,13 @@ describe('tab detach & new window workspace reconciliation', () => {
 
     const result = await api.moveTabsToNewWindow([101])
     assert.ok(result)
-    assert.strictEqual(result.windowId, 77)
-    assert.strictEqual(createdWindows.length, 1)
-    assert.strictEqual(createdWindows[0].url, 'https://vivaldi.com')
-    assert.deepStrictEqual(removedTabs, [101])
+    assert.strictEqual(result.windowId, 88)
+    assert.strictEqual(movedTabs.length, 1)
+    assert.strictEqual(movedTabs[0].id, 101)
+    assert.strictEqual(movedTabs[0].windowId, 88)
+    // Verify workspaceId was cleaned from vivExtData
+    const vivExtUpdate = updatedTabs.find(u => u.vivExtData)
+    assert.ok(vivExtUpdate)
+    assert.strictEqual(JSON.parse(vivExtUpdate.vivExtData).workspaceId, undefined)
   })
 })
