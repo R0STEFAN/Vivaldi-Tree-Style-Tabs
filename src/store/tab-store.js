@@ -806,9 +806,27 @@ function createTabStore(api) {
     }
 
     const activeTab = derivedContext.activeTab
-    const visibleTabs = !shouldPreserveContext && Array.isArray(derivedContext.visibleTabs)
+    let visibleTabs = !shouldPreserveContext && Array.isArray(derivedContext.visibleTabs)
       ? derivedContext.visibleTabs
       : getVisibleTabsForContext(allTabs, nextContext)
+
+    // Auto-adopt orphaned tabs in a window when all tabs would otherwise be hidden due to stale workspace IDs
+    if (allTabs.length > 0 && visibleTabs.length === 0) {
+      const activeTab = allTabs.find(t => t.active) || allTabs[0]
+      if (activeTab && activeTab.workspaceId != null && nextContext.outsideWorkspace) {
+        for (const tab of allTabs) {
+          tab.workspaceId = null
+          if (tab.vivExtData && typeof tab.vivExtData === 'object') {
+            const nextVivExt = { ...tab.vivExtData }
+            delete nextVivExt.workspaceId
+            tab.vivExtData = nextVivExt
+            api.updateVivExtData(tab.id, nextVivExt).catch(() => {})
+          }
+        }
+        visibleTabs = allTabs
+      }
+    }
+
     const pinnedTabs = visibleTabs.filter(tab => tab.pinned)
     const tabs = stabilizeTabsByPanelOrder(
       visibleTabs.filter(tab => !tab.pinned),
@@ -1042,7 +1060,29 @@ function createTabStore(api) {
         nativeReconcile.isOwnMove(tabId)
         refreshPreservingContext(tabId, moveInfo)
       }),
-      api.onAttached(refreshPreservingContext),
+      api.onAttached(async (tabId) => {
+        try {
+          const allTabs = await api.getTabs(state.windowId)
+          const attachedTab = allTabs.find(t => t.id === tabId)
+          if (attachedTab) {
+            const targetWorkspaceId = state.activeWorkspaceId
+            if (attachedTab.workspaceId !== targetWorkspaceId) {
+              attachedTab.workspaceId = targetWorkspaceId
+              const nextVivExt = { ...(attachedTab.vivExtData || {}) }
+              if (targetWorkspaceId == null) {
+                delete nextVivExt.workspaceId
+              } else {
+                nextVivExt.workspaceId = targetWorkspaceId
+              }
+              attachedTab.vivExtData = nextVivExt
+              await api.updateVivExtData(tabId, nextVivExt).catch(() => {})
+            }
+          }
+        } catch (e) {
+          console.warn('[svb] onAttached workspace sync failed', e)
+        }
+        refreshPreservingContext(tabId)
+      }),
       api.onDetached(refreshPreservingContext),
       api.onActivated(refreshFromActiveTab),
       api.onWorkspacesChanged ? api.onWorkspacesChanged(() => {
@@ -1053,6 +1093,9 @@ function createTabStore(api) {
   }
 
   return {
+    getState() {
+      return state
+    },
     subscribe(listener) {
       listeners.add(listener)
       listener(state)
@@ -1390,7 +1433,7 @@ function createTabStore(api) {
             ? (parentNodeId == null ? moveRecord.rootIndex : moveRecord.siblingIndex)
             : (previousTreeData && Number.isFinite(Number(previousTreeData.order)) ? Number(previousTreeData.order) : 0)
 
-          return {
+          const nextData = {
             ...previousData,
             [TREE_NAMESPACE_KEY]: {
               ...(previousTreeData || {}),
@@ -1402,6 +1445,8 @@ function createTabStore(api) {
               order,
             },
           }
+          delete nextData.workspaceId
+          return nextData
         })
 
         // Delay to allow Vivaldi 8 to settle metadata updates

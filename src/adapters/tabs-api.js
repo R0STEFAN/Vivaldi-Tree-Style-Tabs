@@ -517,15 +517,6 @@ function createTabsApi() {
       const ids = Array.isArray(tabIds) ? tabIds.filter(Number.isFinite) : []
       if (ids.length === 0) return null
 
-      if (vivaldiBridge && typeof vivaldiBridge.detachTabsToNewWindow === 'function') {
-        try {
-          const detached = await vivaldiBridge.detachTabsToNewWindow(ids)
-          if (detached) return { native: true }
-        } catch (e) {
-        }
-      }
-
-      // Fallback for Vivaldi 8+ or if bridge fails
       if (windowsApi && typeof windowsApi.create === 'function') {
         try {
           // 1. Create new window with the first tab
@@ -555,11 +546,10 @@ function createTabsApi() {
           }
           return { native: false, windowId: newWindow.id }
         } catch (error) {
-          console.error('[svb] fallback move to new window failed', error)
+          console.error('[svb] move to new window failed', error)
         }
       }
 
-      console.warn('[svb] native Vivaldi detachPage is unavailable; move to new window skipped')
       return null
     },
 
