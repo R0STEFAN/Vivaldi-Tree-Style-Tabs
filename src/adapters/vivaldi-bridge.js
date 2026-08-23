@@ -273,6 +273,17 @@ function getVivaldiMainView() {
       return []
     },
 
+    getActiveWorkspaceId(windowId) {
+      const store = getWorkspaceStore()
+      if (!store || typeof store.getActiveWorkspaceId !== 'function') return undefined
+      try {
+        const id = store.getActiveWorkspaceId(windowId)
+        return id != null ? Number(id) : null
+      } catch (error) {
+        return undefined
+      }
+    },
+
     // Create a workspace via Vivaldi's own manager. It assigns the id, persists
     // it, and switches to the (empty) new workspace — same as native.
     createWorkspace(name = 'New Workspace') {

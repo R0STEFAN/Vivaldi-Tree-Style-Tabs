@@ -518,7 +518,7 @@ function createTabsApi() {
       if (ids.length === 0) return null
       if (!windowsApi || typeof windowsApi.create !== 'function') return null
 
-      // Get tab info for potential URL fallback
+      // Get tab info
       let tabObjects = []
       try {
         tabObjects = await Promise.all(ids.map(id => promisifyChromeApi(tabsApi.get, id)))
@@ -526,61 +526,44 @@ function createTabsApi() {
         tabObjects = []
       }
 
-      // First attempt: native Chromium move with tabId
+      const validTabs = tabObjects.filter(tab => tab && typeof tab.url === 'string' && tab.url)
+      if (validTabs.length === 0) return null
+
       try {
-        const newWindow = await promisifyChromeApi(windowsApi.create, { tabId: ids[0] })
-        if (newWindow && newWindow.id) {
-          if (ids.length > 1) {
-            await new Promise(resolve => setTimeout(resolve, 200))
-            for (const childId of ids.slice(1)) {
-              try {
-                await new Promise(resolve => setTimeout(resolve, 100))
-                await promisifyChromeApi(tabsApi.move, childId, {
-                  windowId: newWindow.id,
-                  index: -1
-                })
-              } catch (moveError) {
-                console.error(`[svb] failed to move child tab ${childId} to new window`, moveError)
-              }
+        const firstTab = validTabs[0]
+        const newWindow = await promisifyChromeApi(windowsApi.create, {
+          url: firstTab.url,
+          incognito: !!firstTab.incognito
+        })
+
+        if (!newWindow || !newWindow.id) {
+          throw new Error('Failed to create new window')
+        }
+
+        // Create remaining tabs if multiple
+        if (validTabs.length > 1) {
+          await new Promise(resolve => setTimeout(resolve, 200))
+          for (const childTab of validTabs.slice(1)) {
+            try {
+              await promisifyChromeApi(tabsApi.create, {
+                windowId: newWindow.id,
+                url: childTab.url,
+                vivExtData: serializeVivExtData(childTab.vivExtData),
+              })
+            } catch (err) {
+              console.error('[svb] failed to create child tab in new window', err)
             }
           }
-          return { windowId: newWindow.id }
         }
-      } catch (directMoveError) {
-        console.warn('[svb] windows.create with tabId failed, falling back to URL creation:', directMoveError)
-      }
 
-      // Fallback: create new window with URL and close original tabs
-      if (tabObjects.length > 0 && tabObjects[0] && tabObjects[0].url) {
-        try {
-          const firstTab = tabObjects[0]
-          const createProps = { url: firstTab.url }
-          const newWindow = await promisifyChromeApi(windowsApi.create, createProps)
-          if (newWindow && newWindow.id) {
-            if (tabObjects.length > 1) {
-              await new Promise(resolve => setTimeout(resolve, 200))
-              for (const childTab of tabObjects.slice(1)) {
-                try {
-                  await promisifyChromeApi(tabsApi.create, {
-                    windowId: newWindow.id,
-                    url: childTab.url,
-                    vivExtData: serializeVivExtData(childTab.vivExtData),
-                  })
-                } catch (createErr) {
-                  console.error('[svb] fallback child tab creation failed', createErr)
-                }
-              }
-            }
-            // Close original tabs in the source window
-            await promisifyChromeApi(tabsApi.remove, ids).catch(() => {})
-            return { windowId: newWindow.id }
-          }
-        } catch (fallbackError) {
-          console.error('[svb] fallback new window creation failed', fallbackError)
-        }
-      }
+        // Close original tabs in the old window
+        await promisifyChromeApi(tabsApi.remove, ids).catch(() => {})
 
-      return null
+        return { windowId: newWindow.id }
+      } catch (error) {
+        console.error('[svb] moveTabsToNewWindow failed', error)
+        return null
+      }
     },
 
     async updateVivExtData(tabId, vivExtData) {
