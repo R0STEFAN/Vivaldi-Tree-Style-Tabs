@@ -677,24 +677,38 @@ function createTabStore(api) {
       nodeIdByTabId.set(tabId, typeof record?.nodeId === 'string' && record.nodeId ? record.nodeId : createTreeNodeId())
     }
 
+    const isTopMode = settingsStore.get('newTabPlacement') === 'top'
     let targetRootStartOrder = 0
     try {
       const allTabs = await api.getTabs(state.windowId)
-      const targetRootOrders = allTabs
-        .filter(tab => !movedIdSet.has(tab.id) && tab.workspaceId === workspaceId)
-        .map(tab => {
-          const record = tab
-            && tab.vivExtData
-            && tab.vivExtData[TREE_NAMESPACE_KEY]
-            && typeof tab.vivExtData[TREE_NAMESPACE_KEY] === 'object'
-            ? tab.vivExtData[TREE_NAMESPACE_KEY]
-            : null
-          return record && record.contextKey === targetContextKey && record.parentNodeId == null
-            ? Number(record.order)
-            : null
-        })
-        .filter(Number.isFinite)
-      targetRootStartOrder = targetRootOrders.length ? Math.max(...targetRootOrders) + 1 : allTabs.filter(tab => tab.workspaceId === workspaceId).length
+      const targetTabsInWorkspace = allTabs.filter(tab => !movedIdSet.has(tab.id) && tab.workspaceId === workspaceId)
+      const targetRootRecords = targetTabsInWorkspace.map(tab => {
+        const record = tab
+          && tab.vivExtData
+          && tab.vivExtData[TREE_NAMESPACE_KEY]
+          && typeof tab.vivExtData[TREE_NAMESPACE_KEY] === 'object'
+          ? tab.vivExtData[TREE_NAMESPACE_KEY]
+          : null
+        const isPinnedFolder = !!(tab.vivExtData && tab.vivExtData.pinnedFolder)
+        const order = record && record.contextKey === targetContextKey && record.parentNodeId == null && Number.isFinite(Number(record.order))
+          ? Number(record.order)
+          : null
+        return { order, isPinnedFolder }
+      })
+
+      const rootOrders = targetRootRecords.map(r => r.order).filter(Number.isFinite)
+
+      if (isTopMode) {
+        const regularOrders = targetRootRecords.filter(r => !r.isPinnedFolder && r.order != null).map(r => r.order)
+        if (regularOrders.length > 0) {
+          targetRootStartOrder = Math.min(...regularOrders) - targetIds.length
+        } else {
+          const pinnedOrders = targetRootRecords.filter(r => r.isPinnedFolder && r.order != null).map(r => r.order)
+          targetRootStartOrder = pinnedOrders.length > 0 ? Math.max(...pinnedOrders) + 1 : 0
+        }
+      } else {
+        targetRootStartOrder = rootOrders.length ? Math.max(...rootOrders) + 1 : targetTabsInWorkspace.length
+      }
     } catch (error) {
       console.warn('[svb] cannot inspect target workspace order', error)
     }
