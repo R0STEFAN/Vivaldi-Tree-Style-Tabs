@@ -119,6 +119,14 @@ function buildOrderedStructure(options) {
   preferredRootIds.forEach((id, index) => preferredRootMap.set(id, index))
 
   rootIds.sort((leftId, rightId) => {
+    const leftTab = tabsById.get(leftId)
+    const rightTab = tabsById.get(rightId)
+    const leftPinned = !!(leftTab && leftTab.vivExtData && leftTab.vivExtData.pinnedFolder)
+    const rightPinned = !!(rightTab && rightTab.vivExtData && rightTab.vivExtData.pinnedFolder)
+    if (leftPinned !== rightPinned) {
+      return leftPinned ? -1 : 1
+    }
+
     const leftPreferredIndex = preferredRootMap.has(leftId) ? preferredRootMap.get(leftId) : -1
     const rightPreferredIndex = preferredRootMap.has(rightId) ? preferredRootMap.get(rightId) : -1
     if (leftPreferredIndex !== -1 || rightPreferredIndex !== -1) {
@@ -127,8 +135,6 @@ function buildOrderedStructure(options) {
       return leftPreferredIndex - rightPreferredIndex
     }
 
-    const leftTab = tabsById.get(leftId)
-    const rightTab = tabsById.get(rightId)
     return (leftTab ? leftTab.index : 0) - (rightTab ? rightTab.index : 0)
   })
 

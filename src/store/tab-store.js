@@ -1085,6 +1085,9 @@ function createTabStore(api) {
       })
       // Check every hour
       this._autoCloseTimer = setInterval(() => this.runAutoCloseJob(), 3600 * 1000)
+      if (this._autoCloseTimer && typeof this._autoCloseTimer.unref === 'function') {
+        this._autoCloseTimer.unref()
+      }
     },
 
     async repairMissingCreatedAt() {
@@ -1119,9 +1122,23 @@ function createTabStore(api) {
       const treeState = treeController.getState()
       const rootIds = treeState ? treeState.rootIds : []
 
+      function isTabOrAncestorPinnedFolder(tabId) {
+        let currentId = tabId
+        const visited = new Set()
+        while (currentId != null && !visited.has(currentId)) {
+          visited.add(currentId)
+          const tab = getTabById(currentId)
+          if (tab && tab.vivExtData && typeof tab.vivExtData === 'object' && tab.vivExtData.pinnedFolder) {
+            return true
+          }
+          currentId = treeController.getParentId(currentId)
+        }
+        return false
+      }
+
       for (const rootId of rootIds) {
         const tab = state.tabs.find(t => t.id === rootId) || state.pinnedTabs.find(t => t.id === rootId)
-        if (!tab || tab.pinned) continue
+        if (!tab || tab.pinned || isTabOrAncestorPinnedFolder(rootId)) continue
 
         const record = tab.vivExtData && typeof tab.vivExtData === 'object' && tab.vivExtData['svbTree']
         if (record && record.createdAt) {
@@ -1129,7 +1146,8 @@ function createTabStore(api) {
           if (age > thresholdMs) {
             const isFolder = tab.vivExtData.isFolder
             const closeIds = isFolder ? treeController.getSubtreeTargetIds(rootId) : treeController.getCloseTargetIds(rootId)
-            expandedTargetIds.push(...(closeIds.length ? closeIds : [rootId]))
+            const safeCloseIds = closeIds.filter(id => !isTabOrAncestorPinnedFolder(id))
+            expandedTargetIds.push(...(safeCloseIds.length ? safeCloseIds : [rootId]))
           }
         }
       }

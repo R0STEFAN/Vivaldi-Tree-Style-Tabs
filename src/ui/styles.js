@@ -470,18 +470,15 @@ body.svb-is-resizing {
   padding-bottom: 2px;
 }
 
-#svb-root .svb-section__label {
-  margin: 0 6px 4px;
-  font-size: 10px;
-  color: var(--svb-text-muted);
-  text-transform: uppercase;
+#svb-root .svb-section--pinned {
+  margin-bottom: 6px;
 }
 
 #svb-root .svb-pinned-grid {
   display: flex;
   flex-wrap: wrap;
   gap: var(--svb-gap);
-  padding: 0 2px 11px;
+  padding: 4px 2px 8px;
   position: relative;
 }
 
@@ -490,7 +487,7 @@ body.svb-is-resizing {
   position: absolute;
   left: 8px;
   right: 8px;
-  bottom: 4px;
+  bottom: 0;
   height: 1px;
   opacity: 0.22;
   background-image: linear-gradient(90deg, transparent, color-mix(in srgb, var(--svb-text) 70%, transparent) 10%, color-mix(in srgb, var(--svb-text) 70%, transparent) 90%, transparent);
@@ -510,7 +507,7 @@ body.svb-is-resizing {
   position: sticky;
   top: 0;
   z-index: 10;
-  background-color: var(--colorBg, var(--svb-bg, #232629));
+  background-color: var(--svb-bg);
   border-bottom: 1px solid color-mix(in srgb, var(--svb-text) 15%, transparent);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
   border-bottom-left-radius: var(--svb-radius, 4px);
@@ -719,6 +716,33 @@ body.svb-is-resizing {
   width: 16px;
   height: 16px;
   border-radius: 3px;
+}
+
+#svb-root .svb-tab__favicon.is-folder {
+  position: relative;
+}
+
+#svb-root .svb-tab__pinned-badge {
+  position: absolute;
+  top: -3px;
+  left: -4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--svb-bg, #232629);
+  color: var(--svb-accent, #47cfff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  z-index: 2;
+  pointer-events: none;
+}
+
+#svb-root .svb-tab__pinned-badge .svb-small-pin-icon {
+  width: 8px;
+  height: 8px;
+  display: block;
 }
 
 #svb-root .svb-tab__spinner {
@@ -982,9 +1006,17 @@ body.svb-is-resizing {
   display: block;
 }
 
-#svb-root .svb-frame.has-scroll .svb-new-tab-button.is-inline,
-#svb-root .svb-frame.has-scroll .svb-new-item-buttons.is-inline {
+#svb-root .svb-frame.is-top-mode .svb-footer {
+  display: none !important;
+}
+
+#svb-root .svb-frame.has-scroll:not(.is-top-mode) .svb-new-tab-button.is-inline,
+#svb-root .svb-frame.has-scroll:not(.is-top-mode) .svb-new-item-buttons.is-inline {
   display: none;
+}
+
+#svb-root .svb-frame.is-top-mode.has-scroll .svb-new-item-buttons.is-inline.is-top {
+  display: flex !important;
 }
 
 #svb-root .svb-new-item-buttons {
@@ -995,6 +1027,16 @@ body.svb-is-resizing {
 
 #svb-root .svb-new-item-buttons.is-inline {
   margin: 4px 2px 2px;
+}
+
+#svb-root .svb-new-item-buttons.is-inline.is-top {
+  position: sticky;
+  top: 0;
+  z-index: 9;
+  background-color: var(--svb-bg);
+  padding-top: 2px;
+  padding-bottom: 2px;
+  margin: 0 2px 4px;
 }
 
 #svb-root .svb-new-tab-button,
@@ -1276,7 +1318,7 @@ body.svb-is-resizing {
 }
 
 #svb-root .svb-settings-header {
-  padding: 12px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--svb-border);
 }
 
@@ -1284,41 +1326,42 @@ body.svb-is-resizing {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 0;
+  padding: 2px 0;
   border: 0;
   background: transparent;
   color: var(--svb-accent);
   cursor: pointer;
   font: inherit;
+  font-size: 12px;
   font-weight: 500;
 }
 
 #svb-root .svb-settings-back .svb-menu__icon {
   transform: rotate(180deg);
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
 }
 
 #svb-root .svb-settings-title {
-  margin: 12px 0 0;
-  font-size: 18px;
+  margin: 6px 0 0;
+  font-size: 15px;
   font-weight: 600;
   color: var(--svb-text-strong);
 }
 
 #svb-root .svb-settings-content {
-  padding: 16px 12px;
+  padding: 8px 10px;
   overflow: auto;
 }
 
 #svb-root .svb-settings-group {
-  margin-bottom: 24px;
+  margin-bottom: 12px;
 }
 
 #svb-root .svb-settings-label {
   display: block;
-  margin-bottom: 10px;
-  font-size: 13px;
+  margin-bottom: 4px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--svb-text-strong);
 }
@@ -1326,14 +1369,15 @@ body.svb-is-resizing {
 #svb-root .svb-settings-options {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 3px;
 }
 
 #svb-root .svb-settings-option {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
+  gap: 8px;
+  padding: 4px 8px;
+  min-height: 26px;
   border: 1px solid var(--svb-border);
   border-radius: var(--svb-radius);
   background: var(--svb-panel);
@@ -1351,7 +1395,7 @@ body.svb-is-resizing {
 }
 
 #svb-root .svb-settings-option span {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--svb-text);
 }
 `

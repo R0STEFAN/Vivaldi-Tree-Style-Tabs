@@ -327,8 +327,14 @@ function syncTabLeadIcon(lead, tab) {
     const folderColor = actualColorKey && TAB_COLOR_SWATCHES[actualColorKey]
       ? TAB_COLOR_SWATCHES[actualColorKey]
       : 'currentColor'
+    const isPinnedFolder = !!tab.vivExtData.pinnedFolder
+    const pinBadge = isPinnedFolder
+      ? `<span class="svb-tab__pinned-badge" title="Pinned Folder"><svg class="svb-small-pin-icon" viewBox="0 0 16 16" width="9" height="9" fill="currentColor"><path d="M4.5 1.5a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1H10v3.25l1.854 2.78a.5.5 0 0 1-.416.72h-2.938v5.25a.5.5 0 0 1-1 0V8.75H4.562a.5.5 0 0 1-.416-.72L6 5.25V2h-1a.5.5 0 0 1-.5-.5z"/></svg></span>`
+      : ''
 
-    if (current && current.matches('.svb-tab__favicon.is-folder')) {
+    const hasBadge = !!(current && current.querySelector('.svb-tab__pinned-badge'))
+
+    if (current && current.matches('.svb-tab__favicon.is-folder') && hasBadge === isPinnedFolder) {
       current.style.color = folderColor
       return current
     }
@@ -338,6 +344,7 @@ function syncTabLeadIcon(lead, tab) {
         <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
           <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
         </svg>
+        ${pinBadge}
       </span>
     `)
     if (current) current.replaceWith(folderIcon)
@@ -503,11 +510,16 @@ function renderTab(tab, compact, canClose, item, editing, visualState) {
     const folderColor = actualColorKey && TAB_COLOR_SWATCHES[actualColorKey]
       ? TAB_COLOR_SWATCHES[actualColorKey]
       : 'currentColor'
+    const isPinnedFolder = !!tab.vivExtData.pinnedFolder
+    const pinBadge = isPinnedFolder
+      ? `<span class="svb-tab__pinned-badge" title="Pinned Folder"><svg class="svb-small-pin-icon" viewBox="0 0 16 16" width="9" height="9" fill="currentColor"><path d="M4.5 1.5a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1H10v3.25l1.854 2.78a.5.5 0 0 1-.416.72h-2.938v5.25a.5.5 0 0 1-1 0V8.75H4.562a.5.5 0 0 1-.416-.72L6 5.25V2h-1a.5.5 0 0 1-.5-.5z"/></svg></span>`
+      : ''
     icon = `
       <span class="svb-tab__favicon is-folder" style="color: ${folderColor};">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
           <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
         </svg>
+        ${pinBadge}
       </span>
     `
   } else {
@@ -662,6 +674,7 @@ function createSidebarRenderer(options) {
   let previousCanCloseVisibleTabs = null
   let previousPanelPinned = null
   let previousIsSettingsOpen = false
+  let previousNewTabPlacement = null
   let previousSelectedIds = []
   let previousDraggedIds = []
   let previousDropTargetId = null
@@ -727,12 +740,10 @@ function createSidebarRenderer(options) {
 
         <div class="svb-main-view">
           <section class="svb-section svb-section--pinned">
-            <div class="svb-section__label">Pinned</div>
             <div class="svb-pinned-grid"></div>
           </section>
 
           <section class="svb-section svb-section--fill">
-            <div class="svb-section__label">Tabs</div>
             <div class="svb-tab-list"></div>
             <div class="svb-footer"></div>
           </section>
@@ -805,6 +816,19 @@ function createSidebarRenderer(options) {
                 <label class="svb-settings-option">
                   <input type="radio" name="panelPosition" value="right">
                   <span>Right side</span>
+                </label>
+              </div>
+            </div>
+            <div class="svb-settings-group">
+              <label class="svb-settings-label">New tab & folder position</label>
+              <div class="svb-settings-options">
+                <label class="svb-settings-option">
+                  <input type="radio" name="newTabPlacement" value="bottom">
+                  <span>Bottom of list</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="newTabPlacement" value="top">
+                  <span>Top of list</span>
                 </label>
               </div>
             </div>
@@ -1043,6 +1067,8 @@ function createSidebarRenderer(options) {
     currentShell.pinButton.title = state.panelPinned ? 'Unpin panel' : 'Pin panel'
     currentShell.pinButton.innerHTML = renderPinIcon(state.panelPinned)
     currentShell.settingsButton.innerHTML = renderMenuIcon('settings')
+    const isTopMode = (settingsStore.get('newTabPlacement') || 'bottom') === 'top'
+    currentShell.frame.classList.toggle('is-top-mode', isTopMode)
     currentShell.mainView.style.display = isSettingsOpen ? 'none' : 'flex'
     currentShell.settingsView.style.display = isSettingsOpen ? 'flex' : 'none'
 
@@ -2016,8 +2042,21 @@ function createSidebarRenderer(options) {
       const listRect = list.getBoundingClientRect()
       const activeRect = activeTab.getBoundingClientRect()
       const epsilon = 1
-      const visibleTop = listRect.top
-      const visibleBottom = listRect.bottom
+
+      let stickyTopLimit = listRect.top
+      const topButtons = list.querySelector('.svb-new-item-buttons.is-inline.is-top')
+      if (topButtons) {
+        const btnRect = topButtons.getBoundingClientRect()
+        stickyTopLimit = Math.max(stickyTopLimit, btnRect.bottom)
+      }
+      const pinnedGroups = list.querySelectorAll('.svb-pinned-folder-group')
+      for (const group of pinnedGroups) {
+        const groupRect = group.getBoundingClientRect()
+        stickyTopLimit = Math.max(stickyTopLimit, groupRect.bottom)
+      }
+
+      const visibleTop = stickyTopLimit + 2
+      const visibleBottom = listRect.bottom - 2
 
       if (activeRect.top < visibleTop - epsilon) {
         list.scrollTop += activeRect.top - visibleTop
@@ -2098,9 +2137,14 @@ function createSidebarRenderer(options) {
           currentPinnedFolderIds.add(item.id)
         }
       }
+      const currentNewTabPlacement = settingsStore.get('newTabPlacement') || 'bottom'
+      const newTabPlacementChanged = currentNewTabPlacement !== previousNewTabPlacement
+      const isSettingsOpenChanged = isSettingsOpen !== previousIsSettingsOpen
       const pinnedFolderChanged = currentPinnedFolderIds.size !== previousPinnedFolderIds.size
         || [...currentPinnedFolderIds].some(id => !previousPinnedFolderIds.has(id))
       const structureChanged = pinnedFolderChanged
+        || newTabPlacementChanged
+        || isSettingsOpenChanged
         || !areTabOrdersEqual(previousPinnedTabsSnapshot, state.pinnedTabs)
         || !isSameTreeShape(previousTreeTabsSnapshot, treeTabs)
       const contentChangedIds = structureChanged
@@ -2174,13 +2218,49 @@ function createSidebarRenderer(options) {
         syncChildren(currentShell.pinnedGrid, pinnedNodes)
         currentShell.pinnedSection.style.display = state.pinnedTabs.length ? '' : 'none'
 
-        const listNodes = empty
-          ? [currentShell.emptyMessage, currentShell.inlineNewTabButton]
-          : regularNodes.concat(currentShell.inlineNewTabButton)
+        const isTopMode = currentNewTabPlacement === 'top'
+        currentShell.inlineNewTabButton.classList.toggle('is-top', isTopMode)
+
+        let listNodes
         if (empty) {
+          listNodes = isTopMode
+            ? [currentShell.inlineNewTabButton, currentShell.emptyMessage]
+            : [currentShell.emptyMessage, currentShell.inlineNewTabButton]
           currentShell.emptyMessage.textContent = emptyMessage
+        } else if (isTopMode) {
+          let insertIndex = 0
+          for (let i = 0; i < regularNodes.length; i++) {
+            if (regularNodes[i].classList && regularNodes[i].classList.contains('svb-pinned-folder-group')) {
+              insertIndex = i + 1
+            } else {
+              break
+            }
+          }
+          listNodes = [
+            ...regularNodes.slice(0, insertIndex),
+            currentShell.inlineNewTabButton,
+            ...regularNodes.slice(insertIndex),
+          ]
+        } else {
+          listNodes = regularNodes.concat(currentShell.inlineNewTabButton)
         }
+
         syncChildren(currentShell.tabList, listNodes)
+
+        if (isTopMode) {
+          let topOffset = 0
+          for (let i = 0; i < regularNodes.length; i++) {
+            if (regularNodes[i].classList && regularNodes[i].classList.contains('svb-pinned-folder-group')) {
+              topOffset += (regularNodes[i].offsetHeight || 0)
+            } else {
+              break
+            }
+          }
+          currentShell.inlineNewTabButton.style.top = `${topOffset}px`
+        } else {
+          currentShell.inlineNewTabButton.style.top = ''
+        }
+
         updateContextMenu(currentShell, state)
 
         syncOverflowState()
@@ -2199,6 +2279,7 @@ function createSidebarRenderer(options) {
       previousCanCloseVisibleTabs = state.canCloseVisibleTabs
       previousPanelPinned = state.panelPinned
       previousIsSettingsOpen = isSettingsOpen
+      previousNewTabPlacement = currentNewTabPlacement
       previousSelectedIds = visualState.selectedIds.slice()
       previousDraggedIds = visualState.draggedIds.slice()
       previousDropTargetId = visualState.dropTargetId

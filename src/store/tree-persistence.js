@@ -314,6 +314,13 @@ function restoreFromVivExtData(contextKey, tabs) {
   }
 
   rootEntries.sort((left, right) => {
+    const leftTab = contextualTabs.find(tab => tab.id === left.tabId)
+    const rightTab = contextualTabs.find(tab => tab.id === right.tabId)
+    const leftPinned = !!(leftTab && leftTab.vivExtData && leftTab.vivExtData.pinnedFolder)
+    const rightPinned = !!(rightTab && rightTab.vivExtData && rightTab.vivExtData.pinnedFolder)
+    if (leftPinned !== rightPinned) {
+      return leftPinned ? -1 : 1
+    }
     if (left.order !== right.order) return left.order - right.order
     return left.nativeIndex - right.nativeIndex
   })

@@ -5,6 +5,7 @@ const {
   isSettingsUrl,
 } = require('./internal-page-meta.js')
 const { createVivaldiBridge } = require('./vivaldi-bridge.js')
+const { settingsStore } = require('../store/settings-store.js')
 
 function promisifyChromeApi(fn, ...args) {
   return new Promise((resolve, reject) => {
@@ -613,7 +614,9 @@ function createTabsApi() {
 
     createTab(windowId, options = {}) {
       tabsApi.query({ windowId }, async tabs => {
-        const index = Array.isArray(tabs) ? tabs.length : undefined
+        const isTopMode = settingsStore.get('newTabPlacement') === 'top'
+        const pinnedCount = Array.isArray(tabs) ? tabs.filter(t => t.pinned).length : 0
+        const index = isTopMode ? pinnedCount : (Array.isArray(tabs) ? tabs.length : undefined)
         const createProperties = {
           windowId,
           active: true,

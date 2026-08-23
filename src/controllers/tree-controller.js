@@ -434,6 +434,22 @@ function createTreeController(api) {
       }
 
       const tabsById = new Map(tabs.map(tab => [tab.id, tab]))
+
+      function getFirstUnpinnedRootIndex() {
+        const currentTreeState = treeStore.exportState()
+        const rootIds = Array.isArray(currentTreeState.rootIds) ? currentTreeState.rootIds : []
+        let index = 0
+        for (const rootId of rootIds) {
+          const tab = tabsById.get(rootId)
+          if (tab && tab.vivExtData && tab.vivExtData.pinnedFolder) {
+            index += 1
+          } else {
+            break
+          }
+        }
+        return index
+      }
+
       for (const tab of tabs) {
         if (treeStore.hasTab(tab.id)) continue
 
@@ -450,12 +466,13 @@ function createTreeController(api) {
 
         if (!expectedCreation) {
           let idx = -1
-          if (tab.url && tab.url !== 'chrome://newtab/') {
-            idx = recentlyClosedTabs.findIndex(c => c.url === tab.url)
+          if (tab.url && !isStartPageUrl(tab.url)) {
+            idx = recentlyClosedTabs.findIndex(item => item.url === tab.url)
+          }
+          if (idx === -1 && tab.title) {
+            idx = recentlyClosedTabs.findIndex(item => item.title === tab.title)
           }
           if (idx === -1 && pendingCreation.nativeIndex != null) {
-            // Fallback: if URL didn't match (e.g. hibernation temporary url), match by exact native index
-            // but only if it was closed within the last 2 seconds (safe window for hibernation)
             idx = recentlyClosedTabs.findIndex(c => c.nativeIndex === pendingCreation.nativeIndex && (Date.now() - c.timestamp < 2000))
           }
           if (idx !== -1) {
@@ -463,6 +480,11 @@ function createTreeController(api) {
             recentlyClosedTabs.splice(idx, 1)
           }
         }
+
+        const isTopMode = settingsStore.get('newTabPlacement') === 'top'
+        const firstUnpinnedRootIndex = getFirstUnpinnedRootIndex()
+        const topRootTargetIndex = firstUnpinnedRootIndex
+        const rootTargetIndex = isTopMode ? topRootTargetIndex : undefined
 
         if (matchedClosedTab) {
           parentId = matchedClosedTab.parentId
@@ -501,11 +523,11 @@ function createTreeController(api) {
             structuralDirty = moved || structuralDirty
           }
         } else if (expectedCreation && expectedCreation.kind === 'root') {
-          treeStore.moveRoot(tab.id)
+          treeStore.moveRoot(tab.id, rootTargetIndex)
           persistenceDirty = true
           structuralDirty = true
         } else if (pendingCreation.fromPinnedTab) {
-          treeStore.moveRoot(tab.id, 0)
+          treeStore.moveRoot(tab.id, topRootTargetIndex)
           persistenceDirty = true
           structuralDirty = true
         } else if (!(expectedCreation && expectedCreation.kind === 'root') && !matchedClosedTab) {
@@ -518,6 +540,11 @@ function createTreeController(api) {
             openerTabId: pendingCreation.openerTabId != null ? pendingCreation.openerTabId : tab.openerTabId,
             preferRoot: looksLikeRootStartPage,
           })
+          if (parentId == null && isTopMode) {
+            treeStore.moveRoot(tab.id, topRootTargetIndex)
+            persistenceDirty = true
+            structuralDirty = true
+          }
         }
 
         if (parentId != null) {
@@ -691,6 +718,9 @@ function createTreeController(api) {
         movedIds: moveIds,
         parentId: position === 'inside' ? targetId : treeStore.getParentId(moveIds[0]),
       }
+    },
+    getParentId(tabId) {
+      return treeStore.getParentId(tabId)
     },
     getState() {
       return treeStore.exportState()

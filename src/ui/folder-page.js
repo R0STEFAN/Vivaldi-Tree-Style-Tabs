@@ -154,7 +154,8 @@ function generateFolderPageUrl(tabState, folderTabId) {
   })
   
   const base64 = btoa(unescape(encodeURIComponent(dataStr)))
-  return new URL('svb-folder.html', location.href).href + '#svb-folder:data=' + base64
+  const baseHref = typeof location !== 'undefined' && location.href ? location.href : 'chrome-extension://dummy/'
+  return new URL('svb-folder.html', baseHref).href + '#svb-folder:data=' + base64
 }
 
 module.exports = {

@@ -6,6 +6,7 @@ const DEFAULT_SETTINGS = {
   doubleClickAction: 'rename',
   panelPosition: 'left',
   autoCloseTabsDays: 0,
+  newTabPlacement: 'bottom',
 }
 
 function createSettingsStore() {
@@ -120,4 +121,4 @@ function createSettingsStore() {
 // Global instance
 const settingsStore = createSettingsStore()
 
-module.exports = { settingsStore }
+module.exports = { settingsStore, createSettingsStore, DEFAULT_SETTINGS }
