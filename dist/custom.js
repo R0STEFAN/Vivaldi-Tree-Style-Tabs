@@ -998,9 +998,7 @@ body.svb-is-resizing {
 }
 
 #svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__close,
-#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__add,
-#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__exp,
-#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__child-count {
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__add {
   opacity: 0 !important;
   pointer-events: none !important;
 }
