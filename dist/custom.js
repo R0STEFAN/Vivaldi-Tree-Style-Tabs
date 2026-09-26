@@ -449,11 +449,33 @@ body.svb-is-resizing {
   display: flex;
   align-items: center;
   gap: 6px;
+  transition: gap var(--svb-d-norm) var(--svb-ease-out);
 }
 
-#svb-root .svb-header__left .svb-icon-button,
+#svb-root .svb-header__left .svb-icon-button {
+  width: 28px;
+  max-width: 28px;
+  min-width: 28px;
+  opacity: 1;
+  overflow: hidden;
+  transition:
+    opacity var(--svb-d-fast) ease 40ms,
+    max-width var(--svb-d-norm) var(--svb-ease-out),
+    min-width var(--svb-d-norm) var(--svb-ease-out),
+    width var(--svb-d-norm) var(--svb-ease-out);
+}
+
 #svb-root .svb-header__actions {
-  transition: opacity var(--svb-d-fast) ease;
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  max-width: 60px;
+  opacity: 1;
+  overflow: hidden;
+  transition:
+    opacity var(--svb-d-fast) ease 40ms,
+    max-width var(--svb-d-norm) var(--svb-ease-out),
+    gap var(--svb-d-norm) var(--svb-ease-out);
 }
 
 #svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-header {
@@ -469,50 +491,66 @@ body.svb-is-resizing {
 #svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-header__left {
   justify-content: center;
   width: 100%;
-  gap: 0;
+  gap: 0 !important;
 }
 
-#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-header__left .svb-icon-button,
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-header__left .svb-icon-button {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  max-width: 0 !important;
+  min-width: 0 !important;
+  width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  transition:
+    opacity var(--svb-d-swift) ease 0ms,
+    max-width var(--svb-d-swift) var(--svb-ease-out) 0ms,
+    min-width var(--svb-d-swift) var(--svb-ease-out) 0ms,
+    width var(--svb-d-swift) var(--svb-ease-out) 0ms;
+}
+
 #svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-header__actions {
   opacity: 0 !important;
   pointer-events: none !important;
-  display: none !important;
+  max-width: 0 !important;
+  min-width: 0 !important;
+  width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  gap: 0 !important;
+  transition:
+    opacity var(--svb-d-swift) ease 0ms,
+    max-width var(--svb-d-swift) var(--svb-ease-out) 0ms,
+    width var(--svb-d-swift) var(--svb-ease-out) 0ms;
 }
 
 #svb-root .svb-header__count {
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 99px;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 18px;
-  text-align: center;
-  color: var(--svb-text-muted);
-  background: color-mix(in srgb, var(--svb-text) 8%, transparent);
-  transition: all var(--svb-d-fast) ease;
-}
-
-#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-header__count {
-  display: flex !important;
+  display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto !important;
-  min-width: 22px;
+  min-width: 20px;
   height: 20px;
   padding: 0 5px;
   border-radius: 99px;
   font-size: 11px;
   font-weight: 600;
   line-height: 20px;
-  color: var(--svb-text-strong);
-  background: color-mix(in srgb, var(--svb-text) 14%, transparent);
+  text-align: center;
+  color: var(--svb-text-muted);
+  background: color-mix(in srgb, var(--svb-text) 8%, transparent);
+  box-sizing: border-box;
+  transition:
+    color var(--svb-d-norm) ease,
+    background var(--svb-d-norm) ease,
+    transform var(--svb-d-norm) var(--svb-ease-out);
 }
 
-#svb-root .svb-header__actions {
-  display: flex;
-  gap: 2px;
-  align-items: center;
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-header__count {
+  margin: 0 auto !important;
+  color: var(--svb-text-strong);
+  background: color-mix(in srgb, var(--svb-text) 14%, transparent);
 }
 
 #svb-root .svb-icon-button {
