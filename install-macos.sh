@@ -45,8 +45,11 @@ main() {
   (cd "$REPO_DIR" && npm run build)
 
   local custom_js_src="$REPO_DIR/dist/custom.js"
+  local folder_html_src="$REPO_DIR/dist/svb-folder.html"
   [[ -f "$custom_js_src" ]] \
     || die "Build did not produce $custom_js_src"
+  [[ -f "$folder_html_src" ]] \
+    || die "Build did not produce $folder_html_src"
 
   verify_writable
   confirm_if_vivaldi_running
@@ -60,6 +63,8 @@ main() {
 
   log_info "Copying custom.js -> $CUSTOM_JS_DEST"
   $SUDO cp "$custom_js_src" "$CUSTOM_JS_DEST"
+  log_info "Copying svb-folder.html -> $FOLDER_HTML_DEST"
+  $SUDO cp "$folder_html_src" "$FOLDER_HTML_DEST"
 
   if window_html_is_patched; then
     log_info "window.html already references custom.js; no injection needed."

@@ -6,6 +6,8 @@ const SRC_ROOT = path.join(ROOT, 'src')
 const ENTRY = path.join(SRC_ROOT, 'entry.js')
 const DIST_DIR = path.join(ROOT, 'dist')
 const DIST_FILE = path.join(DIST_DIR, 'custom.js')
+const FOLDER_HTML_SRC = path.join(SRC_ROOT, 'svb-folder.html')
+const FOLDER_HTML_DIST = path.join(DIST_DIR, 'svb-folder.html')
 
 function normalizeModuleId(filePath) {
   return path.relative(SRC_ROOT, filePath).replace(/\\/g, '/')
@@ -78,6 +80,11 @@ function build() {
 
   fs.writeFileSync(DIST_FILE, bundle, 'utf8')
   console.log(`Built ${path.relative(ROOT, DIST_FILE)}`)
+  
+  if (fs.existsSync(FOLDER_HTML_SRC)) {
+    fs.copyFileSync(FOLDER_HTML_SRC, FOLDER_HTML_DIST)
+    console.log(`Copied ${path.relative(ROOT, FOLDER_HTML_DIST)}`)
+  }
 }
 
 function watch() {

@@ -1,11 +1,43 @@
 const TREE_NAMESPACE_KEY = 'svbTree'
 const TREE_VERSION = 1
 
+const BACKUP_KEY = 'svbTreeBackup'
+
+function readBackup() {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const raw = window.localStorage.getItem(BACKUP_KEY)
+      if (raw) return JSON.parse(raw)
+    }
+  } catch (e) {
+    console.warn('Failed to read svbTreeBackup', e)
+  }
+  return {}
+}
+
+function writeBackup(backupObj) {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(BACKUP_KEY, JSON.stringify(backupObj))
+    }
+  } catch (e) {
+    console.warn('Failed to write svbTreeBackup', e)
+  }
+}
+
 const treeMetadataCache = new Map()
 
 function updateMetadataCache(tabId, record) {
   if (!record || !record.nodeId) return
   treeMetadataCache.set(tabId, { ...record })
+}
+
+function migrateMetadataCache(removedTabId, addedTabId) {
+  const entry = treeMetadataCache.get(removedTabId)
+  if (entry) {
+    treeMetadataCache.set(addedTabId, entry)
+    treeMetadataCache.delete(removedTabId)
+  }
 }
 
 function getCachedMetadata(tabId) {
@@ -61,7 +93,7 @@ function normalizeOrder(value) {
   return Number.isFinite(order) ? order : 0
 }
 
-function getTreeRecord(tab) {
+function getTreeRecord(tab, contextKey) {
   const vivExtData = tab && tab.vivExtData && typeof tab.vivExtData === 'object'
     ? tab.vivExtData
     : null
@@ -70,10 +102,19 @@ function getTreeRecord(tab) {
     : null
 
   if (!record || typeof record.nodeId !== 'string' || !record.nodeId) {
-    // If the tab is hibernated and we have no record, try the session cache
-    if (tab && tab.discarded) {
+    // If we have no record, try the session cache or backup as a fallback.
+    // This handles cases where Vivaldi loses vivExtData during long hibernation
+    // or tab wake-up.
+    if (tab && tab.id) {
       const cached = getCachedMetadata(tab.id)
       if (cached) return cached
+
+      const backup = readBackup()
+      if (backup[tab.id]) {
+        const restored = backup[tab.id]
+        restored.pendingRestore = true
+        return restored
+      }
     }
     return null
   }
@@ -85,6 +126,7 @@ function getTreeRecord(tab) {
     parentNodeId: typeof record.parentNodeId === 'string' && record.parentNodeId ? record.parentNodeId : null,
     collapsed: !!record.collapsed,
     order: normalizeOrder(record.order),
+    createdAt: Number(record.createdAt) || Date.now(),
   }
 
   // Update cache with the latest valid data
@@ -129,7 +171,7 @@ function buildVivExtDataPayloads(contextKey, treeState, tabs) {
   const tabIdByNodeId = new Map()
 
   for (const tab of tabsById.values()) {
-    const record = getTreeRecord(tab)
+    const record = getTreeRecord(tab, contextKey)
     const nodeId = getCachedNodeId(tab.id, record && record.nodeId)
     if (!tabIdByNodeId.has(nodeId)) {
       nodeIdByTabId.set(tab.id, nodeId)
@@ -145,6 +187,7 @@ function buildVivExtDataPayloads(contextKey, treeState, tabs) {
   const payloads = []
 
   for (const tab of tabsById.values()) {
+    const currentRecord = getTreeRecord(tab, contextKey)
     const node = safeTreeState.nodesById[tab.id] || { parentId: null, collapsed: false }
     const nextRecord = {
       version: TREE_VERSION,
@@ -153,15 +196,20 @@ function buildVivExtDataPayloads(contextKey, treeState, tabs) {
       parentNodeId: node.parentId != null ? (nodeIdByTabId.get(node.parentId) || null) : null,
       collapsed: !!node.collapsed,
       order: ordersByTabId.get(tab.id) || 0,
+      createdAt: currentRecord ? currentRecord.createdAt : Date.now(),
     }
 
-    const currentRecord = getTreeRecord(tab)
-    const changed = !currentRecord
+    let changed = !currentRecord
       || currentRecord.contextKey !== nextRecord.contextKey
       || currentRecord.nodeId !== nextRecord.nodeId
       || currentRecord.parentNodeId !== nextRecord.parentNodeId
       || currentRecord.collapsed !== nextRecord.collapsed
       || currentRecord.order !== nextRecord.order
+      || currentRecord.createdAt !== nextRecord.createdAt
+
+    if (currentRecord && currentRecord.pendingRestore && tab.discarded) {
+      changed = false
+    }
 
     const nextVivExtData = cloneVivExtData(tab.vivExtData)
     nextVivExtData[TREE_NAMESPACE_KEY] = nextRecord
@@ -177,6 +225,15 @@ function buildVivExtDataPayloads(contextKey, treeState, tabs) {
       vivExtData: nextVivExtData,
     })
   }
+
+  // Update LocalStorage Backup with the new tree state
+  const backup = readBackup()
+  for (const payload of payloads) {
+    if (payload.vivExtData && payload.vivExtData[TREE_NAMESPACE_KEY]) {
+      backup[payload.tabId] = payload.vivExtData[TREE_NAMESPACE_KEY]
+    }
+  }
+  writeBackup(backup)
 
   return payloads
 }
@@ -204,7 +261,7 @@ function restoreFromVivExtData(contextKey, tabs) {
   const tabIdByNodeId = new Map()
 
   for (const tab of contextualTabs) {
-    const record = getTreeRecord(tab)
+    const record = getTreeRecord(tab, contextKey)
     if (!record) continue
     allRecords.push({ tabId: tab.id, record })
   }
@@ -257,6 +314,13 @@ function restoreFromVivExtData(contextKey, tabs) {
   }
 
   rootEntries.sort((left, right) => {
+    const leftTab = contextualTabs.find(tab => tab.id === left.tabId)
+    const rightTab = contextualTabs.find(tab => tab.id === right.tabId)
+    const leftPinned = !!(leftTab && leftTab.vivExtData && leftTab.vivExtData.pinnedFolder)
+    const rightPinned = !!(rightTab && rightTab.vivExtData && rightTab.vivExtData.pinnedFolder)
+    if (leftPinned !== rightPinned) {
+      return leftPinned ? -1 : 1
+    }
     if (left.order !== right.order) return left.order - right.order
     return left.nativeIndex - right.nativeIndex
   })
@@ -320,4 +384,4 @@ function createTreePersistence(api) {
   }
 }
 
-module.exports = { createTreePersistence }
+module.exports = { createTreePersistence, migrateMetadataCache }

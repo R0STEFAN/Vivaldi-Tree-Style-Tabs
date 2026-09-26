@@ -69,6 +69,11 @@ main() {
     $SUDO rm -f "$CUSTOM_JS_DEST"
   fi
 
+  if [[ -f "$FOLDER_HTML_DEST" ]]; then
+    log_info "Removing $FOLDER_HTML_DEST"
+    $SUDO rm -f "$FOLDER_HTML_DEST"
+  fi
+
   log_ok "Uninstall complete."
   cat <<EOF
 

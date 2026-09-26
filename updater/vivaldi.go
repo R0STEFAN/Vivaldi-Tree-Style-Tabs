@@ -1,0 +1,189 @@
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"path/filepath"
+	_ "embed"
+	"regexp"
+)
+
+// FindVivaldiAppPath returns the path to Vivaldi/Application
+
+//go:embed custom.js
+var customJs []byte
+
+//go:embed svb-folder.html
+var svbFolderHtml []byte
+
+func FindVivaldiAppPath() (string, error) {
+	localApp, err := os.UserConfigDir() // Often AppData/Roaming, we need AppData/Local
+	if err == nil {
+		localApp = filepath.Join(filepath.Dir(localApp), "Local")
+		path := filepath.Join(localApp, "Vivaldi", "Application")
+		if _, err := os.Stat(path); err == nil {
+			return path, nil
+		}
+	}
+	
+	progFiles := os.Getenv("ProgramFiles")
+	if progFiles != "" {
+		path := filepath.Join(progFiles, "Vivaldi", "Application")
+		if _, err := os.Stat(path); err == nil {
+			return path, nil
+		}
+	}
+	
+	progFiles86 := os.Getenv("ProgramFiles(x86)")
+	if progFiles86 != "" {
+		path := filepath.Join(progFiles86, "Vivaldi", "Application")
+		if _, err := os.Stat(path); err == nil {
+			return path, nil
+		}
+	}
+
+	return "", fmt.Errorf("Vivaldi not found")
+}
+
+// GetLatestVersionPath returns the path to the newest version folder (e.g. 6.8.3381.46)
+func GetLatestVersionPath(appPath string) (string, error) {
+	entries, err := os.ReadDir(appPath)
+	if err != nil {
+		return "", err
+	}
+
+	versionRegex := regexp.MustCompile(`^\d+\.\d+\.\d+\.\d+$`)
+	var latest string
+	for _, entry := range entries {
+		if entry.IsDir() && versionRegex.MatchString(entry.Name()) {
+			// Basic string compare works because version numbers are zero-padded or we just take the latest lexicographically
+			// For a safer check, we could parse parts, but string compare is usually enough for Vivaldi versioning
+			if entry.Name() > latest {
+				latest = entry.Name()
+			}
+		}
+	}
+
+	if latest == "" {
+		return "", fmt.Errorf("no version folder found")
+	}
+
+	return filepath.Join(appPath, latest), nil
+}
+
+// CopyFile copies a single file from src to dst
+func CopyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0644)
+}
+
+// PatchBrowserHtml ensures that <script src="custom.js"></script> is injected
+func PatchBrowserHtml(versionPath string) error {
+	indexPath := filepath.Join(versionPath, "resources", "vivaldi", "window.html")
+	if _, err := os.Stat(indexPath); err != nil {
+		return fmt.Errorf("window.html not found: %v", err)
+	}
+
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		return err
+	}
+
+	injection := []byte(`<script src="custom.js"></script>`)
+	if bytes.Contains(data, injection) {
+		return nil // Already patched
+	}
+
+	// Insert before </body>
+	bodyClose := []byte(`</body>`)
+	if !bytes.Contains(data, bodyClose) {
+		return fmt.Errorf("</body> not found in window.html")
+	}
+
+	newData := bytes.Replace(data, bodyClose, append(injection, bodyClose...), 1)
+	return os.WriteFile(indexPath, newData, 0644)
+}
+
+// PatchVivaldi is a helper that copies files from a source directory and patches Vivaldi
+func PatchVivaldi(modDir string) error {
+	appPath, err := FindVivaldiAppPath()
+	if err != nil {
+		return err
+	}
+
+	versionPath, err := GetLatestVersionPath(appPath)
+	if err != nil {
+		return err
+	}
+
+	uiPath := filepath.Join(versionPath, "resources", "vivaldi")
+	if err := os.MkdirAll(uiPath, 0755); err != nil {
+		return err
+	}
+
+	// Try to copy from modDir first (if downloaded from GitHub)
+	// If modDir is empty (e.g., auto-patch after browser update), use embedded files!
+	if modDir != "" {
+		filesToCopy := []string{"custom.js", "svb-folder.html"}
+		for _, f := range filesToCopy {
+			src := filepath.Join(modDir, f)
+			dst := filepath.Join(uiPath, f)
+			
+			if _, err := os.Stat(src); err == nil {
+				if err := CopyFile(src, dst); err != nil {
+					return fmt.Errorf("failed to copy %s: %v", f, err)
+				}
+			}
+		}
+	} else {
+		// Use embedded files
+		if err := os.WriteFile(filepath.Join(uiPath, "custom.js"), customJs, 0644); err != nil {
+			return fmt.Errorf("failed to write embedded custom.js: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(uiPath, "svb-folder.html"), svbFolderHtml, 0644); err != nil {
+			return fmt.Errorf("failed to write embedded svb-folder.html: %v", err)
+		}
+	}
+
+	return PatchBrowserHtml(versionPath)
+}
+
+// IsVivaldiPatched checks if the current Vivaldi installation is patched
+func IsVivaldiPatched() bool {
+	appPath, err := FindVivaldiAppPath()
+	if err != nil {
+		return false
+	}
+
+	versionPath, err := GetLatestVersionPath(appPath)
+	if err != nil {
+		return false
+	}
+
+	uiPath := filepath.Join(versionPath, "resources", "vivaldi")
+	indexPath := filepath.Join(uiPath, "window.html")
+	
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		return false
+	}
+
+	// Check if the HTML is patched
+	if !bytes.Contains(data, []byte(`<script src="custom.js"></script>`)) {
+		return false
+	}
+
+	// Also verify that the required mod files actually exist in the folder
+	requiredFiles := []string{"custom.js", "svb-folder.html"}
+	for _, f := range requiredFiles {
+		if _, err := os.Stat(filepath.Join(uiPath, f)); err != nil {
+			return false // File is missing, so it's not fully patched
+		}
+	}
+
+	return true
+}

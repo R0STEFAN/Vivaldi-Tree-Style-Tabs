@@ -5,6 +5,7 @@ const {
   isSettingsUrl,
 } = require('./internal-page-meta.js')
 const { createVivaldiBridge } = require('./vivaldi-bridge.js')
+const { settingsStore } = require('../store/settings-store.js')
 
 function promisifyChromeApi(fn, ...args) {
   return new Promise((resolve, reject) => {
@@ -42,21 +43,7 @@ function serializeVivExtData(vivExtData) {
   if (!vivExtData || typeof vivExtData !== 'object') {
     return undefined
   }
-
-  const payload = {}
-
-  if (typeof vivExtData.workspaceId !== 'undefined' && vivExtData.workspaceId != null) {
-    payload.workspaceId = vivExtData.workspaceId
-  }
-
-  if (typeof vivExtData.group !== 'undefined' && vivExtData.group != null) {
-    payload.group = vivExtData.group
-  }
-
-  if (typeof vivExtData.fixedTitle === 'string' && vivExtData.fixedTitle.trim()) {
-    payload.fixedTitle = vivExtData.fixedTitle.trim()
-  }
-
+  const payload = { ...vivExtData }
   return Object.keys(payload).length ? JSON.stringify(payload) : undefined
 }
 
@@ -126,7 +113,21 @@ function getFallbackFaviconUrl(tab) {
 }
 
 function normalizeTab(tab) {
-  const vivExtData = parseVivExtData(tab.vivExtData)
+  let vivExtData = parseVivExtData(tab.vivExtData)
+  
+  // Intercept Folder restoration from bookmarks via URL hash
+  if (tab.url && tab.url.startsWith('data:text/html') && tab.url.includes('#svb-folder:')) {
+    const isFolder = true
+    let folderColor = 'blue'
+    const colorMatch = tab.url.match(/#svb-folder:color=([^&]+)/)
+    if (colorMatch) folderColor = colorMatch[1]
+
+    if (!vivExtData || typeof vivExtData !== 'object') vivExtData = {}
+    if (!vivExtData.isFolder) {
+      vivExtData.isFolder = isFolder
+      vivExtData.folderColor = folderColor
+    }
+  }
 
   return {
     id: tab.id,
@@ -269,20 +270,37 @@ function createTabsApi() {
       return vivaldiBridge.getWorkspaces()
     },
 
-    async createWorkspace(name = 'New Workspace') {
+    getActiveWorkspaceId(windowId) {
+      return vivaldiBridge.getActiveWorkspaceId(windowId)
+    },
+
+    createWorkspace(name = 'New Workspace') {
       return vivaldiBridge.createWorkspace(name)
+    },
+
+    createWorkspaceWithId(workspaceId, name = 'New Workspace') {
+      return vivaldiBridge.createWorkspaceWithId(workspaceId, name)
+    },
+
+    async deleteWorkspace(windowId, workspaceId) {
+      return vivaldiBridge.deleteWorkspace(windowId, workspaceId)
+    },
+
+    activateWorkspace(windowId, workspaceId) {
+      return vivaldiBridge.activateWorkspace(windowId, workspaceId)
+    },
+
+    setWorkspaceName(workspaceId, name) {
+      return vivaldiBridge.setWorkspaceName(workspaceId, name)
     },
 
     onWorkspacesChanged(listener) {
       return vivaldiBridge.onWorkspacesChanged(listener)
     },
 
-    repairWorkspace(workspace) {
-      vivaldiBridge.repairWorkspace(workspace)
-    },
-
-    activateTab(tabId) {
-      tabsApi.update(tabId, { active: true })
+    async activateTab(tabId) {
+      if (!Number.isFinite(tabId)) return null
+      return promisifyChromeApi(tabsApi.update, tabId, { active: true })
     },
 
     async updateTab(tabId, properties) {
@@ -300,17 +318,55 @@ function createTabsApi() {
       return promisifyChromeApi(tabsApi.move, tabId, { index })
     },
 
-    closeTab(tabId) {
-      tabsApi.remove(tabId)
+    async closeTab(tabId) {
+      if (!Number.isFinite(tabId)) return null
+      return promisifyChromeApi(tabsApi.remove, tabId)
     },
 
-    closeTabs(tabIds) {
-      tabsApi.remove(tabIds)
+    async closeTabs(tabIds) {
+      if (!Array.isArray(tabIds) || tabIds.length === 0) return null
+      return promisifyChromeApi(tabsApi.remove, tabIds)
     },
 
     async duplicateTab(tabId) {
       if (!Number.isFinite(tabId) || typeof tabsApi.duplicate !== 'function') return null
       return promisifyChromeApi(tabsApi.duplicate, tabId)
+    },
+
+    reloadTab(tabId, bypassCache = false) {
+      if (!Number.isFinite(tabId) || typeof tabsApi.reload !== 'function') return
+      tabsApi.reload(tabId, { bypassCache: !!bypassCache })
+    },
+
+    async discardTab(tabId) {
+      if (!Number.isFinite(tabId) || typeof tabsApi.discard !== 'function') return null
+      try {
+        const newTab = await tabsApi.discard(tabId)
+        return newTab ? newTab.id : null
+      } catch (err) {
+        try {
+          const newTab = await promisifyChromeApi(tabsApi.discard, tabId)
+          return newTab ? newTab.id : null
+        } catch (fallbackErr) {
+          console.error('[svb] discardTab failed:', err, fallbackErr)
+          return null
+        }
+      }
+    },
+
+    async bookmarkTab({ title, url } = {}) {
+      if (!bookmarksApi || typeof bookmarksApi.create !== 'function' || !url) return null
+      let parentId
+      try {
+        if (typeof bookmarksApi.getTree === 'function') {
+          const roots = await promisifyChromeApi(bookmarksApi.getTree)
+          const bookmarksBar = getBookmarksBarNode(roots)
+          parentId = bookmarksBar ? bookmarksBar.id : undefined
+        }
+      } catch (error) {}
+      const properties = { title: title || url, url }
+      if (parentId) properties.parentId = parentId
+      return promisifyChromeApi(bookmarksApi.create, properties)
     },
 
     async tileTabs(tabIds, layout) {
@@ -373,9 +429,10 @@ function createTabsApi() {
       }
 
       async function createTreeFolder(node, parentId) {
+        const titleSuffix = node.isFolder ? '[Folder] ' : ''
         const folder = await promisifyChromeApi(bookmarksApi.create, {
           ...(parentId ? { parentId } : {}),
-          title: `${TREE_BOOKMARK_PREFIX}${node.title || 'Saved Tree'}`,
+          title: `${TREE_BOOKMARK_PREFIX}${titleSuffix}${node.title || 'Saved Tree'}`,
         })
         await promisifyChromeApi(bookmarksApi.create, {
           parentId: folder.id,
@@ -419,6 +476,7 @@ function createTabsApi() {
         const parsed = {
           title: parentBookmark.title || getTreeBookmarkTitle(folder.title) || parentBookmark.url,
           url: parentBookmark.url,
+          isFolder: !!(parentBookmark.url && parentBookmark.url.includes('#svb-folder:data=')),
           children: [],
         }
         let skippedParent = false
@@ -439,6 +497,7 @@ function createTabsApi() {
             parsed.children.push({
               title: child.title || child.url,
               url: child.url,
+              isFolder: !!(child.url && child.url.includes('#svb-folder:data=')),
               children: [],
             })
           }
@@ -460,53 +519,85 @@ function createTabsApi() {
     async moveTabsToNewWindow(tabIds) {
       const ids = Array.isArray(tabIds) ? tabIds.filter(Number.isFinite) : []
       if (ids.length === 0) return null
+      if (!windowsApi || typeof windowsApi.create !== 'function') return null
 
-      if (vivaldiBridge && typeof vivaldiBridge.detachTabsToNewWindow === 'function') {
+      // 1. Strip workspaceId from metadata on tabs so Vivaldi allows cross-window transfer
+      for (const id of ids) {
         try {
-          const detached = await vivaldiBridge.detachTabsToNewWindow(ids)
-          if (detached) return { native: true }
-        } catch (e) {
-          console.warn('[svb] vivaldiBridge.detachTabsToNewWindow failed:', e)
-        }
-      }
-
-      // Fallback for Vivaldi 8+ or if bridge fails
-      if (windowsApi && typeof windowsApi.create === 'function') {
-        try {
-          console.log('[svb] fallback: creating window with tab', ids[0])
-          // 1. Create new window with the first tab
-          const newWindow = await promisifyChromeApi(windowsApi.create, { tabId: ids[0] })
-          if (!newWindow || !newWindow.id) {
-             throw new Error('Failed to create new window')
-          }
-          
-          // 2. Wait a bit for the new window to be ready
-          await new Promise(resolve => setTimeout(resolve, 300))
-
-          // 3. Move remaining tabs one by one with a small delay between each
-          if (ids.length > 1) {
-            const children = ids.slice(1)
-            for (const childId of children) {
-              console.log('[svb] fallback: moving child', childId, 'to window', newWindow.id)
-              try {
-                // We use a small delay to prevent Vivaldi from dropping moves
-                await new Promise(resolve => setTimeout(resolve, 150))
-                await promisifyChromeApi(tabsApi.move, childId, {
-                  windowId: newWindow.id,
-                  index: -1
-                })
-              } catch (moveError) {
-                console.error(`[svb] failed to move child tab ${childId} to new window`, moveError)
-              }
+          const tab = await promisifyChromeApi(tabsApi.get, id)
+          if (tab && tab.vivExtData) {
+            const parsed = typeof tab.vivExtData === 'string' ? JSON.parse(tab.vivExtData) : { ...tab.vivExtData }
+            if (parsed && typeof parsed === 'object' && parsed.workspaceId != null) {
+              delete parsed.workspaceId
+              await promisifyChromeApi(tabsApi.update, id, { vivExtData: JSON.stringify(parsed) })
             }
           }
-          return { native: false, windowId: newWindow.id }
-        } catch (error) {
-          console.error('[svb] fallback move to new window failed', error)
-        }
+        } catch (_e) {}
       }
 
-      console.warn('[svb] native Vivaldi detachPage is unavailable; move to new window skipped')
+      // 2. Try moving live tabs to a new window (keeps video playing, webview state, history)
+      try {
+        const newWindow = await promisifyChromeApi(windowsApi.create, {})
+        if (newWindow && newWindow.id) {
+          const newWindowId = newWindow.id
+
+          // Move the existing live tabs into the new window
+          for (let i = 0; i < ids.length; i++) {
+            await new Promise(resolve => setTimeout(resolve, 80))
+            await promisifyChromeApi(tabsApi.move, ids[i], {
+              windowId: newWindowId,
+              index: -1,
+            })
+          }
+
+          // Close any default blank startpage tab created alongside the new window
+          try {
+            const newWinTabs = await promisifyChromeApi(tabsApi.query, { windowId: newWindowId })
+            const dummyTabs = newWinTabs.filter(t => !ids.includes(t.id))
+            if (dummyTabs.length > 0 && newWinTabs.length > dummyTabs.length) {
+              await promisifyChromeApi(tabsApi.remove, dummyTabs.map(t => t.id))
+            }
+          } catch (_err) {}
+
+          // Activate first moved tab
+          await promisifyChromeApi(tabsApi.update, ids[0], { active: true }).catch(() => {})
+
+          return { windowId: newWindowId }
+        }
+      } catch (liveMoveError) {
+        console.warn('[svb] live tab move failed, falling back to URL creation:', liveMoveError)
+      }
+
+      // 3. Fallback: recreate via URL if live move fails
+      try {
+        const tabObjects = await Promise.all(ids.map(id => promisifyChromeApi(tabsApi.get, id).catch(() => null)))
+        const validTabs = tabObjects.filter(tab => tab && typeof tab.url === 'string' && tab.url)
+        if (validTabs.length > 0) {
+          const firstTab = validTabs[0]
+          const newWindow = await promisifyChromeApi(windowsApi.create, {
+            url: firstTab.url,
+            incognito: !!firstTab.incognito
+          })
+          if (newWindow && newWindow.id) {
+            if (validTabs.length > 1) {
+              for (const childTab of validTabs.slice(1)) {
+                try {
+                  await promisifyChromeApi(tabsApi.create, {
+                    windowId: newWindow.id,
+                    url: childTab.url,
+                    vivExtData: serializeVivExtData(childTab.vivExtData),
+                  })
+                } catch (_err) {}
+              }
+            }
+            await promisifyChromeApi(tabsApi.remove, ids).catch(() => {})
+            return { windowId: newWindow.id }
+          }
+        }
+      } catch (fallbackError) {
+        console.error('[svb] fallback window creation failed:', fallbackError)
+      }
+
       return null
     },
 
@@ -561,7 +652,9 @@ function createTabsApi() {
 
     createTab(windowId, options = {}) {
       tabsApi.query({ windowId }, async tabs => {
-        const index = Array.isArray(tabs) ? tabs.length : undefined
+        const isTopMode = settingsStore.get('newTabPlacement') === 'top'
+        const pinnedCount = Array.isArray(tabs) ? tabs.filter(t => t.pinned).length : 0
+        const index = isTopMode ? pinnedCount : (Array.isArray(tabs) ? tabs.length : undefined)
         const createProperties = {
           windowId,
           active: true,
@@ -631,6 +724,14 @@ function createTabsApi() {
     onRemoved(listener) {
       tabsApi.onRemoved.addListener(listener)
       return () => tabsApi.onRemoved.removeListener(listener)
+    },
+
+    onReplaced(listener) {
+      if (tabsApi.onReplaced) {
+        tabsApi.onReplaced.addListener(listener)
+        return () => tabsApi.onReplaced.removeListener(listener)
+      }
+      return () => {}
     },
 
     onMoved(listener) {

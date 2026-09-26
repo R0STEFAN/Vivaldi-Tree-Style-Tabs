@@ -1,5 +1,26 @@
 const { settingsStore } = require('../store/settings-store.js')
 
+function getTabHoverTitle(tab, isActive) {
+  let title = tab.title || ''
+  const record = tab.vivExtData && typeof tab.vivExtData === 'object' && tab.vivExtData['svbTree']
+  if (record && record.createdAt) {
+    if (isActive) {
+      title += '\n\nOpened: Just now (Active)'
+    } else {
+      const ageMs = Date.now() - Number(record.createdAt)
+      const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24))
+      const ageHours = Math.floor((ageMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+      const ageMinutes = Math.floor((ageMs % (1000 * 60 * 60)) / (1000 * 60))
+      title += '\n\nOpened: '
+      if (ageDays > 0) title += `${ageDays}d `
+      if (ageHours > 0) title += `${ageHours}h `
+      if (ageDays === 0 && ageHours === 0) title += `${ageMinutes}m `
+      title += 'ago'
+    }
+  }
+  return title
+}
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -22,6 +43,8 @@ const TAB_COLOR_SWATCHES = {
 
 function renderMenuIcon(name) {
   const paths = {
+    top: '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/><path d="M5 21h14"/>',
+    bottom: '<path d="M12 5v14"/><path d="m5 12 7 7 7-7"/><path d="M5 3h14"/>',
     restore: '<path d="M5 8a6 6 0 1 1 1.8 4.3"/><path d="M5 4v4h4"/>',
     child: '<path d="M5 5h6v6H5z"/><path d="M11 8h4a4 4 0 0 1 4 4v1"/><path d="M16 11l3 3 3-3"/>',
     move: '<path d="M5 12h14"/><path d="M15 8l4 4-4 4"/>',
@@ -38,6 +61,12 @@ function renderMenuIcon(name) {
     color: '<path d="M12 4.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z"/><path d="M19 15.5a2 2 0 1 1-4 0c0-1.4 2-3.8 2-3.8s2 2.4 2 3.8Z"/><path d="M8.5 18a1.5 1.5 0 1 1-3 0c0-1 1.5-2.9 1.5-2.9S8.5 17 8.5 18Z"/>',
     chevron: '<path d="m9 6 6 6-6 6"/>',
     settings: '<path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/>',
+    reload: '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
+    sleep: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+    copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+    link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+    type: '<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/>',
+    code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
   }
   return `<svg class="svb-menu__icon" viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.workspace}</svg>`
 }
@@ -125,8 +154,12 @@ function renderContextMenu(tab, state, contextMenu) {
   if (!contextMenu || !tab) return ''
   const selectedIds = Array.isArray(state.selectedIds) ? state.selectedIds : []
   const selectedCount = selectedIds.includes(tab.id) ? selectedIds.length : 1
+  const isFolder = tab && tab.vivExtData && tab.vivExtData.isFolder
+  const isPinnedFolder = isFolder && tab.vivExtData.pinnedFolder
   const closeLabel = selectedCount > 1 ? 'Close Selected Tabs' : 'Close Tab'
-  const pinLabel = tab.pinned ? 'Unpin Tab' : 'Pin Tab'
+  const pinLabel = isFolder 
+    ? (isPinnedFolder ? 'Unpin Folder' : 'Pin Folder')
+    : (tab.pinned ? 'Unpin Tab' : 'Pin Tab')
   const muteLabel = tab.muted ? 'Unmute Tab' : 'Mute Tab'
   const currentColorKey = selectedCount === 1
     && tab.vivExtData
@@ -147,7 +180,11 @@ function renderContextMenu(tab, state, contextMenu) {
     workspaceId: Number(workspace.id),
   })).join('')
 
+  const isTopMode = (settingsStore.get('newTabPlacement') || 'bottom') === 'top'
   const moveSubmenu = `
+    ${renderContextMenuItem({ action: 'move-top', icon: 'top', label: selectedCount > 1 ? `Move ${selectedCount} Tabs to Top` : 'Top of Tree', disabled: isPinned })}
+    ${renderContextMenuItem({ action: 'move-bottom', icon: 'bottom', label: selectedCount > 1 ? `Move ${selectedCount} Tabs to Bottom` : 'Bottom of Tree', disabled: isPinned })}
+    <div class="svb-menu__separator"></div>
     ${renderContextMenuItem({ action: 'move-window', icon: 'window', label: 'New Window' })}
     <div class="svb-menu__separator"></div>
     ${workspaceItems || '<div class="svb-menu__empty">No Workspaces</div>'}
@@ -167,8 +204,20 @@ function renderContextMenu(tab, state, contextMenu) {
   `
   const savedTrees = Array.isArray(state.savedBookmarkTrees) ? state.savedBookmarkTrees : []
   const savedTreeSubmenu = savedTrees.map(renderSavedTreeMenuItem).join('')
+  const copyLabelSuffix = selectedCount > 1 ? ` (${selectedCount})` : ''
+  const copySubmenu = `
+    ${renderContextMenuItem({ action: 'copy-url', icon: 'link', label: `Copy URL${copyLabelSuffix}` })}
+    ${renderContextMenuItem({ action: 'copy-title', icon: 'type', label: `Copy Title${copyLabelSuffix}` })}
+    ${renderContextMenuItem({ action: 'copy-markdown', icon: 'code', label: `Copy as Markdown Link${copyLabelSuffix}` })}
+  `
   const menuX = Math.max(4, contextMenu.x)
   const menuY = Math.max(4, contextMenu.y)
+
+  const folderMenu = `
+    ${renderContextMenuItem({ action: 'new-folder-child', icon: 'child', label: 'New Child Folder', disabled: isPinned })}
+    ${renderContextMenuItem({ action: 'new-folder-sibling', icon: 'add', label: 'New Sibling Folder', disabled: isPinned })}
+    ${renderContextMenuItem({ action: 'new-folder-above', icon: 'add', label: 'New Folder Above', disabled: isPinned })}
+  `
 
   return `
     <div
@@ -177,16 +226,30 @@ function renderContextMenu(tab, state, contextMenu) {
       data-tab-id="${tab.id}"
       role="menu"
     >
+      ${renderContextMenuItem({ action: 'reload', icon: 'reload', label: 'Reload' })}
       ${renderContextMenuItem({ action: 'restore-closed', icon: 'restore', label: 'Reopen Last Closed Tab' })}
       ${renderContextMenuItem({ action: 'new-child', icon: 'child', label: 'New Child Tab', disabled: isPinned })}
       ${renderContextMenuItem({ action: 'new-sibling', icon: 'add', label: 'New Sibling Tab Below', disabled: isPinned })}
+      ${renderContextMenuItem({ icon: 'folder', label: 'New Folder...', submenu: folderMenu, disabled: isPinned })}
+      ${renderContextMenuItem({ icon: 'copy', label: 'Copy', submenu: copySubmenu })}
+      <div class="svb-menu__separator"></div>
+      ${renderContextMenuItem({ action: 'bookmark-tab', icon: 'bookmark', label: 'Bookmark Tab' })}
       ${renderContextMenuItem({ action: 'save-tree-bookmark', icon: 'bookmark', label: 'Save Tree as Bookmark', disabled: isPinned || !hasChildren })}
       ${renderContextMenuItem({ icon: 'folder', label: 'Open Saved Tree', submenu: savedTreeSubmenu || '<div class="svb-menu__empty">No Saved Trees</div>' })}
       <div class="svb-menu__separator"></div>
+      ${renderContextMenuItem({
+        action: isTopMode ? 'move-top' : 'move-bottom',
+        icon: isTopMode ? 'top' : 'bottom',
+        label: isTopMode
+          ? (selectedCount > 1 ? `Move ${selectedCount} Tabs to Top` : 'Move to Top')
+          : (selectedCount > 1 ? `Move ${selectedCount} Tabs to Bottom` : 'Move to Bottom'),
+        disabled: isPinned,
+      })}
       ${renderContextMenuItem({ icon: 'move', label: 'Move to', submenu: moveSubmenu })}
       <div class="svb-menu__separator"></div>
       ${renderContextMenuItem({ action: 'toggle-pin', icon: 'pin', label: pinLabel })}
       ${renderContextMenuItem({ action: 'toggle-mute', icon: 'mute', label: muteLabel })}
+      ${renderContextMenuItem({ action: 'hibernate', icon: 'sleep', label: 'Hibernate Tab' })}
       ${renderContextMenuItem({ icon: 'color', label: 'Set Color', submenu: colorSubmenu })}
       ${renderContextMenuItem({ action: 'duplicate', icon: 'duplicate', label: 'Duplicate' })}
       ${renderContextMenuItem({ action: 'rename', icon: 'rename', label: 'Rename', disabled: isPinned })}
@@ -219,7 +282,7 @@ function renderExpander(item) {
 function renderChildCount(item) {
   const branchCount = item && item.subtreeSize ? Math.max(0, item.subtreeSize - 1) : 0
   if (!item || !item.hasChildren || !item.collapsed || !branchCount) return ''
-  return `<span class="svb-tab__child-count" aria-hidden="true">${branchCount}</span>`
+  return `<span class="svb-tab__child-count" data-role="toggle-collapse" data-tab-id="${item.id}" aria-hidden="true" style="cursor:pointer;" title="Click to expand">${branchCount}</span>`
 }
 
 function renderDropIndicator(dropPosition) {
@@ -272,6 +335,37 @@ function syncOptionalDirectChild(parent, selector, html, insertBeforeNode = null
 
 function syncTabLeadIcon(lead, tab) {
   const current = Array.from(lead.children).find(child => child.matches('.svb-tab__spinner, .svb-tab__favicon'))
+    
+  if (tab.vivExtData && tab.vivExtData.isFolder) {
+    let actualColorKey = tab.vivExtData.tabColor || tab.vivExtData.folderColor
+    const folderColor = actualColorKey && TAB_COLOR_SWATCHES[actualColorKey]
+      ? TAB_COLOR_SWATCHES[actualColorKey]
+      : 'currentColor'
+    const isPinnedFolder = !!tab.vivExtData.pinnedFolder
+    const pinBadge = isPinnedFolder
+      ? `<span class="svb-tab__pinned-badge" title="Pinned Folder"><svg class="svb-small-pin-icon" viewBox="0 0 16 16" width="9" height="9" fill="currentColor"><path d="M4.5 1.5a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1H10v3.25l1.854 2.78a.5.5 0 0 1-.416.72h-2.938v5.25a.5.5 0 0 1-1 0V8.75H4.562a.5.5 0 0 1-.416-.72L6 5.25V2h-1a.5.5 0 0 1-.5-.5z"/></svg></span>`
+      : ''
+
+    const hasBadge = !!(current && current.querySelector('.svb-tab__pinned-badge'))
+
+    if (current && current.matches('.svb-tab__favicon.is-folder') && hasBadge === isPinnedFolder) {
+      current.style.color = folderColor
+      return current
+    }
+
+    const folderIcon = createNodeFromHtml(`
+      <span class="svb-tab__favicon is-folder" style="color: ${folderColor};">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+        </svg>
+        ${pinBadge}
+      </span>
+    `)
+    if (current) current.replaceWith(folderIcon)
+    else lead.appendChild(folderIcon)
+    return folderIcon
+  }
+
   if (tab.loading) {
     if (current && current.matches('.svb-tab__spinner')) return current
 
@@ -326,7 +420,7 @@ function renderTabBadge(tab) {
   return ''
 }
 
-function syncTabContent(content, tab, editing) {
+function syncTabContent(content, tab, editing, item) {
   if (editing) {
     let input = findDirectChild(content, '.svb-tab__title-input')
     if (!input) {
@@ -352,8 +446,11 @@ function syncTabContent(content, tab, editing) {
     content.innerHTML = '<span class="svb-tab__title"></span>'
     titleNode = findDirectChild(content, '.svb-tab__title')
   }
-  if (titleNode && titleNode.textContent !== tab.title) {
-    titleNode.textContent = tab.title
+  
+  let displayTitle = tab.title
+
+  if (titleNode && titleNode.textContent !== displayTitle) {
+    titleNode.textContent = displayTitle
   }
 
   syncOptionalDirectChild(content, '.svb-tab__badge', renderTabBadge(tab), null)
@@ -363,9 +460,7 @@ function getTabVisualStyle(tab) {
   const styles = []
   const tiling = tab && tab.vivExtData && tab.vivExtData.tiling
   const tileId = tiling && tiling.id ? String(tiling.id) : ''
-  const tabColorKey = tab && tab.vivExtData && typeof tab.vivExtData.tabColor === 'string'
-    ? tab.vivExtData.tabColor
-    : ''
+  const tabColorKey = tab && tab.vivExtData && (typeof tab.vivExtData.tabColor === 'string' ? tab.vivExtData.tabColor : (typeof tab.vivExtData.folderColor === 'string' ? tab.vivExtData.folderColor : ''))
   const tabColor = tabColorKey && TAB_COLOR_SWATCHES[tabColorKey] ? TAB_COLOR_SWATCHES[tabColorKey] : ''
 
   if (tabColor) {
@@ -423,11 +518,31 @@ function getTabVisualState(tabId, item, visualState) {
 }
 
 function renderTab(tab, compact, canClose, item, editing, visualState) {
-  const icon = tab.loading
-    ? `<span class="svb-tab__spinner" aria-hidden="true"></span>`
-    : tab.favIconUrl
-      ? `<img class="svb-tab__favicon" src="${escapeHtml(tab.favIconUrl)}" alt="">`
-      : `<span class="svb-tab__favicon svb-tab__favicon--fallback"></span>`
+  let icon = ''
+  if (tab.vivExtData && tab.vivExtData.isFolder) {
+    let actualColorKey = tab.vivExtData.tabColor || tab.vivExtData.folderColor
+    const folderColor = actualColorKey && TAB_COLOR_SWATCHES[actualColorKey]
+      ? TAB_COLOR_SWATCHES[actualColorKey]
+      : 'currentColor'
+    const isPinnedFolder = !!tab.vivExtData.pinnedFolder
+    const pinBadge = isPinnedFolder
+      ? `<span class="svb-tab__pinned-badge" title="Pinned Folder"><svg class="svb-small-pin-icon" viewBox="0 0 16 16" width="9" height="9" fill="currentColor"><path d="M4.5 1.5a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1H10v3.25l1.854 2.78a.5.5 0 0 1-.416.72h-2.938v5.25a.5.5 0 0 1-1 0V8.75H4.562a.5.5 0 0 1-.416-.72L6 5.25V2h-1a.5.5 0 0 1-.5-.5z"/></svg></span>`
+      : ''
+    icon = `
+      <span class="svb-tab__favicon is-folder" style="color: ${folderColor};">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+        </svg>
+        ${pinBadge}
+      </span>
+    `
+  } else {
+    icon = tab.loading
+      ? `<span class="svb-tab__spinner" aria-hidden="true"></span>`
+      : tab.favIconUrl
+        ? `<img class="svb-tab__favicon" src="${escapeHtml(tab.favIconUrl)}" alt="">`
+        : `<span class="svb-tab__favicon svb-tab__favicon--fallback"></span>`
+  }
 
   const media = renderTabBadge(tab)
 
@@ -438,28 +553,33 @@ function renderTab(tab, compact, canClose, item, editing, visualState) {
   const tiling = tab.vivExtData && tab.vivExtData.tiling
   const isTiled = !!(tiling && (tiling.id || tiling.layout))
   const tiledClass = isTiled ? ' is-tiled' : ''
+  const folderClass = tab.vivExtData && tab.vivExtData.isFolder ? ' is-folder' : ''
+  const collapsedClass = item && item.collapsed ? ' is-collapsed' : ''
   const tabClass = compact
-    ? `svb-tab svb-pinned-tab is-compact${discardedClass}${tiledClass}`
-    : `svb-tab${discardedClass}${tiledClass}${hasClose ? ' has-close' : ''}${hasAdd ? ' has-add' : ''}${rowVisualState.isSelected ? ' is-selected' : ''}${rowVisualState.isDragging ? ' is-dragging' : ''}${rowVisualState.isDropTarget ? ' is-drop-target' : ''}`
+    ? `svb-tab svb-pinned-tab is-compact${folderClass}${discardedClass}${tiledClass}`
+    : `svb-tab${folderClass}${discardedClass}${tiledClass}${hasClose ? ' has-close' : ''}${hasAdd ? ' has-add' : ''}${rowVisualState.isSelected ? ' is-selected' : ''}${rowVisualState.isDragging ? ' is-dragging' : ''}${rowVisualState.isDropTarget ? ' is-drop-target' : ''}${collapsedClass}`
   const depth = item && !compact ? item.depth : 0
   const visibleIndex = item && !compact ? item.visibleIndex : -1
   const subtreeSize = item && !compact ? item.subtreeSize : 1
-  const parentId = item && !compact && item.parentId != null ? item.parentId : ''
+  const parentId = item && !compact && item.parentId != null ? item.parentId : -1
   const ancestorIds = item && !compact && Array.isArray(item.ancestorIds) ? item.ancestorIds.join(',') : ''
   const dropPosition = item && !compact && rowVisualState.dropPosition ? rowVisualState.dropPosition : ''
   const hasChildren = !!(item && item.hasChildren)
   const isCollapsed = !!(item && item.collapsed)
   const visibleBranchSize = item && !compact ? item.visibleBranchSize || 1 : 1
-  const coloredClass = tab.vivExtData && tab.vivExtData.tabColor && TAB_COLOR_SWATCHES[tab.vivExtData.tabColor]
-    ? ' is-colored'
-    : ''
+  const colorKey = tab.vivExtData && (tab.vivExtData.tabColor || tab.vivExtData.folderColor)
+  const coloredClass = colorKey && TAB_COLOR_SWATCHES[colorKey] ? ' is-colored' : ''
   const visualStyle = (tiledClass || coloredClass) ? getTabVisualStyle(tab) : ''
   const title = editing
     ? `<input class="svb-tab__title-input" data-role="rename-input" data-tab-id="${tab.id}" value="${escapeHtml(tab.title)}" spellcheck="false">`
     : `<span class="svb-tab__title">${escapeHtml(tab.title)}</span>`
 
+  const record = tab.vivExtData && typeof tab.vivExtData === 'object' && tab.vivExtData['svbTree']
+  const createdAtAttr = record && record.createdAt ? ` data-created-at="${record.createdAt}"` : ''
+  const baseTitleAttr = ` data-base-title="${escapeHtml(tab.title || '')}"`
+
   return `
-    <button class="${tabClass}${coloredClass}${rowVisualState.isActive ? ' is-active' : ''}" data-role="activate-tab" data-tab-id="${tab.id}" data-visible-index="${visibleIndex}" data-depth="${depth}" data-parent-id="${parentId}" data-subtree-size="${subtreeSize}" data-ancestor-ids="${escapeHtml(ancestorIds)}" data-drop-position="${dropPosition}" data-parent="${hasChildren}" data-folded="${isCollapsed}" title="${escapeHtml(tab.title)}"${visualStyle ? ` style="${visualStyle}"` : ''}>
+    <button class="${tabClass}${coloredClass}${rowVisualState.isActive ? ' is-active' : ''}" data-role="activate-tab" data-tab-id="${tab.id}" data-visible-index="${visibleIndex}" data-depth="${depth}" data-parent-id="${parentId}" data-subtree-size="${subtreeSize}" data-ancestor-ids="${escapeHtml(ancestorIds)}" data-drop-position="${dropPosition}" data-parent="${hasChildren}" data-folded="${isCollapsed}" title="${escapeHtml(getTabHoverTitle(tab, rowVisualState.isActive))}"${createdAtAttr}${baseTitleAttr}${visualStyle ? ` style="${visualStyle}"` : ''}>
       <span class="svb-tab__outer" style="--svb-depth:${depth};--svb-visible-branch-size:${visibleBranchSize}">
         ${compact ? '' : renderTreeGuides(item)}
         <span class="svb-tab__body">
@@ -485,14 +605,25 @@ function renderTab(tab, compact, canClose, item, editing, visualState) {
 
 function renderNewTabButton(inline) {
   return `
-    <button
-      class="svb-new-tab-button${inline ? ' is-inline' : ' is-sticky'}"
-      data-role="create-tab"
-      title="New tab"
-    >
-      <span class="svb-new-tab-button__icon">+</span>
-      <span class="svb-new-tab-button__label">New Tab</span>
-    </button>
+    <div class="svb-new-item-buttons${inline ? ' is-inline' : ' is-sticky'}">
+      <button
+        class="svb-new-tab-button"
+        data-role="create-tab"
+        title="New tab"
+      >
+        <span class="svb-new-tab-button__icon">+</span>
+        <span class="svb-new-tab-button__label">New Tab</span>
+      </button>
+      <button
+        class="svb-new-folder-button"
+        data-role="create-folder"
+        title="New Folder"
+      >
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+          <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2zm5 9h-3v3h-2v-3H7v-2h3V8h2v3h3v2z"/>
+        </svg>
+      </button>
+    </div>
   `
 }
 
@@ -524,16 +655,40 @@ function createNodeFromHtml(html) {
 }
 
 function createSidebarRenderer(options) {
-  const { root, dragShield, onActivateTab, onCloseTab, onCreateTab, onCreateChildTab, onRenameTab, onTogglePinned, onToggleMute, onToggleCollapse, onCollapseAll, onSelectTab, onOpenContextMenu, onContextMenuAction, onStartDrag, onUpdateDropTarget, onCommitDrop, onCommitExternalDrop, onCommitExternalContentDrop, onClearDrag } = options
+  const {
+    root,
+    dragShield,
+    onActivateTab,
+    onCloseTab,
+    onCreateTab,
+    onCreateFolderTab,
+    onCreateChildTab,
+    onRenameTab,
+    onTogglePinned,
+    onToggleMute,
+    onToggleCollapse,
+    onCollapseAll,
+    onSelectTab,
+    onOpenContextMenu,
+    onContextMenuAction,
+    onStartDrag,
+    onUpdateDropTarget,
+    onCommitDrop,
+    onCommitExternalDrop,
+    onCommitExternalContentDrop,
+    onClearDrag
+  } = options
   let pendingScrollToActive = false
   let pendingScrollSourceTabId = null
   let currentVisibleIds = []
   let previousActiveTabId = null
   let previousPinnedTabsSnapshot = null
   let previousTreeTabsSnapshot = null
+  let previousPinnedFolderIds = new Set()
   let previousCanCloseVisibleTabs = null
   let previousPanelPinned = null
   let previousIsSettingsOpen = false
+  let previousNewTabPlacement = null
   let previousSelectedIds = []
   let previousDraggedIds = []
   let previousDropTargetId = null
@@ -599,12 +754,10 @@ function createSidebarRenderer(options) {
 
         <div class="svb-main-view">
           <section class="svb-section svb-section--pinned">
-            <div class="svb-section__label">Pinned</div>
             <div class="svb-pinned-grid"></div>
           </section>
 
           <section class="svb-section svb-section--fill">
-            <div class="svb-section__label">Tabs</div>
             <div class="svb-tab-list"></div>
             <div class="svb-footer"></div>
           </section>
@@ -677,6 +830,61 @@ function createSidebarRenderer(options) {
                 <label class="svb-settings-option">
                   <input type="radio" name="panelPosition" value="right">
                   <span>Right side</span>
+                </label>
+              </div>
+            </div>
+            <div class="svb-settings-group">
+              <label class="svb-settings-label">Auto-hide mode</label>
+              <div class="svb-settings-options">
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoHideMode" value="full">
+                  <span>Full auto-hide</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoHideMode" value="icons">
+                  <span>Icon strip</span>
+                </label>
+              </div>
+            </div>
+            <div class="svb-settings-group">
+              <label class="svb-settings-label">New tab & folder position</label>
+              <div class="svb-settings-options">
+                <label class="svb-settings-option">
+                  <input type="radio" name="newTabPlacement" value="bottom">
+                  <span>Bottom of list</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="newTabPlacement" value="top">
+                  <span>Top of list</span>
+                </label>
+              </div>
+            </div>
+            <div class="svb-settings-group">
+              <label class="svb-settings-label">Auto-close old tabs & trees</label>
+              <div class="svb-settings-options">
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoCloseTabsDays" value="0">
+                  <span>Never</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoCloseTabsDays" value="1">
+                  <span>1 day</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoCloseTabsDays" value="7">
+                  <span>1 week</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoCloseTabsDays" value="14">
+                  <span>2 weeks</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoCloseTabsDays" value="21">
+                  <span>3 weeks</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoCloseTabsDays" value="30">
+                  <span>1 month</span>
                 </label>
               </div>
             </div>
@@ -886,7 +1094,8 @@ function createSidebarRenderer(options) {
     currentShell.pinButton.title = state.panelPinned ? 'Unpin panel' : 'Pin panel'
     currentShell.pinButton.innerHTML = renderPinIcon(state.panelPinned)
     currentShell.settingsButton.innerHTML = renderMenuIcon('settings')
-    currentShell.pinnedSection.style.display = state.pinnedTabs.length ? '' : 'none'
+    const isTopMode = (settingsStore.get('newTabPlacement') || 'bottom') === 'top'
+    currentShell.frame.classList.toggle('is-top-mode', isTopMode)
     currentShell.mainView.style.display = isSettingsOpen ? 'none' : 'flex'
     currentShell.settingsView.style.display = isSettingsOpen ? 'flex' : 'none'
 
@@ -898,7 +1107,7 @@ function createSidebarRenderer(options) {
           if (input.type === 'checkbox') {
             input.checked = !!settings[input.name]
           } else {
-            input.checked = settings[input.name] === input.value
+            input.checked = String(settings[input.name]) === input.value
           }
         }
       }
@@ -917,11 +1126,13 @@ function createSidebarRenderer(options) {
       return
     }
 
-    // Render if empty OR if requested for a different tab
+    // Render if empty, if requested for a different tab, or if workspaces changed
     const existingMenu = currentShell.menuHost.querySelector('.svb-menu')
     const renderedTabId = existingMenu ? Number(existingMenu.getAttribute('data-tab-id')) : null
+    const renderedWorkspaces = existingMenu ? existingMenu.getAttribute('data-workspaces') : null
+    const currentWorkspaces = (Array.isArray(state.workspaces) ? state.workspaces : []).map(w => w.id).join(',')
 
-    if (!existingMenu || renderedTabId !== contextMenu.tabId) {
+    if (!existingMenu || renderedTabId !== contextMenu.tabId || renderedWorkspaces !== currentWorkspaces) {
       const allTabsById = new Map(state.pinnedTabs.concat(state.tabs).map(tab => [tab.id, tab]))
       const contextTab = allTabsById.get(contextMenu.tabId) || null
       if (!contextTab) return
@@ -931,6 +1142,7 @@ function createSidebarRenderer(options) {
 
       const menuNode = currentShell.menuHost.querySelector('.svb-menu')
       if (menuNode) {
+        menuNode.setAttribute('data-workspaces', currentWorkspaces)
         void menuNode.offsetWidth
         menuNode.classList.add('is-visible')
       }
@@ -1002,9 +1214,11 @@ function createSidebarRenderer(options) {
     const tiling = tab.vivExtData && tab.vivExtData.tiling
     const isTiled = !!(tiling && (tiling.id || tiling.layout))
     const tiledClass = isTiled ? ' is-tiled' : ''
+    const isFolder = tab.vivExtData && tab.vivExtData.isFolder
+    const folderClass = isFolder ? ' is-folder' : ''
     const tabClass = compact
-      ? `svb-tab svb-pinned-tab is-compact${discardedClass}${tiledClass}`
-      : `svb-tab${discardedClass}${tiledClass}${hasClose ? ' has-close' : ''}${hasAdd ? ' has-add' : ''}${isActuallyMultiSelected ? ' is-selected' : ''}${rowVisualState.isDragging ? ' is-dragging' : ''}${rowVisualState.isDropTarget ? ' is-drop-target' : ''}`
+      ? `svb-tab svb-pinned-tab is-compact${discardedClass}${tiledClass}${folderClass}`
+      : `svb-tab${discardedClass}${tiledClass}${folderClass}${hasClose ? ' has-close' : ''}${hasAdd ? ' has-add' : ''}${isActuallyMultiSelected ? ' is-selected' : ''}${rowVisualState.isDragging ? ' is-dragging' : ''}${rowVisualState.isDropTarget ? ' is-drop-target' : ''}`
     const depth = item && !compact ? item.depth : 0
     const visibleIndex = item && !compact ? item.visibleIndex : -1
     const subtreeSize = item && !compact ? item.subtreeSize : 1
@@ -1014,9 +1228,8 @@ function createSidebarRenderer(options) {
     const hasChildren = !!(item && item.hasChildren)
     const isCollapsed = !!(item && item.collapsed)
     const visibleBranchSize = item && !compact ? item.visibleBranchSize || 1 : 1
-    const coloredClass = tab.vivExtData && tab.vivExtData.tabColor && TAB_COLOR_SWATCHES[tab.vivExtData.tabColor]
-      ? ' is-colored'
-      : ''
+    const colorKey = tab.vivExtData && (tab.vivExtData.tabColor || tab.vivExtData.folderColor)
+    const coloredClass = colorKey && TAB_COLOR_SWATCHES[colorKey] ? ' is-colored' : ''
     const visualStyle = (tiledClass || coloredClass) ? getTabVisualStyle(tab) : ''
 
     node.className = `${tabClass}${coloredClass}${rowVisualState.isActive ? ' is-active' : ''}`
@@ -1030,7 +1243,14 @@ function createSidebarRenderer(options) {
     node.setAttribute('data-drop-position', dropPosition)
     node.setAttribute('data-parent', hasChildren ? 'true' : 'false')
     node.setAttribute('data-folded', isCollapsed ? 'true' : 'false')
-    node.setAttribute('title', tab.title)
+    node.setAttribute('title', getTabHoverTitle(tab, rowVisualState.isActive))
+    node.setAttribute('data-base-title', tab.title || '')
+    const record = tab.vivExtData && typeof tab.vivExtData === 'object' && tab.vivExtData['svbTree']
+    if (record && record.createdAt) {
+      node.setAttribute('data-created-at', record.createdAt)
+    } else {
+      node.removeAttribute('data-created-at')
+    }
     if (visualStyle) node.setAttribute('style', visualStyle)
     else node.removeAttribute('style')
 
@@ -1062,7 +1282,7 @@ function createSidebarRenderer(options) {
         contentNode = createNodeFromHtml('<span class="svb-tab__content"></span>')
         body.insertBefore(contentNode, addNode || closeNode || null)
       }
-      syncTabContent(contentNode, tab, editing)
+      syncTabContent(contentNode, tab, editing, item)
     }
 
     syncOptionalDirectChild(body, '.svb-tab__add', hasAdd ? renderAddButton(tab.id) : '', null)
@@ -1556,6 +1776,13 @@ function createSidebarRenderer(options) {
         : null
       onCreateTab()
     }
+    if (role === 'create-folder') {
+      pendingScrollToActive = true
+      pendingScrollSourceTabId = latestState && Number.isFinite(latestState.activeTabId)
+        ? latestState.activeTabId
+        : null
+      onCreateFolderTab()
+    }
     if (role === 'create-child-tab' && Number.isFinite(tabId)) {
       pendingScrollToActive = true
       pendingScrollSourceTabId = latestState && Number.isFinite(latestState.activeTabId)
@@ -1579,7 +1806,8 @@ function createSidebarRenderer(options) {
     const input = event.target.closest('.svb-settings-view input')
     if (!input || !input.name) return
 
-    const value = input.type === 'checkbox' ? input.checked : input.value
+    const rawValue = input.type === 'checkbox' ? input.checked : input.value
+    const value = input.name === 'autoCloseTabsDays' ? Number(rawValue) : rawValue
     settingsStore.set(input.name, value)
     renderCurrent()
   }, eventOptions)
@@ -1711,19 +1939,64 @@ function createSidebarRenderer(options) {
 
     event.preventDefault()
     event.stopPropagation()
-    if (onOpenContextMenu) onOpenContextMenu(tabId)
 
-    const rootRect = root.getBoundingClientRect()
-    contextMenu = {
-      tabId,
-      x: event.clientX - rootRect.left,
-      y: event.clientY - rootRect.top,
-      viewportY: event.clientY,
+    root.classList.add('is-menu-open')
+    
+    const showMenu = () => {
+      const rootRect = root.getBoundingClientRect()
+      contextMenu = {
+        tabId,
+        x: event.clientX - rootRect.left,
+        y: event.clientY - rootRect.top,
+        viewportY: event.clientY,
+        viewportX: event.clientX,
+      }
+      renderCurrent()
     }
-    renderCurrent()
+
+    if (onOpenContextMenu) {
+      const result = onOpenContextMenu(tabId)
+      if (result && typeof result.then === 'function') {
+        result.then(showMenu).catch(err => {
+          console.error(err)
+          root.classList.remove('is-menu-open')
+        })
+      } else {
+        showMenu()
+      }
+    } else {
+      showMenu()
+    }
   }, eventOptions)
 
   root.addEventListener('pointerover', event => {
+    const tabNode = event.target.closest('[data-role="activate-tab"][data-created-at]')
+    if (tabNode) {
+      const createdAt = Number(tabNode.getAttribute('data-created-at'))
+      if (createdAt) {
+        const baseTitle = tabNode.getAttribute('data-base-title') || ''
+        let title = baseTitle
+        
+        if (tabNode.classList.contains('is-active')) {
+          title += '\n\nOpened: Just now (Active)'
+        } else {
+          const now = Date.now()
+          const ageMs = now - createdAt
+          const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24))
+          const ageHours = Math.floor((ageMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+          const ageMinutes = Math.floor((ageMs % (1000 * 60 * 60)) / (1000 * 60))
+          
+          title += '\n\nOpened: '
+          if (ageDays > 0) title += `${ageDays}d `
+          if (ageHours > 0) title += `${ageHours}h `
+          if (ageDays === 0 && ageHours === 0) title += `${ageMinutes}m `
+          title += 'ago'
+        }
+        
+        tabNode.setAttribute('title', title)
+      }
+    }
+
     const menuItem = event.target.closest('.svb-menu__item.has-submenu')
     if (!menuItem) return
     positionSubmenu(menuItem)
@@ -1801,8 +2074,21 @@ function createSidebarRenderer(options) {
       const listRect = list.getBoundingClientRect()
       const activeRect = activeTab.getBoundingClientRect()
       const epsilon = 1
-      const visibleTop = listRect.top
-      const visibleBottom = listRect.bottom
+
+      let stickyTopLimit = listRect.top
+      const topButtons = list.querySelector('.svb-new-item-buttons.is-inline.is-top')
+      if (topButtons) {
+        const btnRect = topButtons.getBoundingClientRect()
+        stickyTopLimit = Math.max(stickyTopLimit, btnRect.bottom)
+      }
+      const pinnedGroups = list.querySelectorAll('.svb-pinned-folder-group')
+      for (const group of pinnedGroups) {
+        const groupRect = group.getBoundingClientRect()
+        stickyTopLimit = Math.max(stickyTopLimit, groupRect.bottom)
+      }
+
+      const visibleTop = stickyTopLimit + 2
+      const visibleBottom = listRect.bottom - 2
 
       if (activeRect.top < visibleTop - epsilon) {
         list.scrollTop += activeRect.top - visibleTop
@@ -1876,7 +2162,22 @@ function createSidebarRenderer(options) {
       const visualState = buildVisualState(state)
       const treeTabs = Array.isArray(state.treeTabs) ? state.treeTabs : []
       const isDragging = visualState.draggedIdSet.size > 0
-      const structureChanged = !areTabOrdersEqual(previousPinnedTabsSnapshot, state.pinnedTabs)
+      const currentPinnedFolderIds = new Set()
+      for (const item of treeTabs) {
+        const tab = findTab(item.id)
+        if (tab && tab.vivExtData && tab.vivExtData.pinnedFolder) {
+          currentPinnedFolderIds.add(item.id)
+        }
+      }
+      const currentNewTabPlacement = settingsStore.get('newTabPlacement') || 'bottom'
+      const newTabPlacementChanged = currentNewTabPlacement !== previousNewTabPlacement
+      const isSettingsOpenChanged = isSettingsOpen !== previousIsSettingsOpen
+      const pinnedFolderChanged = currentPinnedFolderIds.size !== previousPinnedFolderIds.size
+        || [...currentPinnedFolderIds].some(id => !previousPinnedFolderIds.has(id))
+      const structureChanged = pinnedFolderChanged
+        || newTabPlacementChanged
+        || isSettingsOpenChanged
+        || !areTabOrdersEqual(previousPinnedTabsSnapshot, state.pinnedTabs)
         || !isSameTreeShape(previousTreeTabsSnapshot, treeTabs)
       const contentChangedIds = structureChanged
         ? new Set()
@@ -1911,20 +2212,87 @@ function createSidebarRenderer(options) {
           activeKeys.add(getTabKey(tab, true))
           return getOrUpdateTabNode(tab, true, state.canCloseVisibleTabs, null, visualState)
         })
-        const regularNodes = treeTabs.map(item => {
-          activeKeys.add(getTabKey(item.tab, false))
-          return getOrUpdateTabNode(item.tab, false, state.canCloseVisibleTabs, item, visualState)
-        })
+
+        const pinnedFolderIds = new Set()
+        for (const item of treeTabs) {
+          const tab = findTab(item.id)
+          if (tab && tab.vivExtData && tab.vivExtData.pinnedFolder) {
+            pinnedFolderIds.add(item.id)
+          }
+        }
+
+        const regularNodes = []
+        let currentStickyGroup = null
+
+        for (const item of treeTabs) {
+          const tab = findTab(item.id)
+          if (!tab) continue
+          activeKeys.add(getTabKey(tab, false))
+          const node = getOrUpdateTabNode(tab, false, state.canCloseVisibleTabs, item, visualState)
+
+          const belongsToPinnedFolder = pinnedFolderIds.has(item.id) || (item.ancestorIds && item.ancestorIds.some(id => pinnedFolderIds.has(id)))
+
+          if (belongsToPinnedFolder) {
+            if (!currentStickyGroup) {
+              currentStickyGroup = document.createElement('div')
+              currentStickyGroup.className = 'svb-pinned-folder-group'
+              regularNodes.push(currentStickyGroup)
+            }
+            currentStickyGroup.appendChild(node)
+          } else {
+            currentStickyGroup = null
+            regularNodes.push(node)
+          }
+        }
+
+        pruneTabNodes(activeKeys)
 
         syncChildren(currentShell.pinnedGrid, pinnedNodes)
-        const listNodes = empty
-          ? [currentShell.emptyMessage, currentShell.inlineNewTabButton]
-          : regularNodes.concat(currentShell.inlineNewTabButton)
+        currentShell.pinnedSection.style.display = state.pinnedTabs.length ? '' : 'none'
+
+        const isTopMode = currentNewTabPlacement === 'top'
+        currentShell.inlineNewTabButton.classList.toggle('is-top', isTopMode)
+
+        let listNodes
         if (empty) {
+          listNodes = isTopMode
+            ? [currentShell.inlineNewTabButton, currentShell.emptyMessage]
+            : [currentShell.emptyMessage, currentShell.inlineNewTabButton]
           currentShell.emptyMessage.textContent = emptyMessage
+        } else if (isTopMode) {
+          let insertIndex = 0
+          for (let i = 0; i < regularNodes.length; i++) {
+            if (regularNodes[i].classList && regularNodes[i].classList.contains('svb-pinned-folder-group')) {
+              insertIndex = i + 1
+            } else {
+              break
+            }
+          }
+          listNodes = [
+            ...regularNodes.slice(0, insertIndex),
+            currentShell.inlineNewTabButton,
+            ...regularNodes.slice(insertIndex),
+          ]
+        } else {
+          listNodes = regularNodes.concat(currentShell.inlineNewTabButton)
         }
+
         syncChildren(currentShell.tabList, listNodes)
-        pruneTabNodes(activeKeys)
+
+        if (isTopMode) {
+          let topOffset = 0
+          for (let i = 0; i < regularNodes.length; i++) {
+            if (regularNodes[i].classList && regularNodes[i].classList.contains('svb-pinned-folder-group')) {
+              topOffset += (regularNodes[i].offsetHeight || 0)
+            } else {
+              break
+            }
+          }
+          currentShell.inlineNewTabButton.style.top = `${topOffset}px`
+        } else {
+          currentShell.inlineNewTabButton.style.top = ''
+        }
+
         updateContextMenu(currentShell, state)
 
         syncOverflowState()
@@ -1938,10 +2306,12 @@ function createSidebarRenderer(options) {
 
       previousPinnedTabsSnapshot = state.pinnedTabs
       previousTreeTabsSnapshot = treeTabs
+      previousPinnedFolderIds = currentPinnedFolderIds
       previousActiveTabId = state.activeTabId
       previousCanCloseVisibleTabs = state.canCloseVisibleTabs
       previousPanelPinned = state.panelPinned
       previousIsSettingsOpen = isSettingsOpen
+      previousNewTabPlacement = currentNewTabPlacement
       previousSelectedIds = visualState.selectedIds.slice()
       previousDraggedIds = visualState.draggedIds.slice()
       previousDropTargetId = visualState.dropTargetId

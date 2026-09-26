@@ -1,8 +1,11 @@
 const { settingsStore } = require('../store/settings-store.js')
 const { createTreeController } = require('../controllers/tree-controller.js')
 const { createNativeReconcile } = require('../controllers/native-reconcile.js')
+const { generateFolderPageUrl } = require('../ui/folder-page.js')
 
 const TREE_NAMESPACE_KEY = 'svbTree'
+
+const lastFolderUrlUpdates = new Map()
 
 function createTreeNodeId() {
   return `svb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
@@ -16,6 +19,7 @@ function createInitialState() {
     activeWorkspaceId: null,
     filteredByWorkspace: false,
     outsideWorkspace: false,
+    hasTabsOutsideWorkspace: false,
     canCloseVisibleTabs: true,
     pinnedTabs: [],
     tabs: [],
@@ -258,6 +262,22 @@ function deriveContextFromActiveTab(allTabs) {
     activeWorkspaceId,
     outsideWorkspace,
     filteredByWorkspace: activeWorkspaceId != null || outsideWorkspace,
+    visibleTabs: null,
+  }
+}
+
+// Build context from Vivaldi's native active-workspace id (the source of
+// truth). Unlike deriveContextFromActiveTab this works for empty workspaces,
+// where there is no tab to infer from.
+function deriveContextFromNativeWorkspace(allTabs, nativeWorkspaceId) {
+  const activeTab = allTabs.find(tab => tab.active) || null
+  const hasWorkspaceTabs = allTabs.some(tab => tab.workspaceId != null)
+  const activeWorkspaceId = nativeWorkspaceId == null ? null : Number(nativeWorkspaceId)
+  return {
+    activeTab,
+    activeWorkspaceId,
+    outsideWorkspace: activeWorkspaceId == null && hasWorkspaceTabs,
+    filteredByWorkspace: activeWorkspaceId != null || hasWorkspaceTabs,
     visibleTabs: null,
   }
 }
@@ -526,11 +546,17 @@ function createTabStore(api) {
       if (activeTreeItem) {
         const parentId = activeTreeItem.parentId
         const siblings = state.treeTabs.filter(item => item.parentId === parentId && !closeIds.has(item.id))
+        const activeIndexInTree = state.treeTabs.indexOf(activeTreeItem)
+
+        // Check if there are unclosed children under this active tab
+        const unclosedChildren = state.treeTabs.filter(item => item.parentId === activeTabId && !closeIds.has(item.id))
+
+        if (unclosedChildren.length > 0 && activateAfterClose === 'below') {
+          return unclosedChildren[0].id
+        }
 
         if (siblings.length > 0) {
           // Rule: Sibling prioritization
-          const activeIndexInTree = state.treeTabs.indexOf(activeTreeItem)
-          
           if (activateAfterClose === 'below') {
             // Try sibling BELOW
             const siblingBelow = siblings.find(s => state.treeTabs.indexOf(s) > activeIndexInTree)
@@ -546,9 +572,20 @@ function createTabStore(api) {
             const siblingBelow = siblings.find(s => state.treeTabs.indexOf(s) > activeIndexInTree)
             if (siblingBelow) return siblingBelow.id
           }
-        } else if (Number.isFinite(parentId) && !closeIds.has(parentId)) {
-          // Rule: Last child closed -> activate parent
-          return parentId
+        }
+
+        if (unclosedChildren.length > 0) {
+          return unclosedChildren[0].id
+        }
+
+        // If no sibling/children, walk up ancestors to find the nearest non-closed parent
+        let ancestorId = parentId
+        while (Number.isFinite(ancestorId)) {
+          if (!closeIds.has(ancestorId)) {
+            return ancestorId
+          }
+          const ancestorItem = state.treeTabs.find(item => item.id === ancestorId)
+          ancestorId = ancestorItem ? ancestorItem.parentId : null
         }
       }
     }
@@ -580,30 +617,32 @@ function createTabStore(api) {
     return null
   }
 
-  function activateBeforeCloseIfNeeded(targetIds) {
+  async function activateBeforeCloseIfNeeded(targetIds) {
     const activateTabId = getActivationTargetBeforeClose(targetIds)
     if (!Number.isFinite(activateTabId)) return
     pendingActiveRepairTabId = null
-    api.activateTab(activateTabId)
+    await api.activateTab(activateTabId)
   }
 
-  function closeTabIds(tabIds) {
+  async function closeTabIds(tabIds) {
     const targetIds = normalizeUniqueIds(tabIds)
     if (targetIds.length === 0) return
-    const visibleIds = getPanelOrderIds()
-    if (visibleIds.length <= 1) return
-    const visibleTargetIds = targetIds.filter(tabId => visibleIds.includes(tabId))
-    if (visibleTargetIds.length === 0) return
-    if (visibleTargetIds.length >= visibleIds.length) return
+    
+    const allIds = state.pinnedTabs.map(tab => tab.id).concat(state.tabs.map(tab => tab.id))
+    if (allIds.length <= 1) return
+    
+    const validTargetIds = targetIds.filter(tabId => allIds.includes(tabId))
+    if (validTargetIds.length === 0) return
+    if (validTargetIds.length >= allIds.length) return
 
     pendingNativeReconcileReason = 'close'
     lockCurrentContext()
-    activateBeforeCloseIfNeeded(visibleTargetIds)
-    if (visibleTargetIds.length === 1) {
-      api.closeTab(visibleTargetIds[0])
+    await activateBeforeCloseIfNeeded(validTargetIds)
+    if (validTargetIds.length === 1) {
+      await api.closeTab(validTargetIds[0])
       return
     }
-    api.closeTabs(visibleTargetIds)
+    await api.closeTabs(validTargetIds)
   }
 
   async function updateTabs(tabIds, properties) {
@@ -623,10 +662,14 @@ function createTabStore(api) {
       const tab = tabsById.get(tabId)
       if (!tab) continue
       const nextData = buildVivExtData(tab)
+      tab.vivExtData = nextData
       tasks.push(api.updateVivExtData(tabId, nextData))
     }
 
     await Promise.all(tasks)
+    
+    // Give Vivaldi backend a moment to commit the vivExtData so getTabs doesn't return stale data
+    await new Promise(resolve => setTimeout(resolve, 150))
     await syncTabs({ preserveContext: true })
   }
 
@@ -651,24 +694,38 @@ function createTabStore(api) {
       nodeIdByTabId.set(tabId, typeof record?.nodeId === 'string' && record.nodeId ? record.nodeId : createTreeNodeId())
     }
 
+    const isTopMode = settingsStore.get('newTabPlacement') === 'top'
     let targetRootStartOrder = 0
     try {
       const allTabs = await api.getTabs(state.windowId)
-      const targetRootOrders = allTabs
-        .filter(tab => !movedIdSet.has(tab.id) && tab.workspaceId === workspaceId)
-        .map(tab => {
-          const record = tab
-            && tab.vivExtData
-            && tab.vivExtData[TREE_NAMESPACE_KEY]
-            && typeof tab.vivExtData[TREE_NAMESPACE_KEY] === 'object'
-            ? tab.vivExtData[TREE_NAMESPACE_KEY]
-            : null
-          return record && record.contextKey === targetContextKey && record.parentNodeId == null
-            ? Number(record.order)
-            : null
-        })
-        .filter(Number.isFinite)
-      targetRootStartOrder = targetRootOrders.length ? Math.max(...targetRootOrders) + 1 : allTabs.filter(tab => tab.workspaceId === workspaceId).length
+      const targetTabsInWorkspace = allTabs.filter(tab => !movedIdSet.has(tab.id) && tab.workspaceId === workspaceId)
+      const targetRootRecords = targetTabsInWorkspace.map(tab => {
+        const record = tab
+          && tab.vivExtData
+          && tab.vivExtData[TREE_NAMESPACE_KEY]
+          && typeof tab.vivExtData[TREE_NAMESPACE_KEY] === 'object'
+          ? tab.vivExtData[TREE_NAMESPACE_KEY]
+          : null
+        const isPinnedFolder = !!(tab.vivExtData && tab.vivExtData.pinnedFolder)
+        const order = record && record.contextKey === targetContextKey && record.parentNodeId == null && Number.isFinite(Number(record.order))
+          ? Number(record.order)
+          : null
+        return { order, isPinnedFolder }
+      })
+
+      const rootOrders = targetRootRecords.map(r => r.order).filter(Number.isFinite)
+
+      if (isTopMode) {
+        const regularOrders = targetRootRecords.filter(r => !r.isPinnedFolder && r.order != null).map(r => r.order)
+        if (regularOrders.length > 0) {
+          targetRootStartOrder = Math.min(...regularOrders) - targetIds.length
+        } else {
+          const pinnedOrders = targetRootRecords.filter(r => r.isPinnedFolder && r.order != null).map(r => r.order)
+          targetRootStartOrder = pinnedOrders.length > 0 ? Math.max(...pinnedOrders) + 1 : 0
+        }
+      } else {
+        targetRootStartOrder = rootOrders.length ? Math.max(...rootOrders) + 1 : targetTabsInWorkspace.length
+      }
     } catch (error) {
       console.warn('[svb] cannot inspect target workspace order', error)
     }
@@ -711,12 +768,23 @@ function createTabStore(api) {
     let workspaces = state.workspaces
     let savedBookmarkTrees = state.savedBookmarkTrees
 
-    // Only query workspaces and bookmarks on init, reload, or explicit workspace/bookmark events
+    // Vivaldi's native active-workspace id is the source of truth (stable, and
+    // it handles empty workspaces). Fall back to active-tab inference only when
+    // the native store is unavailable.
+    let nativeWorkspaceId
+    if (api.getActiveWorkspaceId) {
+      try { nativeWorkspaceId = api.getActiveWorkspaceId(state.windowId) } catch (error) { nativeWorkspaceId = undefined }
+    }
+    const useNativeWorkspace = nativeWorkspaceId !== undefined
+
+    // Re-read the workspace list on init/reload, explicit workspace events, and
+    // always in native mode (a cheap store read) — so a newly created/removed
+    // workspace shows up immediately no matter which event triggered the sync.
     const isWorkspaceEvent = reason === 'workspaces'
     const isBookmarkEvent = reason === 'bookmark'
     const isFullSync = reason === 'init' || reason === 'reload' || !workspaces.length
-    
-    if ((isFullSync || isWorkspaceEvent) && api.getWorkspaces) {
+
+    if ((isFullSync || isWorkspaceEvent || useNativeWorkspace) && api.getWorkspaces) {
       try {
         workspaces = await api.getWorkspaces()
       } catch (error) {
@@ -742,11 +810,14 @@ function createTabStore(api) {
     }
     treeController.clearStalePendingCreations(allTabs)
 
-    const derivedContext = deriveContextFromActiveTab(allTabs)
+    const derivedContext = useNativeWorkspace
+      ? deriveContextFromNativeWorkspace(allTabs, nativeWorkspaceId)
+      : deriveContextFromActiveTab(allTabs)
     let nextContext = derivedContext
 
     const lockedContext = getLockedContext()
-    const shouldPreserveContext = preserveContext || !!lockedContext
+    // With the native id we never need to preserve a stale context.
+    const shouldPreserveContext = !useNativeWorkspace && (preserveContext || !!lockedContext)
 
     if (shouldPreserveContext && state.filteredByWorkspace) {
       const preservedContext = lockedContext || createContextSnapshot()
@@ -766,9 +837,27 @@ function createTabStore(api) {
     }
 
     const activeTab = derivedContext.activeTab
-    const visibleTabs = !shouldPreserveContext && Array.isArray(derivedContext.visibleTabs)
+    let visibleTabs = !shouldPreserveContext && Array.isArray(derivedContext.visibleTabs)
       ? derivedContext.visibleTabs
       : getVisibleTabsForContext(allTabs, nextContext)
+
+    // Auto-adopt orphaned tabs in a window when all tabs would otherwise be hidden due to stale workspace IDs
+    if (allTabs.length > 0 && visibleTabs.length === 0) {
+      const activeTab = allTabs.find(t => t.active) || allTabs[0]
+      if (activeTab && activeTab.workspaceId != null && nextContext.outsideWorkspace) {
+        for (const tab of allTabs) {
+          tab.workspaceId = null
+          if (tab.vivExtData && typeof tab.vivExtData === 'object') {
+            const nextVivExt = { ...tab.vivExtData }
+            delete nextVivExt.workspaceId
+            tab.vivExtData = nextVivExt
+            api.updateVivExtData(tab.id, nextVivExt).catch(() => {})
+          }
+        }
+        visibleTabs = allTabs
+      }
+    }
+
     const pinnedTabs = visibleTabs.filter(tab => tab.pinned)
     const tabs = stabilizeTabsByPanelOrder(
       visibleTabs.filter(tab => !tab.pinned),
@@ -854,8 +943,33 @@ function createTabStore(api) {
       activeWorkspaceId: nextContext.activeWorkspaceId,
       filteredByWorkspace: nextContext.filteredByWorkspace,
       outsideWorkspace: nextContext.outsideWorkspace,
+      hasTabsOutsideWorkspace: allTabs.some(tab => tab.workspaceId == null),
       canCloseVisibleTabs,
     })
+
+    // Update folder dashboard if it's the active tab
+    const nextActiveTabId = state.activeTabId
+    if (nextActiveTabId && previousVisibleActiveTab && previousVisibleActiveTab.id === nextActiveTabId) {
+      // It was already active, or we just activated it
+      const activeTab = state.tabs.find(t => t.id === nextActiveTabId)
+      if (activeTab && activeTab.vivExtData && activeTab.vivExtData.isFolder) {
+        const newUrl = generateFolderPageUrl(state, nextActiveTabId)
+        if (activeTab.url !== newUrl && lastFolderUrlUpdates.get(nextActiveTabId) !== newUrl) {
+          lastFolderUrlUpdates.set(nextActiveTabId, newUrl)
+          api.updateTab(nextActiveTabId, { url: newUrl }).catch(() => {})
+        }
+      }
+    } else if (nextActiveTabId) {
+      // It's a new active tab
+      const activeTab = state.tabs.find(t => t.id === nextActiveTabId)
+      if (activeTab && activeTab.vivExtData && activeTab.vivExtData.isFolder) {
+        const newUrl = generateFolderPageUrl(state, nextActiveTabId)
+        if (activeTab.url !== newUrl && lastFolderUrlUpdates.get(nextActiveTabId) !== newUrl) {
+          lastFolderUrlUpdates.set(nextActiveTabId, newUrl)
+          api.updateTab(nextActiveTabId, { url: newUrl }).catch(() => {})
+        }
+      }
+    }
 
     if (actionReconcileReason) {
       nativeReconcile.scheduleAfterAction(actionReconcileReason)
@@ -896,12 +1010,43 @@ function createTabStore(api) {
       if (nativeReconcile.isOwnOpenerUpdate(tabId, changeInfo)) {
         return
       }
+      
+      // Intercept clicks on dashboard cards
+      if (changeInfo && changeInfo.url && changeInfo.url.includes('#svb-activate:')) {
+        const match = changeInfo.url.match(/#svb-activate:(\d+)/)
+        if (match) {
+          const targetId = parseInt(match[1], 10)
+          lastFolderUrlUpdates.delete(tabId)
+          api.activateTab(targetId)
+        }
+      }
+
       refreshPreservingContext(tabId, changeInfo)
     }
 
-    const refreshFromActiveTab = (...args) => {
-      void args
+    const refreshFromActiveTab = (activeInfo) => {
+      const prevActiveId = state.activeTabId
       scheduleSync({ preserveContext: false }, 'event-active', 0).catch(error => console.error('[svb] sync failed', error))
+
+      const updateTabTime = (tabId, time) => {
+        const tab = state.tabs.find(t => t.id === tabId) || state.pinnedTabs.find(t => t.id === tabId)
+        if (tab && tab.vivExtData && typeof tab.vivExtData === 'object') {
+          const record = tab.vivExtData['svbTree']
+          if (record) {
+            const nextVivExtData = JSON.parse(JSON.stringify(tab.vivExtData))
+            nextVivExtData['svbTree'] = { ...record, createdAt: time }
+            api.updateVivExtData(tab.id, nextVivExtData).catch(error => console.error('[svb] failed to update active tab time', error))
+          }
+        }
+      }
+
+      const now = Date.now()
+      if (activeInfo && activeInfo.tabId) {
+        updateTabTime(activeInfo.tabId, now)
+      }
+      if (prevActiveId && (!activeInfo || prevActiveId !== activeInfo.tabId)) {
+        updateTabTime(prevActiveId, now)
+      }
     }
 
     const refreshBookmarks = () => {
@@ -921,20 +1066,63 @@ function createTabStore(api) {
     }
 
     const handleRemoved = tabId => {
+      lastFolderUrlUpdates.delete(tabId)
+      const closedTab = state.tabs.find(t => t.id === tabId) || state.pinnedTabs.find(t => t.id === tabId)
+      if (closedTab && treeController.recordClosedTab) {
+        treeController.recordClosedTab(closedTab)
+      }
+
+      const wasActive = state.activeTabId === tabId
+      const targetActiveId = wasActive ? getActivationTargetBeforeClose([tabId]) : null
+
       treeController.handleRemovedTab(tabId)
+
+      if (Number.isFinite(targetActiveId)) {
+        api.activateTab(targetActiveId)
+      }
+
       refreshPreservingContext(tabId)
     }
 
-      unsubs = [
-        api.onCreated(handleCreated),
-        api.onUpdated(handleUpdated),
-        api.onRemoved(handleRemoved),
-        api.onMoved((tabId, moveInfo) => {
-          void moveInfo
-          nativeReconcile.isOwnMove(tabId)
-          refreshPreservingContext(tabId, moveInfo)
-        }),
-      api.onAttached(refreshPreservingContext),
+    const handleReplaced = (addedTabId, removedTabId) => {
+      lastFolderUrlUpdates.delete(removedTabId)
+      treeController.handleReplacedTab(addedTabId, removedTabId)
+      refreshPreservingContext(addedTabId)
+    }
+
+    unsubs = [
+      api.onCreated(handleCreated),
+      api.onUpdated(handleUpdated),
+      api.onRemoved(handleRemoved),
+      api.onReplaced ? api.onReplaced(handleReplaced) : () => {},
+      api.onMoved((tabId, moveInfo) => {
+        void moveInfo
+        nativeReconcile.isOwnMove(tabId)
+        refreshPreservingContext(tabId, moveInfo)
+      }),
+      api.onAttached(async (tabId) => {
+        try {
+          const allTabs = await api.getTabs(state.windowId)
+          const attachedTab = allTabs.find(t => t.id === tabId)
+          if (attachedTab) {
+            const targetWorkspaceId = state.activeWorkspaceId
+            if (attachedTab.workspaceId !== targetWorkspaceId) {
+              attachedTab.workspaceId = targetWorkspaceId
+              const nextVivExt = { ...(attachedTab.vivExtData || {}) }
+              if (targetWorkspaceId == null) {
+                delete nextVivExt.workspaceId
+              } else {
+                nextVivExt.workspaceId = targetWorkspaceId
+              }
+              attachedTab.vivExtData = nextVivExt
+              await api.updateVivExtData(tabId, nextVivExt).catch(() => {})
+            }
+          }
+        } catch (e) {
+          console.warn('[svb] onAttached workspace sync failed', e)
+        }
+        refreshPreservingContext(tabId)
+      }),
       api.onDetached(refreshPreservingContext),
       api.onActivated(refreshFromActiveTab),
       api.onWorkspacesChanged ? api.onWorkspacesChanged(() => {
@@ -945,6 +1133,9 @@ function createTabStore(api) {
   }
 
   return {
+    getState() {
+      return state
+    },
     subscribe(listener) {
       listeners.add(listener)
       listener(state)
@@ -956,6 +1147,7 @@ function createTabStore(api) {
       state = { ...state, windowId }
       bindEvents()
       await syncTabs({}, 'init')
+      this.startAutoCloseJob()
     },
 
     async reload() {
@@ -966,6 +1158,86 @@ function createTabStore(api) {
       resetListeners()
       listeners.clear()
       releaseContextLock()
+      if (this._autoCloseTimer) clearInterval(this._autoCloseTimer)
+    },
+
+    startAutoCloseJob() {
+      if (this._autoCloseTimer) clearInterval(this._autoCloseTimer)
+      this.repairMissingCreatedAt().then(() => {
+        this.runAutoCloseJob()
+      })
+      // Check every hour
+      this._autoCloseTimer = setInterval(() => this.runAutoCloseJob(), 3600 * 1000)
+      if (this._autoCloseTimer && typeof this._autoCloseTimer.unref === 'function') {
+        this._autoCloseTimer.unref()
+      }
+    },
+
+    async repairMissingCreatedAt() {
+      const now = Date.now()
+      const allTabs = state.tabs.concat(state.pinnedTabs)
+      const payloads = []
+
+      for (const tab of allTabs) {
+        if (!tab.vivExtData || typeof tab.vivExtData !== 'object') continue
+        const record = tab.vivExtData['svbTree']
+        if (record && !record.createdAt) {
+          const nextVivExtData = JSON.parse(JSON.stringify(tab.vivExtData))
+          nextVivExtData['svbTree'] = { ...record, createdAt: now }
+          payloads.push({ tabId: tab.id, vivExtData: nextVivExtData })
+        }
+      }
+
+      for (let i = 0; i < payloads.length; i += 10) {
+        const chunk = payloads.slice(i, i + 10)
+        await Promise.all(chunk.map(p => api.updateVivExtData(p.tabId, p.vivExtData)))
+      }
+    },
+
+    runAutoCloseJob() {
+      const days = Number(settingsStore.get('autoCloseTabsDays'))
+      if (!days || days <= 0) return
+
+      const thresholdMs = days * 24 * 60 * 60 * 1000
+      const now = Date.now()
+      const expandedTargetIds = []
+      
+      const treeState = treeController.getState()
+      const rootIds = treeState ? treeState.rootIds : []
+
+      function isTabOrAncestorPinnedFolder(tabId) {
+        let currentId = tabId
+        const visited = new Set()
+        while (currentId != null && !visited.has(currentId)) {
+          visited.add(currentId)
+          const tab = getTabById(currentId)
+          if (tab && tab.vivExtData && typeof tab.vivExtData === 'object' && tab.vivExtData.pinnedFolder) {
+            return true
+          }
+          currentId = treeController.getParentId(currentId)
+        }
+        return false
+      }
+
+      for (const rootId of rootIds) {
+        const tab = state.tabs.find(t => t.id === rootId) || state.pinnedTabs.find(t => t.id === rootId)
+        if (!tab || tab.pinned || isTabOrAncestorPinnedFolder(rootId)) continue
+
+        const record = tab.vivExtData && typeof tab.vivExtData === 'object' && tab.vivExtData['svbTree']
+        if (record && record.createdAt) {
+          const age = now - Number(record.createdAt)
+          if (age > thresholdMs) {
+            const isFolder = tab.vivExtData.isFolder
+            const closeIds = isFolder ? treeController.getSubtreeTargetIds(rootId) : treeController.getCloseTargetIds(rootId)
+            const safeCloseIds = closeIds.filter(id => !isTabOrAncestorPinnedFolder(id))
+            expandedTargetIds.push(...(safeCloseIds.length ? safeCloseIds : [rootId]))
+          }
+        }
+      }
+
+      if (expandedTargetIds.length > 0) {
+        api.closeTabs(expandedTargetIds)
+      }
     },
 
     activateTab(tabId) {
@@ -974,18 +1246,22 @@ function createTabStore(api) {
       api.activateTab(tabId)
     },
 
-    closeTab(tabId) {
+    async closeTab(tabId) {
       if (!state.canCloseVisibleTabs) return
-      const closeTargetIds = treeController.getCloseTargetIds(tabId)
+      
+      const tab = getTabById(tabId)
+      const isFolder = tab && tab.vivExtData && tab.vivExtData.isFolder
+      const closeTargetIds = isFolder ? treeController.getSubtreeTargetIds(tabId) : treeController.getCloseTargetIds(tabId)
+      
       if (closeTargetIds.length === 0) return
       pendingNativeReconcileReason = 'close'
       lockCurrentContext()
-      activateBeforeCloseIfNeeded(closeTargetIds)
+      await activateBeforeCloseIfNeeded(closeTargetIds)
       if (closeTargetIds.length === 1) {
-        api.closeTab(closeTargetIds[0])
+        await api.closeTab(closeTargetIds[0])
         return
       }
-      api.closeTabs(closeTargetIds)
+      await api.closeTabs(closeTargetIds)
     },
 
     closeTabIds,
@@ -1022,6 +1298,66 @@ function createTabStore(api) {
         vivExtData: kind === 'child' 
           ? getCreateVivExtDataForChild(state, targetId)
           : getCreateVivExtDataForState(state),
+      })
+    },
+
+    createFolderTab() {
+      if (state.windowId == null) return
+      const folderName = 'New Folder'
+      const folderColor = 'blue'
+      const url = new URL('svb-folder.html', location.href).href + '#svb-folder:color=' + folderColor
+      
+      const vivExtData = {
+        isFolder: true,
+        folderColor,
+        fixedTitle: folderName
+      }
+      
+      treeController.registerExpectedCreation({ kind: 'root' })
+      pendingNativeReconcileReason = 'create-root'
+      api.createTab(state.windowId, {
+        url,
+        vivExtData: {
+          ...getCreateVivExtDataForState(state),
+          ...vivExtData
+        }
+      })
+    },
+
+    createFolderTabAt(targetId, position) {
+      if (state.windowId == null || !Number.isFinite(targetId) || !position) return
+      
+      const folderName = 'New Folder'
+      const folderColor = 'blue'
+      const url = new URL('svb-folder.html', location.href).href + '#svb-folder:color=' + folderColor
+      
+      const vivExtData = {
+        isFolder: true,
+        folderColor,
+        fixedTitle: folderName
+      }
+      
+      const kind = position === 'inside' ? 'child' : 'sibling'
+      treeController.registerExpectedCreation({
+        kind,
+        parentTabId: targetId,
+        position,
+      })
+
+      const index = position === 'inside' 
+        ? treeController.getCreateChildIndex(targetId, state.tabs)
+        : position === 'before'
+          ? getTabById(targetId).index
+          : treeController.getCreateSiblingIndex(targetId, state.tabs)
+
+      pendingNativeReconcileReason = `create-${kind}-at`
+      api.createChildTab(state.windowId, targetId, {
+        url,
+        index,
+        vivExtData: {
+          ...(kind === 'child' ? getCreateVivExtDataForChild(state, targetId) : getCreateVivExtDataForState(state)),
+          ...vivExtData
+        }
       })
     },
 
@@ -1094,6 +1430,24 @@ function createTabStore(api) {
       return true
     },
 
+    async moveSelectionToTop(tabId, selectedIds) {
+      const targetIds = getActionTargetIds(tabId, selectedIds)
+      if (targetIds.length === 0) return false
+      if (!await treeController.moveTabsToTop(targetIds, state.tabs)) return false
+      pendingNativeReconcileReason = 'move-top'
+      await syncTabs({ preserveContext: true }, 'move-top')
+      return true
+    },
+
+    async moveSelectionToBottom(tabId, selectedIds) {
+      const targetIds = getActionTargetIds(tabId, selectedIds)
+      if (targetIds.length === 0) return false
+      if (!await treeController.moveTabsToBottom(targetIds, state.tabs)) return false
+      pendingNativeReconcileReason = 'move-bottom'
+      await syncTabs({ preserveContext: true }, 'move-bottom')
+      return true
+    },
+
     restoreLastClosedTab() {
       if (!api.restoreLastClosedTab) return
       api.restoreLastClosedTab().catch(error => console.error('[svb] cannot restore tab', error))
@@ -1101,71 +1455,15 @@ function createTabStore(api) {
 
     async moveSelectionToNewWindow(tabId, selectedIds) {
       const targetIds = getTreeActionTargetIds(tabId, selectedIds)
-      console.log('[svb] moveSelectionToNewWindow targetIds:', targetIds)
       if (targetIds.length === 0 || !api.moveTabsToNewWindow) return
-      
-      // Lock context to prevent workspace jumping during detachment
-      lockCurrentContext()
 
       try {
-        const moveRecords = treeController.getWorkspaceMoveRecords(targetIds)
-        console.log('[svb] moveRecords count:', moveRecords.length)
-        const moveRecordById = new Map(moveRecords.map(record => [record.tabId, record]))
-        const visibleTabsById = new Map(getAllVisibleTabs().map(tab => [tab.id, tab]))
-        const nodeIdByTabId = new Map()
-        const detachedContextKey = `detached:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`
-
-        for (const targetId of targetIds) {
-          const tab = visibleTabsById.get(targetId)
-          const record = tab
-            && tab.vivExtData
-            && tab.vivExtData[TREE_NAMESPACE_KEY]
-            && typeof tab.vivExtData[TREE_NAMESPACE_KEY] === 'object'
-            ? tab.vivExtData[TREE_NAMESPACE_KEY]
-            : null
-          nodeIdByTabId.set(targetId, typeof record?.nodeId === 'string' && record.nodeId ? record.nodeId : createTreeNodeId())
-        }
-
-        await updateVivExtDataForTabs(targetIds, tab => {
-          const previousData = tab && tab.vivExtData && typeof tab.vivExtData === 'object' ? tab.vivExtData : {}
-          const previousTreeData = previousData[TREE_NAMESPACE_KEY] && typeof previousData[TREE_NAMESPACE_KEY] === 'object'
-            ? previousData[TREE_NAMESPACE_KEY]
-            : null
-          const moveRecord = moveRecordById.get(tab.id) || null
-          const parentNodeId = moveRecord && Number.isFinite(moveRecord.parentId)
-            ? nodeIdByTabId.get(moveRecord.parentId) || null
-            : null
-          const order = moveRecord
-            ? (parentNodeId == null ? moveRecord.rootIndex : moveRecord.siblingIndex)
-            : (previousTreeData && Number.isFinite(Number(previousTreeData.order)) ? Number(previousTreeData.order) : 0)
-
-          return {
-            ...previousData,
-            [TREE_NAMESPACE_KEY]: {
-              ...(previousTreeData || {}),
-              version: (previousTreeData && Number(previousTreeData.version)) || 1,
-              contextKey: detachedContextKey,
-              nodeId: nodeIdByTabId.get(tab.id) || createTreeNodeId(),
-              parentNodeId,
-              collapsed: !!(previousTreeData && previousTreeData.collapsed),
-              order,
-            },
-          }
-        })
-
-        console.log('[svb] calling api.moveTabsToNewWindow with:', targetIds)
-        // Delay to allow Vivaldi 8 to settle metadata updates
-        await new Promise(resolve => setTimeout(resolve, 300))
         await api.moveTabsToNewWindow(targetIds)
+      } catch (error) {
+        console.error('[svb] moveSelectionToNewWindow failed', error)
       } finally {
-        // Short delay before releasing lock to let Vivaldi internal events settle
-        setTimeout(() => {
-          releaseContextLock()
-          syncTabs({ preserveContext: true }).catch(() => {})
-        }, 1500)
+        await syncTabs({ preserveContext: true }, 'move-window')
       }
-      
-      await syncTabs({ preserveContext: true })
     },
 
     async moveSelectionToWorkspace(tabId, selectedIds, workspaceId) {
@@ -1173,21 +1471,109 @@ function createTabStore(api) {
       await moveTabsToWorkspace(getTreeActionTargetIds(tabId, selectedIds), workspaceId)
     },
 
+    // Switch the panel (and the browser) to another workspace. Vivaldi has no
+    // "activate workspace" API exposed here, so we activate a tab that belongs
+    // to the target workspace; the active-tab change drives the context switch.
+    // Switch the active workspace via Vivaldi's native manager. Works for empty
+    // workspaces too; the workspace-store change re-syncs the panel.
+    switchToWorkspace(workspaceId) {
+      if (state.windowId == null || !api.activateWorkspace) return
+      const targetId = workspaceId == null ? null : Number(workspaceId)
+      const currentId = state.outsideWorkspace ? null : (state.activeWorkspaceId ?? null)
+      if (currentId === targetId) return
+
+      releaseContextLock()
+      pendingActiveRepairTabId = null
+      api.activateWorkspace(state.windowId, targetId)
+    },
+
     async createWorkspaceAndMoveSelection(tabId, selectedIds) {
-      if (!api.createWorkspace) return
-      const workspace = await api.createWorkspace('New Workspace')
-      const workspaceId = workspace && Number(workspace.id)
-      if (!Number.isFinite(workspaceId)) return
+      if (state.windowId == null || !api.createWorkspaceWithId) return
+      const workspaceId = Date.now()
+      if (!api.createWorkspaceWithId(workspaceId, 'New Workspace')) return
       await moveTabsToWorkspace(getTreeActionTargetIds(tabId, selectedIds), workspaceId)
-      if (api.repairWorkspace) {
-        api.repairWorkspace(workspace)
-      }
+      if (api.activateWorkspace) api.activateWorkspace(state.windowId, workspaceId)
+    },
+
+    // Create a workspace natively (Vivaldi assigns the id, persists it, and
+    // switches to the new empty workspace — same as the native "+").
+    createWorkspace(name) {
+      if (!api.createWorkspace) return
+      const workspaceName = typeof name === 'string' && name.trim() ? name.trim() : 'New Workspace'
+      releaseContextLock()
+      pendingActiveRepairTabId = null
+      api.createWorkspace(workspaceName)
+    },
+
+    async renameWorkspace(workspaceId, name) {
+      if (!api.setWorkspaceName) return
+      const targetId = Number(workspaceId)
+      const nextName = typeof name === 'string' ? name.trim() : ''
+      if (!Number.isFinite(targetId) || !nextName) return
+      api.setWorkspaceName(targetId, nextName)
+      await syncTabs({ preserveContext: true }, 'workspaces')
+    },
+
+    // Delete a workspace natively: Vivaldi switches away, closes the
+    // workspace's tabs, and removes it ("Delete Workspace").
+    async deleteWorkspace(workspaceId) {
+      if (state.windowId == null || !api.deleteWorkspace) return
+      const targetId = Number(workspaceId)
+      if (!Number.isFinite(targetId)) return
+
+      releaseContextLock()
+      pendingActiveRepairTabId = null
+      await api.deleteWorkspace(state.windowId, targetId)
+      await syncTabs({ preserveContext: false }, 'workspaces')
     },
 
     async togglePinnedForSelection(tabId, selectedIds) {
       const targetIds = getActionTargetIds(tabId, selectedIds)
       const tab = getTabById(tabId)
-      await updateTabs(targetIds, { pinned: !(tab && tab.pinned) })
+      const isFolder = tab && tab.vivExtData && tab.vivExtData.isFolder
+
+      if (isFolder) {
+        const currentlyPinned = tab.vivExtData && tab.vivExtData.pinnedFolder
+        const nextPinned = !currentlyPinned
+
+        // Store pinnedFolder at top level of vivExtData (not inside svbTree)
+        // so tree persistence doesn't overwrite it
+        await updateVivExtDataForTabs([tabId], targetTab => {
+          const previousData = targetTab && targetTab.vivExtData && typeof targetTab.vivExtData === 'object' ? targetTab.vivExtData : {}
+          return {
+            ...previousData,
+            pinnedFolder: nextPinned
+          }
+        })
+
+        // If pinning, physically move folder to the very top of the tree
+        if (nextPinned) {
+          const firstRootTab = state.treeTabs.find(item => item.depth === 0 && item.id !== tabId)
+          if (firstRootTab) {
+            await treeController.moveTab(tabId, firstRootTab.id, 'before', state.tabs)
+          }
+        } else {
+          // If unpinning, physically move folder below the last pinned folder
+          const firstUnpinnedRootTab = state.treeTabs.find(item => {
+            if (item.depth !== 0 || item.id === tabId) return false
+            const t = getTabById(item.id)
+            return !(t && t.vivExtData && t.vivExtData.pinnedFolder)
+          })
+          if (firstUnpinnedRootTab) {
+            await treeController.moveTab(tabId, firstUnpinnedRootTab.id, 'before', state.tabs)
+          } else {
+            const lastRootTab = state.treeTabs.slice().reverse().find(item => item.depth === 0 && item.id !== tabId)
+            if (lastRootTab) {
+              await treeController.moveTab(tabId, lastRootTab.id, 'after', state.tabs)
+            }
+          }
+        }
+
+        pendingNativeReconcileReason = 'toggle-pinned-folder'
+        await syncTabs({ preserveContext: true }, 'toggle-pinned-folder')
+      } else {
+        await updateTabs(targetIds, { pinned: !(tab && tab.pinned) })
+      }
     },
 
     async toggleMutedForSelection(tabId, selectedIds) {
@@ -1195,6 +1581,19 @@ function createTabStore(api) {
       const tab = getTabById(tabId)
       const muted = !(tab && tab.muted)
       await updateTabs(targetIds, { muted })
+    },
+
+    async refreshWorkspaces() {
+      if (!api.getWorkspaces) return
+      try {
+        const workspaces = await api.getWorkspaces()
+        if (Array.isArray(workspaces)) {
+          state = { ...state, workspaces }
+          notify()
+        }
+      } catch (e) {
+        console.warn('[svb] manual refreshWorkspaces failed', e)
+      }
     },
 
     async renameTab(tabId, title) {
@@ -1255,6 +1654,116 @@ function createTabStore(api) {
       await syncTabs({ preserveContext: true })
     },
 
+    reloadSelection(tabId, selectedIds) {
+      if (!api.reloadTab) return
+      const targetIds = getActionTargetIds(tabId, selectedIds)
+      for (const id of targetIds) api.reloadTab(id)
+    },
+
+    // Hibernate (discard) tabs to free memory. The active tab can't be
+    // discarded by Chromium, so skip it.
+    async hibernateSelection(tabId, selectedIds) {
+      if (!api.discardTab) return
+      const targetIds = getActionTargetIds(tabId, selectedIds)
+      for (const id of targetIds) {
+        const tab = getTabById(id)
+        if (tab && !tab.active) {
+          const oldIndex = tab.index
+          let oldSiblingAnchorId = null
+          let isBefore = false
+          let oldParentId = null
+
+          const nodeIndex = state.treeTabs.findIndex(t => t.id === id)
+          if (nodeIndex !== -1) {
+            const node = state.treeTabs[nodeIndex]
+            oldParentId = node.parentId
+            const siblings = state.treeTabs.filter(t => t.parentId === node.parentId)
+            const siblingIndex = siblings.findIndex(t => t.id === id)
+            
+            if (siblingIndex > 0) {
+              oldSiblingAnchorId = siblings[siblingIndex - 1].id
+              isBefore = false
+            } else if (siblingIndex === 0 && siblings.length > 1) {
+              oldSiblingAnchorId = siblings[1].id
+              isBefore = true
+            }
+          }
+
+          if (oldSiblingAnchorId != null) {
+            treeController.registerExpectedCreation({
+              kind: 'sibling',
+              parentTabId: oldSiblingAnchorId,
+              position: isBefore ? 'before' : 'after'
+            })
+          } else if (oldParentId != null) {
+            treeController.registerExpectedCreation({
+              kind: 'child',
+              parentTabId: oldParentId
+            })
+          } else {
+             // Let it fall back for root tabs
+          }
+
+          const newTabId = await api.discardTab(id)
+          const targetTabId = newTabId || id
+          
+          if (targetTabId) {
+            if (api.moveTab && oldIndex != null) {
+              await api.moveTab(targetTabId, oldIndex).catch(() => {})
+            }
+            
+            const tryAttach = () => {
+              if (oldSiblingAnchorId != null) {
+                treeController.moveTab(targetTabId, oldSiblingAnchorId, isBefore ? 'before' : 'after', state.tabs).catch(() => {})
+              } else if (oldParentId != null) {
+                treeController.moveTab(targetTabId, oldParentId, 'inside', state.tabs).catch(() => {})
+              }
+            }
+            
+            tryAttach()
+            setTimeout(tryAttach, 50)
+            setTimeout(tryAttach, 200)
+          }
+        }
+      }
+    },
+
+    copySelectionUrl(tabId, selectedIds) {
+      const targetIds = getActionTargetIds(tabId, selectedIds)
+      const text = targetIds.map(id => getTabById(id)).filter(t => t && t.url).map(t => t.url).join('\n')
+      if (text) navigator.clipboard.writeText(text).catch(() => {})
+    },
+
+    copySelectionTitle(tabId, selectedIds) {
+      const targetIds = getActionTargetIds(tabId, selectedIds)
+      const text = targetIds.map(id => getTabById(id)).filter(t => t && t.title).map(t => t.title).join('\n')
+      if (text) navigator.clipboard.writeText(text).catch(() => {})
+    },
+
+    copySelectionMarkdown(tabId, selectedIds) {
+      const targetIds = getActionTargetIds(tabId, selectedIds)
+      const text = targetIds.map(id => getTabById(id)).filter(t => t && t.url).map(t => `[${t.title || t.url}](${t.url})`).join('\n')
+      if (text) navigator.clipboard.writeText(text).catch(() => {})
+    },
+
+    async bookmarkTab(tabId) {
+      if (!api.bookmarkTab) return
+      const tab = getTabById(tabId)
+      if (!tab || !tab.url) return
+      await api.bookmarkTab({ title: tab.title || tab.url, url: tab.url })
+    },
+
+    async bookmarkSelection(tabId, selectedIds) {
+      if (!api.bookmarkTab) return
+      const targetIds = getActionTargetIds(tabId, selectedIds)
+      for (const id of targetIds) {
+        const tab = getTabById(id)
+        if (tab && tab.url) {
+          await api.bookmarkTab({ title: tab.title || tab.url, url: tab.url })
+        }
+      }
+    },
+
     async saveTreeAsBookmark(tabId) {
       if (!api.saveBookmarkTree) return
       const tree = treeController.getBookmarkTree(tabId, state.tabs)
@@ -1273,12 +1782,18 @@ function createTabStore(api) {
       let createdCount = 0
 
       async function createNode(node, parentId) {
+        let folderUrl = node.url
+        if (node.isFolder) {
+          folderUrl = new URL('svb-folder.html', location.href).href + '#svb-folder:color=blue'
+        }
+
         const tab = await api.createRestoredTab(state.windowId, {
-          url: node.url,
-          active: createdCount === 0,
+          url: folderUrl,
+          active: createdCount === 0 && !node.isFolder,
           vivExtData: {
             ...baseVivExtData,
             fixedTitle: node.title,
+            ...(node.isFolder ? { isFolder: true, folderColor: 'blue' } : {})
           },
         })
         const tabId = tab && Number(tab.id)
@@ -1332,7 +1847,9 @@ function createTabStore(api) {
       const targetIds = getActionTargetIds(tabId, selectedIds)
       const expandedTargetIds = []
       for (const targetId of targetIds) {
-        const closeIds = treeController.getCloseTargetIds(targetId)
+        const tab = getTabById(targetId)
+        const isFolder = tab && tab.vivExtData && tab.vivExtData.isFolder
+        const closeIds = isFolder ? treeController.getSubtreeTargetIds(targetId) : treeController.getCloseTargetIds(targetId)
         expandedTargetIds.push(...(closeIds.length ? closeIds : [targetId]))
       }
       closeTabIds(expandedTargetIds)

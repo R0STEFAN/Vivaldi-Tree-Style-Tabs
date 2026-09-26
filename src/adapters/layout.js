@@ -4,10 +4,12 @@ function createLayoutAdapter(options) {
   const { root, host, trigger, dragShield, panelStore } = options
   const MIN_WIDTH = 30
   const MAX_WIDTH = 520
+  const ICON_STRIP_WIDTH = 42
   let observer = null
   let resizeHandler = null
   let revealed = false
   let unlistenPanel = null
+  let unlistenSettings = null
   let currentPinned = panelStore.getState().pinned
   let currentWidth = panelStore.getState().width
   let dragState = null
@@ -39,6 +41,10 @@ function createLayoutAdapter(options) {
       || hasFullscreenClass(app)
   }
 
+  function isMenuOpen() {
+    return !!(root && (root.classList.contains('is-menu-open') || (root.querySelector && root.querySelector('.svb-menu'))))
+  }
+
   function apply() {
     if (!root || !trigger || !dragShield) return
 
@@ -56,19 +62,44 @@ function createLayoutAdapter(options) {
       currentHost.classList.add('svb-layout-host')
     }
 
+    const autoHideMode = settingsStore.get('autoHideMode') || 'full'
+    const isIconsMode = autoHideMode === 'icons' && !currentPinned
     const renderedWidth = getRenderedWidth()
+    const effectiveRevealed = revealed || isMenuOpen()
 
-    // Sync both variables immediately for smooth layout movement
-    if (currentHost.style.getPropertyValue('--svb-sidebar-width') !== `${renderedWidth}px`) {
-      currentHost.style.setProperty('--svb-sidebar-width', `${renderedWidth}px`)
+    currentHost.style.setProperty('--svb-rendered-width', `${renderedWidth}px`)
+
+    if (isIconsMode) {
+      // In icons mode when unpinned:
+      // Webview stays docked at 42px so web content is never obscured and doesn't jump on hover
+      if (currentHost.style.getPropertyValue('--svb-sidebar-width') !== `${ICON_STRIP_WIDTH}px`) {
+        currentHost.style.setProperty('--svb-sidebar-width', `${ICON_STRIP_WIDTH}px`)
+      }
+
+      const rootTargetWidth = effectiveRevealed ? renderedWidth : ICON_STRIP_WIDTH
+      if (root.style.width !== `${rootTargetWidth}px`) {
+        root.style.width = `${rootTargetWidth}px`
+      }
+
+      currentHost.classList.add('svb-mode-docked')
+      currentHost.classList.remove('svb-mode-overlay')
+      currentHost.classList.add('svb-autohide-icons')
+      root.classList.add('svb-autohide-icons')
+    } else {
+      if (currentHost.style.getPropertyValue('--svb-sidebar-width') !== `${renderedWidth}px`) {
+        currentHost.style.setProperty('--svb-sidebar-width', `${renderedWidth}px`)
+      }
+
+      if (root.style.width !== `${renderedWidth}px`) {
+        root.style.width = `${renderedWidth}px`
+      }
+
+      currentHost.classList.toggle('svb-mode-docked', currentPinned)
+      currentHost.classList.toggle('svb-mode-overlay', !currentPinned)
+      currentHost.classList.remove('svb-autohide-icons')
+      root.classList.remove('svb-autohide-icons')
     }
 
-    if (root.style.width !== `${renderedWidth}px`) {
-      root.style.width = `${renderedWidth}px`
-    }
-
-    currentHost.classList.toggle('svb-mode-docked', currentPinned)
-    currentHost.classList.toggle('svb-mode-overlay', !currentPinned)
     currentHost.classList.toggle('svb-is-fullscreen', fullscreen)
 
     const browser = document.querySelector('#browser')
@@ -80,8 +111,8 @@ function createLayoutAdapter(options) {
     currentHost.classList.toggle('svb-position-right', panelPosition === 'right')
     trigger.classList.toggle('svb-position-right', panelPosition === 'right')
 
-    root.classList.toggle('is-revealed', !fullscreen && (currentPinned || revealed))
-    trigger.classList.toggle('is-enabled', !fullscreen && !currentPinned)
+    root.classList.toggle('is-revealed', !fullscreen && (currentPinned || effectiveRevealed))
+    trigger.classList.toggle('is-enabled', !fullscreen && !currentPinned && !effectiveRevealed && !isIconsMode)
     dragShield.classList.toggle('is-active', !fullscreen && Boolean(dragState))
   }
 
@@ -98,6 +129,7 @@ function createLayoutAdapter(options) {
 
   function setRevealed(value) {
     if (currentPinned) return
+    if (!value && isMenuOpen()) return
     if (revealed === value) return
     revealed = value
     apply()
@@ -175,12 +207,24 @@ function createLayoutAdapter(options) {
     apply()
   }
 
+  let windowsApi = null
+  let updateWindowFullscreen = null
+  let rootMouseEnter = null
+  let rootMouseLeave = null
+  let rootPointerLeave = null
+  let hideOnExternalHover = null
+  let globalMouseMove = null
+  let globalMouseLeave = null
+  let clearRevealDelay = null
+  let triggerRevealWithDelay = null
+  let mouseMoveRaf = null
+
   function start() {
     fullscreen = detectFullscreen()
     apply()
 
-    const windowsApi = typeof chrome !== 'undefined' && chrome.windows ? chrome.windows : null
-    const updateWindowFullscreen = win => {
+    windowsApi = typeof chrome !== 'undefined' && chrome.windows ? chrome.windows : null
+    updateWindowFullscreen = win => {
       const nextWindowFullscreen = !!(win && win.state === 'fullscreen')
       if (windowFullscreen === nextWindowFullscreen) return
       windowFullscreen = nextWindowFullscreen
@@ -216,16 +260,16 @@ function createLayoutAdapter(options) {
     window.addEventListener('resize', refreshFullscreen)
 
     let revealTimeout = null
-    const REVEAL_DELAY = 150 // Delay in ms before showing panel
+    const REVEAL_DELAY = 120 // Delay in ms before showing panel
 
-    const clearRevealDelay = () => {
+    clearRevealDelay = () => {
       if (revealTimeout) {
         clearTimeout(revealTimeout)
         revealTimeout = null
       }
     }
 
-    const triggerRevealWithDelay = () => {
+    triggerRevealWithDelay = () => {
       if (revealed || currentPinned || fullscreen || dragState) return
       if (!revealTimeout) {
         revealTimeout = setTimeout(() => {
@@ -238,50 +282,110 @@ function createLayoutAdapter(options) {
     trigger.addEventListener('mouseenter', triggerRevealWithDelay)
     trigger.addEventListener('mouseleave', clearRevealDelay)
     
-    root.addEventListener('mouseenter', () => {
+    rootMouseEnter = () => {
+      const autoHideMode = settingsStore.get('autoHideMode') || 'full'
+      if (autoHideMode === 'icons' && !currentPinned) {
+        triggerRevealWithDelay()
+      } else {
+        clearRevealDelay()
+        setRevealed(true)
+      }
+    }
+    const isCursorAtScreenEdge = (e) => {
+      if (!e) return false;
+      const isRight = settingsStore.get('panelPosition') === 'right';
+      return !isRight ? (e.clientX <= 15) : (e.clientX >= window.innerWidth - 15);
+    }
+
+    rootMouseLeave = (e) => {
       clearRevealDelay()
-      setRevealed(true)
-    })
-    root.addEventListener('mouseleave', () => setRevealed(false))
-    root.addEventListener('pointerleave', () => setRevealed(false))
+      if (isMenuOpen()) return
+      if (e && e.relatedTarget && trigger.contains(e.relatedTarget)) return
+      if (isCursorAtScreenEdge(e)) return
+      setRevealed(false)
+    }
+    rootPointerLeave = (e) => {
+      clearRevealDelay()
+      if (isMenuOpen()) return
+      if (e && e.relatedTarget && trigger.contains(e.relatedTarget)) return
+      if (isCursorAtScreenEdge(e)) return
+      setRevealed(false)
+    }
+
+    root.addEventListener('mouseenter', rootMouseEnter)
+    root.addEventListener('mouseleave', rootMouseLeave)
+    root.addEventListener('pointerleave', rootPointerLeave)
     root.addEventListener('pointerdown', startDragging)
 
     // Handle surface crossing where native webviews swallow pointer events and prevent mouseleave.
     // Also handles dynamic webview container creation and moving the mouse out of the panel into other UI.
-    const hideOnExternalHover = event => {
+    hideOnExternalHover = event => {
       if (!revealed || currentPinned || fullscreen || dragState) return
-      
-      const target = event.target
-      if (target && !root.contains(target) && !trigger.contains(target) && target !== dragShield) {
+      if (isMenuOpen()) return
+
+      if (isCursorAtScreenEdge(event)) return
+
+      let targetElement = null;
+      if (event.type === 'mouseover' || event.type === 'pointerover') {
+        targetElement = event.target;
+      } else if (event.type === 'mouseout' || event.type === 'pointerout') {
+        targetElement = event.relatedTarget;
+      }
+
+      if (targetElement === null) {
+        setRevealed(false)
+        return
+      }
+
+      if (!root.contains(targetElement) && !trigger.contains(targetElement) && targetElement !== dragShield) {
         setRevealed(false)
       }
     }
-    
+
     document.addEventListener('mouseover', hideOnExternalHover)
     document.addEventListener('pointerover', hideOnExternalHover)
+    document.addEventListener('mouseout', hideOnExternalHover)
+    document.addEventListener('pointerout', hideOnExternalHover)
 
-    document.addEventListener('mousemove', event => {
+    let latestMouseX = 0
+    let mouseMovePending = false
+
+    const performMouseMoveCheck = () => {
+      mouseMovePending = false
       if (revealed || currentPinned || fullscreen || dragState) {
         clearRevealDelay()
         return
       }
       
+      const autoHideMode = settingsStore.get('autoHideMode') || 'full'
+      const isIconsMode = autoHideMode === 'icons' && !currentPinned
       const panelPosition = settingsStore.get('panelPosition')
       const isRight = panelPosition === 'right'
-      const threshold = 15 // Wider logical trigger zone (doesn't block clicks)
+      const threshold = isIconsMode ? ICON_STRIP_WIDTH : 15 // Check icon strip width in icons mode
       
-      const inZone = !isRight ? (event.clientX <= threshold) : (event.clientX >= window.innerWidth - threshold)
+      const inZone = !isRight ? (latestMouseX <= threshold) : (latestMouseX >= window.innerWidth - threshold)
       
       if (inZone) {
         triggerRevealWithDelay()
       } else {
         clearRevealDelay()
       }
-    })
+    }
 
-    document.addEventListener('mouseleave', () => {
+    globalMouseMove = event => {
+      latestMouseX = event.clientX
+      if (!mouseMovePending) {
+        mouseMovePending = true
+        mouseMoveRaf = window.requestAnimationFrame(performMouseMoveCheck)
+      }
+    }
+
+    globalMouseLeave = () => {
       clearRevealDelay() // Mouse left the window completely, cancel reveal
-    })
+    }
+
+    document.addEventListener('mousemove', globalMouseMove)
+    document.addEventListener('mouseleave', globalMouseLeave)
 
     unlistenPanel = panelStore.subscribe(nextState => {
       currentPinned = nextState.pinned
@@ -291,9 +395,49 @@ function createLayoutAdapter(options) {
       }
       apply()
     })
+
+    unlistenSettings = settingsStore.subscribe(() => {
+      apply()
+    })
   }
 
-  return { apply, start }
+  function dispose() {
+    if (windowsApi && windowsApi.onBoundsChanged && typeof windowsApi.onBoundsChanged.removeListener === 'function') {
+      windowsApi.onBoundsChanged.removeListener(updateWindowFullscreen)
+    }
+    window.removeEventListener('resize', resizeHandler)
+    if (observer) observer.disconnect()
+    document.removeEventListener('fullscreenchange', refreshFullscreen)
+    document.removeEventListener('webkitfullscreenchange', refreshFullscreen)
+    document.removeEventListener('mozfullscreenchange', refreshFullscreen)
+    document.removeEventListener('MSFullscreenChange', refreshFullscreen)
+    window.removeEventListener('resize', refreshFullscreen)
+
+    trigger.removeEventListener('mouseenter', triggerRevealWithDelay)
+    trigger.removeEventListener('mouseleave', clearRevealDelay)
+    root.removeEventListener('mouseenter', rootMouseEnter)
+    root.removeEventListener('mouseleave', rootMouseLeave)
+    root.removeEventListener('pointerleave', rootPointerLeave)
+    root.removeEventListener('pointerdown', startDragging)
+
+    document.removeEventListener('mouseover', hideOnExternalHover)
+    document.removeEventListener('pointerover', hideOnExternalHover)
+    document.removeEventListener('mouseout', hideOnExternalHover)
+    document.removeEventListener('pointerout', hideOnExternalHover)
+    document.removeEventListener('mousemove', globalMouseMove)
+    document.removeEventListener('mouseleave', globalMouseLeave)
+
+    if (mouseMoveRaf) {
+      window.cancelAnimationFrame(mouseMoveRaf)
+      mouseMoveRaf = null
+    }
+
+    if (clearRevealDelay) clearRevealDelay()
+    if (unlistenPanel) unlistenPanel()
+    if (unlistenSettings) unlistenSettings()
+  }
+
+  return { apply, start, dispose }
 }
 
 module.exports = { createLayoutAdapter }

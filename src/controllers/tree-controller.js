@@ -10,6 +10,7 @@ function createTreeController(api) {
   const treePersistence = createTreePersistence(api)
   const pendingCreatedTabs = new Map()
   const expectedCreations = []
+  const recentlyClosedTabs = []
   let pendingRemovalDirty = false
   let cachedDerivedView = null
   let persistQueue = Promise.resolve()
@@ -138,6 +139,12 @@ function createTreeController(api) {
         position: creation.position || null,
         createdAt: Date.now(),
       })
+
+      setTimeout(() => {
+        while (expectedCreations.length > 0 && Date.now() - expectedCreations[0].createdAt > 5000) {
+          expectedCreations.shift()
+        }
+      }, 5500)
     },
 
     capturePendingCreation(tab, sourceActiveTabId, meta = {}) {
@@ -155,7 +162,54 @@ function createTreeController(api) {
         sourceActiveTabId,
         expectedCreation,
         fromPinnedTab: !(expectedCreation && expectedCreation.kind === 'root') && !!(meta && meta.fromPinnedTab),
+        nativeIndex: tab.index,
       })
+    },
+
+    recordClosedTab(tab) {
+      if (!tab || !tab.url || tab.pinned) return
+      
+      const parentId = treeStore.getParentId(tab.id)
+      const treeState = treeStore.exportState()
+      
+      let siblingAnchorId = null
+      let isBefore = false
+
+      if (parentId != null) {
+        const parentNode = treeState.nodesById[parentId]
+        if (parentNode && parentNode.childIds) {
+          const idx = parentNode.childIds.indexOf(tab.id)
+          if (idx > 0) {
+            siblingAnchorId = parentNode.childIds[idx - 1]
+            isBefore = false
+          } else if (idx === 0 && parentNode.childIds.length > 1) {
+            siblingAnchorId = parentNode.childIds[1]
+            isBefore = true
+          }
+        }
+      } else {
+        const idx = treeState.rootIds.indexOf(tab.id)
+        if (idx > 0) {
+          siblingAnchorId = treeState.rootIds[idx - 1]
+          isBefore = false
+        } else if (idx === 0 && treeState.rootIds.length > 1) {
+          siblingAnchorId = treeState.rootIds[1]
+          isBefore = true
+        }
+      }
+
+      recentlyClosedTabs.unshift({
+        url: tab.url,
+        parentId,
+        siblingAnchorId,
+        isBefore,
+        nativeIndex: tab.index,
+        timestamp: Date.now()
+      })
+
+      if (recentlyClosedTabs.length > 50) {
+        recentlyClosedTabs.pop()
+      }
     },
 
     handleRemovedTab(tabId) {
@@ -164,6 +218,19 @@ function createTreeController(api) {
       if (pendingRemovalDirty) {
         invalidateDerivedView()
       }
+    },
+
+    handleReplacedTab(addedTabId, removedTabId) {
+      if (!treeStore.hasTab(removedTabId)) return false
+
+      const { migrateMetadataCache } = require('../store/tree-persistence.js')
+      migrateMetadataCache(removedTabId, addedTabId)
+
+      const changed = treeStore.replaceTabId(removedTabId, addedTabId)
+      if (changed) {
+        invalidateDerivedView()
+      }
+      return changed
     },
 
     clearStalePendingCreations(allTabs) {
@@ -304,6 +371,7 @@ function createTreeController(api) {
           title: tab.title || tab.url,
           url: tab.url,
           collapsed: !!(node && node.collapsed),
+          isFolder: !!(tab.vivExtData && tab.vivExtData.isFolder),
           children: childIds.map(buildNode).filter(Boolean),
         }
       }
@@ -366,6 +434,22 @@ function createTreeController(api) {
       }
 
       const tabsById = new Map(tabs.map(tab => [tab.id, tab]))
+
+      function getFirstUnpinnedRootIndex() {
+        const currentTreeState = treeStore.exportState()
+        const rootIds = Array.isArray(currentTreeState.rootIds) ? currentTreeState.rootIds : []
+        let index = 0
+        for (const rootId of rootIds) {
+          const tab = tabsById.get(rootId)
+          if (tab && tab.vivExtData && tab.vivExtData.pinnedFolder) {
+            index += 1
+          } else {
+            break
+          }
+        }
+        return index
+      }
+
       for (const tab of tabs) {
         if (treeStore.hasTab(tab.id)) continue
 
@@ -378,8 +462,45 @@ function createTreeController(api) {
 
         const expectedCreation = pendingCreation.expectedCreation || null
         let parentId = null
+        let matchedClosedTab = null
 
-        if (expectedCreation && expectedCreation.kind === 'child' && Number.isFinite(expectedCreation.parentTabId)) {
+        if (!expectedCreation) {
+          let idx = -1
+          if (tab.url && !isStartPageUrl(tab.url)) {
+            idx = recentlyClosedTabs.findIndex(item => item.url === tab.url)
+          }
+          if (idx === -1 && tab.title) {
+            idx = recentlyClosedTabs.findIndex(item => item.title === tab.title)
+          }
+          if (idx === -1 && pendingCreation.nativeIndex != null) {
+            idx = recentlyClosedTabs.findIndex(c => c.nativeIndex === pendingCreation.nativeIndex && (Date.now() - c.timestamp < 2000))
+          }
+          if (idx !== -1) {
+            matchedClosedTab = recentlyClosedTabs[idx]
+            recentlyClosedTabs.splice(idx, 1)
+          }
+        }
+
+        const isTopMode = settingsStore.get('newTabPlacement') === 'top'
+        const firstUnpinnedRootIndex = getFirstUnpinnedRootIndex()
+        const topRootTargetIndex = firstUnpinnedRootIndex
+        const rootTargetIndex = isTopMode ? topRootTargetIndex : undefined
+
+        if (matchedClosedTab) {
+          parentId = matchedClosedTab.parentId
+          if (matchedClosedTab.siblingAnchorId != null && treeStore.hasTab(matchedClosedTab.siblingAnchorId)) {
+            const attached = matchedClosedTab.isBefore
+              ? treeStore.attachBefore(tab.id, matchedClosedTab.siblingAnchorId)
+              : treeStore.attachAfter(tab.id, matchedClosedTab.siblingAnchorId)
+            
+            persistenceDirty = attached || persistenceDirty
+            structuralDirty = attached || structuralDirty
+            if (attached) {
+              pendingCreatedTabs.delete(tab.id)
+              continue
+            }
+          }
+        } else if (expectedCreation && expectedCreation.kind === 'child' && Number.isFinite(expectedCreation.parentTabId)) {
           parentId = expectedCreation.parentTabId
         } else if (expectedCreation && expectedCreation.kind === 'sibling' && Number.isFinite(expectedCreation.parentTabId)) {
           const siblingAnchorId = expectedCreation.parentTabId
@@ -402,14 +523,14 @@ function createTreeController(api) {
             structuralDirty = moved || structuralDirty
           }
         } else if (expectedCreation && expectedCreation.kind === 'root') {
-          treeStore.moveRoot(tab.id)
+          treeStore.moveRoot(tab.id, rootTargetIndex)
           persistenceDirty = true
           structuralDirty = true
         } else if (pendingCreation.fromPinnedTab) {
-          treeStore.moveRoot(tab.id, 0)
+          treeStore.moveRoot(tab.id, topRootTargetIndex)
           persistenceDirty = true
           structuralDirty = true
-        } else if (!(expectedCreation && expectedCreation.kind === 'root')) {
+        } else if (!(expectedCreation && expectedCreation.kind === 'root') && !matchedClosedTab) {
           const currentTreeState = treeStore.exportState()
           const looksLikeRootStartPage = isStartPageUrl(tab.url || '')
           parentId = resolveNewTabParent({
@@ -419,6 +540,11 @@ function createTreeController(api) {
             openerTabId: pendingCreation.openerTabId != null ? pendingCreation.openerTabId : tab.openerTabId,
             preferRoot: looksLikeRootStartPage,
           })
+          if (parentId == null && isTopMode) {
+            treeStore.moveRoot(tab.id, topRootTargetIndex)
+            persistenceDirty = true
+            structuralDirty = true
+          }
         }
 
         if (parentId != null) {
@@ -592,6 +718,83 @@ function createTreeController(api) {
         movedIds: moveIds,
         parentId: position === 'inside' ? targetId : treeStore.getParentId(moveIds[0]),
       }
+    },
+
+    async moveTabsToTop(tabIds, tabs) {
+      const moveIds = normalizeTopLevelMoveIds(Array.isArray(tabIds) ? tabIds : [tabIds])
+      if (moveIds.length === 0) return false
+
+      const treeState = treeStore.exportState()
+      const rootIds = treeState.rootIds || []
+      const tabsById = new Map((Array.isArray(tabs) ? tabs : []).map(t => [t.id, t]))
+
+      const firstUnpinnedRootTabId = rootIds.find(id => {
+        if (moveIds.includes(id)) return false
+        const t = tabsById.get(id)
+        return !(t && t.vivExtData && t.vivExtData.pinnedFolder)
+      })
+
+      let changed = false
+      if (firstUnpinnedRootTabId != null) {
+        for (const tabId of moveIds) {
+          changed = treeStore.attachBefore(tabId, firstUnpinnedRootTabId) || changed
+        }
+      } else {
+        const lastPinnedFolderId = rootIds.slice().reverse().find(id => {
+          if (moveIds.includes(id)) return false
+          const t = tabsById.get(id)
+          return !!(t && t.vivExtData && t.vivExtData.pinnedFolder)
+        })
+
+        if (lastPinnedFolderId != null) {
+          const orderedMoveIds = moveIds.slice().reverse()
+          for (const tabId of orderedMoveIds) {
+            changed = treeStore.attachAfter(tabId, lastPinnedFolderId) || changed
+          }
+        } else {
+          for (let i = 0; i < moveIds.length; i += 1) {
+            changed = treeStore.moveRoot(moveIds[i], i) || changed
+          }
+        }
+      }
+
+      if (!changed) return false
+      invalidateDerivedView()
+      persistCurrentTree(tabs)
+      return { movedIds: moveIds }
+    },
+
+    async moveTabsToBottom(tabIds, tabs) {
+      const moveIds = normalizeTopLevelMoveIds(Array.isArray(tabIds) ? tabIds : [tabIds])
+      if (moveIds.length === 0) return false
+
+      const treeState = treeStore.exportState()
+      const rootIds = treeState.rootIds || []
+      const lastRootId = rootIds.slice().reverse().find(id => !moveIds.includes(id))
+
+      let changed = false
+      if (lastRootId != null) {
+        const orderedMoveIds = moveIds.slice().reverse()
+        for (const tabId of orderedMoveIds) {
+          changed = treeStore.attachAfter(tabId, lastRootId) || changed
+        }
+      } else {
+        for (let i = 0; i < moveIds.length; i += 1) {
+          changed = treeStore.moveRoot(moveIds[i], undefined) || changed
+        }
+      }
+
+      if (!changed) return false
+      invalidateDerivedView()
+      persistCurrentTree(tabs)
+      return { movedIds: moveIds }
+    },
+
+    getParentId(tabId) {
+      return treeStore.getParentId(tabId)
+    },
+    getState() {
+      return treeStore.exportState()
     },
   }
 }
