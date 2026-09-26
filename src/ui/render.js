@@ -43,6 +43,8 @@ const TAB_COLOR_SWATCHES = {
 
 function renderMenuIcon(name) {
   const paths = {
+    top: '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/><path d="M5 21h14"/>',
+    bottom: '<path d="M12 5v14"/><path d="m5 12 7 7 7-7"/><path d="M5 3h14"/>',
     restore: '<path d="M5 8a6 6 0 1 1 1.8 4.3"/><path d="M5 4v4h4"/>',
     child: '<path d="M5 5h6v6H5z"/><path d="M11 8h4a4 4 0 0 1 4 4v1"/><path d="M16 11l3 3 3-3"/>',
     move: '<path d="M5 12h14"/><path d="M15 8l4 4-4 4"/>',
@@ -178,7 +180,11 @@ function renderContextMenu(tab, state, contextMenu) {
     workspaceId: Number(workspace.id),
   })).join('')
 
+  const isTopMode = (settingsStore.get('newTabPlacement') || 'bottom') === 'top'
   const moveSubmenu = `
+    ${renderContextMenuItem({ action: 'move-top', icon: 'top', label: selectedCount > 1 ? `Move ${selectedCount} Tabs to Top` : 'Top of Tree', disabled: isPinned })}
+    ${renderContextMenuItem({ action: 'move-bottom', icon: 'bottom', label: selectedCount > 1 ? `Move ${selectedCount} Tabs to Bottom` : 'Bottom of Tree', disabled: isPinned })}
+    <div class="svb-menu__separator"></div>
     ${renderContextMenuItem({ action: 'move-window', icon: 'window', label: 'New Window' })}
     <div class="svb-menu__separator"></div>
     ${workspaceItems || '<div class="svb-menu__empty">No Workspaces</div>'}
@@ -231,6 +237,14 @@ function renderContextMenu(tab, state, contextMenu) {
       ${renderContextMenuItem({ action: 'save-tree-bookmark', icon: 'bookmark', label: 'Save Tree as Bookmark', disabled: isPinned || !hasChildren })}
       ${renderContextMenuItem({ icon: 'folder', label: 'Open Saved Tree', submenu: savedTreeSubmenu || '<div class="svb-menu__empty">No Saved Trees</div>' })}
       <div class="svb-menu__separator"></div>
+      ${renderContextMenuItem({
+        action: isTopMode ? 'move-top' : 'move-bottom',
+        icon: isTopMode ? 'top' : 'bottom',
+        label: isTopMode
+          ? (selectedCount > 1 ? `Move ${selectedCount} Tabs to Top` : 'Move to Top')
+          : (selectedCount > 1 ? `Move ${selectedCount} Tabs to Bottom` : 'Move to Bottom'),
+        disabled: isPinned,
+      })}
       ${renderContextMenuItem({ icon: 'move', label: 'Move to', submenu: moveSubmenu })}
       <div class="svb-menu__separator"></div>
       ${renderContextMenuItem({ action: 'toggle-pin', icon: 'pin', label: pinLabel })}

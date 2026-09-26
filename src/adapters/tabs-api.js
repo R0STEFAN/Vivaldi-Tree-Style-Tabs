@@ -298,8 +298,9 @@ function createTabsApi() {
       return vivaldiBridge.onWorkspacesChanged(listener)
     },
 
-    activateTab(tabId) {
-      tabsApi.update(tabId, { active: true })
+    async activateTab(tabId) {
+      if (!Number.isFinite(tabId)) return null
+      return promisifyChromeApi(tabsApi.update, tabId, { active: true })
     },
 
     async updateTab(tabId, properties) {
@@ -317,12 +318,14 @@ function createTabsApi() {
       return promisifyChromeApi(tabsApi.move, tabId, { index })
     },
 
-    closeTab(tabId) {
-      tabsApi.remove(tabId)
+    async closeTab(tabId) {
+      if (!Number.isFinite(tabId)) return null
+      return promisifyChromeApi(tabsApi.remove, tabId)
     },
 
-    closeTabs(tabIds) {
-      tabsApi.remove(tabIds)
+    async closeTabs(tabIds) {
+      if (!Array.isArray(tabIds) || tabIds.length === 0) return null
+      return promisifyChromeApi(tabsApi.remove, tabIds)
     },
 
     async duplicateTab(tabId) {

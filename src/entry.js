@@ -127,6 +127,10 @@ async function main() {
         store.createFolderTabAt(tabId, 'after')
       } else if (action === 'new-folder-above') {
         store.createFolderTabAt(tabId, 'before')
+      } else if (action === 'move-top') {
+        void store.moveSelectionToTop(tabId, selectedIds)
+      } else if (action === 'move-bottom') {
+        void store.moveSelectionToBottom(tabId, selectedIds)
       } else if (action === 'move-window') {
         void store.moveSelectionToNewWindow(tabId, selectedIds)
       } else if (action === 'move-workspace') {

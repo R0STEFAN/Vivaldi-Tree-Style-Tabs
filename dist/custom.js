@@ -3571,6 +3571,77 @@ function createTreeController(api) {
         parentId: position === 'inside' ? targetId : treeStore.getParentId(moveIds[0]),
       }
     },
+
+    async moveTabsToTop(tabIds, tabs) {
+      const moveIds = normalizeTopLevelMoveIds(Array.isArray(tabIds) ? tabIds : [tabIds])
+      if (moveIds.length === 0) return false
+
+      const treeState = treeStore.exportState()
+      const rootIds = treeState.rootIds || []
+      const tabsById = new Map((Array.isArray(tabs) ? tabs : []).map(t => [t.id, t]))
+
+      const firstUnpinnedRootTabId = rootIds.find(id => {
+        if (moveIds.includes(id)) return false
+        const t = tabsById.get(id)
+        return !(t && t.vivExtData && t.vivExtData.pinnedFolder)
+      })
+
+      let changed = false
+      if (firstUnpinnedRootTabId != null) {
+        for (const tabId of moveIds) {
+          changed = treeStore.attachBefore(tabId, firstUnpinnedRootTabId) || changed
+        }
+      } else {
+        const lastPinnedFolderId = rootIds.slice().reverse().find(id => {
+          if (moveIds.includes(id)) return false
+          const t = tabsById.get(id)
+          return !!(t && t.vivExtData && t.vivExtData.pinnedFolder)
+        })
+
+        if (lastPinnedFolderId != null) {
+          const orderedMoveIds = moveIds.slice().reverse()
+          for (const tabId of orderedMoveIds) {
+            changed = treeStore.attachAfter(tabId, lastPinnedFolderId) || changed
+          }
+        } else {
+          for (let i = 0; i < moveIds.length; i += 1) {
+            changed = treeStore.moveRoot(moveIds[i], i) || changed
+          }
+        }
+      }
+
+      if (!changed) return false
+      invalidateDerivedView()
+      persistCurrentTree(tabs)
+      return { movedIds: moveIds }
+    },
+
+    async moveTabsToBottom(tabIds, tabs) {
+      const moveIds = normalizeTopLevelMoveIds(Array.isArray(tabIds) ? tabIds : [tabIds])
+      if (moveIds.length === 0) return false
+
+      const treeState = treeStore.exportState()
+      const rootIds = treeState.rootIds || []
+      const lastRootId = rootIds.slice().reverse().find(id => !moveIds.includes(id))
+
+      let changed = false
+      if (lastRootId != null) {
+        const orderedMoveIds = moveIds.slice().reverse()
+        for (const tabId of orderedMoveIds) {
+          changed = treeStore.attachAfter(tabId, lastRootId) || changed
+        }
+      } else {
+        for (let i = 0; i < moveIds.length; i += 1) {
+          changed = treeStore.moveRoot(moveIds[i], undefined) || changed
+        }
+      }
+
+      if (!changed) return false
+      invalidateDerivedView()
+      persistCurrentTree(tabs)
+      return { movedIds: moveIds }
+    },
+
     getParentId(tabId) {
       return treeStore.getParentId(tabId)
     },
@@ -4495,11 +4566,17 @@ function createTabStore(api) {
       if (activeTreeItem) {
         const parentId = activeTreeItem.parentId
         const siblings = state.treeTabs.filter(item => item.parentId === parentId && !closeIds.has(item.id))
+        const activeIndexInTree = state.treeTabs.indexOf(activeTreeItem)
+
+        // Check if there are unclosed children under this active tab
+        const unclosedChildren = state.treeTabs.filter(item => item.parentId === activeTabId && !closeIds.has(item.id))
+
+        if (unclosedChildren.length > 0 && activateAfterClose === 'below') {
+          return unclosedChildren[0].id
+        }
 
         if (siblings.length > 0) {
           // Rule: Sibling prioritization
-          const activeIndexInTree = state.treeTabs.indexOf(activeTreeItem)
-          
           if (activateAfterClose === 'below') {
             // Try sibling BELOW
             const siblingBelow = siblings.find(s => state.treeTabs.indexOf(s) > activeIndexInTree)
@@ -4515,9 +4592,20 @@ function createTabStore(api) {
             const siblingBelow = siblings.find(s => state.treeTabs.indexOf(s) > activeIndexInTree)
             if (siblingBelow) return siblingBelow.id
           }
-        } else if (Number.isFinite(parentId) && !closeIds.has(parentId)) {
-          // Rule: Last child closed -> activate parent
-          return parentId
+        }
+
+        if (unclosedChildren.length > 0) {
+          return unclosedChildren[0].id
+        }
+
+        // If no sibling/children, walk up ancestors to find the nearest non-closed parent
+        let ancestorId = parentId
+        while (Number.isFinite(ancestorId)) {
+          if (!closeIds.has(ancestorId)) {
+            return ancestorId
+          }
+          const ancestorItem = state.treeTabs.find(item => item.id === ancestorId)
+          ancestorId = ancestorItem ? ancestorItem.parentId : null
         }
       }
     }
@@ -4549,14 +4637,14 @@ function createTabStore(api) {
     return null
   }
 
-  function activateBeforeCloseIfNeeded(targetIds) {
+  async function activateBeforeCloseIfNeeded(targetIds) {
     const activateTabId = getActivationTargetBeforeClose(targetIds)
     if (!Number.isFinite(activateTabId)) return
     pendingActiveRepairTabId = null
-    api.activateTab(activateTabId)
+    await api.activateTab(activateTabId)
   }
 
-  function closeTabIds(tabIds) {
+  async function closeTabIds(tabIds) {
     const targetIds = normalizeUniqueIds(tabIds)
     if (targetIds.length === 0) return
     
@@ -4569,12 +4657,12 @@ function createTabStore(api) {
 
     pendingNativeReconcileReason = 'close'
     lockCurrentContext()
-    activateBeforeCloseIfNeeded(validTargetIds)
+    await activateBeforeCloseIfNeeded(validTargetIds)
     if (validTargetIds.length === 1) {
-      api.closeTab(validTargetIds[0])
+      await api.closeTab(validTargetIds[0])
       return
     }
-    api.closeTabs(validTargetIds)
+    await api.closeTabs(validTargetIds)
   }
 
   async function updateTabs(tabIds, properties) {
@@ -5003,7 +5091,16 @@ function createTabStore(api) {
       if (closedTab && treeController.recordClosedTab) {
         treeController.recordClosedTab(closedTab)
       }
+
+      const wasActive = state.activeTabId === tabId
+      const targetActiveId = wasActive ? getActivationTargetBeforeClose([tabId]) : null
+
       treeController.handleRemovedTab(tabId)
+
+      if (Number.isFinite(targetActiveId)) {
+        api.activateTab(targetActiveId)
+      }
+
       refreshPreservingContext(tabId)
     }
 
@@ -5169,7 +5266,7 @@ function createTabStore(api) {
       api.activateTab(tabId)
     },
 
-    closeTab(tabId) {
+    async closeTab(tabId) {
       if (!state.canCloseVisibleTabs) return
       
       const tab = getTabById(tabId)
@@ -5179,12 +5276,12 @@ function createTabStore(api) {
       if (closeTargetIds.length === 0) return
       pendingNativeReconcileReason = 'close'
       lockCurrentContext()
-      activateBeforeCloseIfNeeded(closeTargetIds)
+      await activateBeforeCloseIfNeeded(closeTargetIds)
       if (closeTargetIds.length === 1) {
-        api.closeTab(closeTargetIds[0])
+        await api.closeTab(closeTargetIds[0])
         return
       }
-      api.closeTabs(closeTargetIds)
+      await api.closeTabs(closeTargetIds)
     },
 
     closeTabIds,
@@ -5350,6 +5447,24 @@ function createTabStore(api) {
       if (!await treeController.moveTabs(tabIds, targetId, position, state.tabs)) return false
       pendingNativeReconcileReason = 'move-tree-tabs'
       await syncTabs({ preserveContext: true }, 'move-tree-tabs')
+      return true
+    },
+
+    async moveSelectionToTop(tabId, selectedIds) {
+      const targetIds = getActionTargetIds(tabId, selectedIds)
+      if (targetIds.length === 0) return false
+      if (!await treeController.moveTabsToTop(targetIds, state.tabs)) return false
+      pendingNativeReconcileReason = 'move-top'
+      await syncTabs({ preserveContext: true }, 'move-top')
+      return true
+    },
+
+    async moveSelectionToBottom(tabId, selectedIds) {
+      const targetIds = getActionTargetIds(tabId, selectedIds)
+      if (targetIds.length === 0) return false
+      if (!await treeController.moveTabsToBottom(targetIds, state.tabs)) return false
+      pendingNativeReconcileReason = 'move-bottom'
+      await syncTabs({ preserveContext: true }, 'move-bottom')
       return true
     },
 
@@ -7063,8 +7178,9 @@ function createTabsApi() {
       return vivaldiBridge.onWorkspacesChanged(listener)
     },
 
-    activateTab(tabId) {
-      tabsApi.update(tabId, { active: true })
+    async activateTab(tabId) {
+      if (!Number.isFinite(tabId)) return null
+      return promisifyChromeApi(tabsApi.update, tabId, { active: true })
     },
 
     async updateTab(tabId, properties) {
@@ -7082,12 +7198,14 @@ function createTabsApi() {
       return promisifyChromeApi(tabsApi.move, tabId, { index })
     },
 
-    closeTab(tabId) {
-      tabsApi.remove(tabId)
+    async closeTab(tabId) {
+      if (!Number.isFinite(tabId)) return null
+      return promisifyChromeApi(tabsApi.remove, tabId)
     },
 
-    closeTabs(tabIds) {
-      tabsApi.remove(tabIds)
+    async closeTabs(tabIds) {
+      if (!Array.isArray(tabIds) || tabIds.length === 0) return null
+      return promisifyChromeApi(tabsApi.remove, tabIds)
     },
 
     async duplicateTab(tabId) {
@@ -8282,6 +8400,8 @@ const TAB_COLOR_SWATCHES = {
 
 function renderMenuIcon(name) {
   const paths = {
+    top: '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/><path d="M5 21h14"/>',
+    bottom: '<path d="M12 5v14"/><path d="m5 12 7 7 7-7"/><path d="M5 3h14"/>',
     restore: '<path d="M5 8a6 6 0 1 1 1.8 4.3"/><path d="M5 4v4h4"/>',
     child: '<path d="M5 5h6v6H5z"/><path d="M11 8h4a4 4 0 0 1 4 4v1"/><path d="M16 11l3 3 3-3"/>',
     move: '<path d="M5 12h14"/><path d="M15 8l4 4-4 4"/>',
@@ -8417,7 +8537,11 @@ function renderContextMenu(tab, state, contextMenu) {
     workspaceId: Number(workspace.id),
   })).join('')
 
+  const isTopMode = (settingsStore.get('newTabPlacement') || 'bottom') === 'top'
   const moveSubmenu = `
+    ${renderContextMenuItem({ action: 'move-top', icon: 'top', label: selectedCount > 1 ? `Move ${selectedCount} Tabs to Top` : 'Top of Tree', disabled: isPinned })}
+    ${renderContextMenuItem({ action: 'move-bottom', icon: 'bottom', label: selectedCount > 1 ? `Move ${selectedCount} Tabs to Bottom` : 'Bottom of Tree', disabled: isPinned })}
+    <div class="svb-menu__separator"></div>
     ${renderContextMenuItem({ action: 'move-window', icon: 'window', label: 'New Window' })}
     <div class="svb-menu__separator"></div>
     ${workspaceItems || '<div class="svb-menu__empty">No Workspaces</div>'}
@@ -8470,6 +8594,14 @@ function renderContextMenu(tab, state, contextMenu) {
       ${renderContextMenuItem({ action: 'save-tree-bookmark', icon: 'bookmark', label: 'Save Tree as Bookmark', disabled: isPinned || !hasChildren })}
       ${renderContextMenuItem({ icon: 'folder', label: 'Open Saved Tree', submenu: savedTreeSubmenu || '<div class="svb-menu__empty">No Saved Trees</div>' })}
       <div class="svb-menu__separator"></div>
+      ${renderContextMenuItem({
+        action: isTopMode ? 'move-top' : 'move-bottom',
+        icon: isTopMode ? 'top' : 'bottom',
+        label: isTopMode
+          ? (selectedCount > 1 ? `Move ${selectedCount} Tabs to Top` : 'Move to Top')
+          : (selectedCount > 1 ? `Move ${selectedCount} Tabs to Bottom` : 'Move to Bottom'),
+        disabled: isPinned,
+      })}
       ${renderContextMenuItem({ icon: 'move', label: 'Move to', submenu: moveSubmenu })}
       <div class="svb-menu__separator"></div>
       ${renderContextMenuItem({ action: 'toggle-pin', icon: 'pin', label: pinLabel })}
@@ -10679,6 +10811,10 @@ async function main() {
         store.createFolderTabAt(tabId, 'after')
       } else if (action === 'new-folder-above') {
         store.createFolderTabAt(tabId, 'before')
+      } else if (action === 'move-top') {
+        void store.moveSelectionToTop(tabId, selectedIds)
+      } else if (action === 'move-bottom') {
+        void store.moveSelectionToBottom(tabId, selectedIds)
       } else if (action === 'move-window') {
         void store.moveSelectionToNewWindow(tabId, selectedIds)
       } else if (action === 'move-workspace') {

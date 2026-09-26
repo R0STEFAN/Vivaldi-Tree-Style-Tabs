@@ -546,11 +546,17 @@ function createTabStore(api) {
       if (activeTreeItem) {
         const parentId = activeTreeItem.parentId
         const siblings = state.treeTabs.filter(item => item.parentId === parentId && !closeIds.has(item.id))
+        const activeIndexInTree = state.treeTabs.indexOf(activeTreeItem)
+
+        // Check if there are unclosed children under this active tab
+        const unclosedChildren = state.treeTabs.filter(item => item.parentId === activeTabId && !closeIds.has(item.id))
+
+        if (unclosedChildren.length > 0 && activateAfterClose === 'below') {
+          return unclosedChildren[0].id
+        }
 
         if (siblings.length > 0) {
           // Rule: Sibling prioritization
-          const activeIndexInTree = state.treeTabs.indexOf(activeTreeItem)
-          
           if (activateAfterClose === 'below') {
             // Try sibling BELOW
             const siblingBelow = siblings.find(s => state.treeTabs.indexOf(s) > activeIndexInTree)
@@ -566,9 +572,20 @@ function createTabStore(api) {
             const siblingBelow = siblings.find(s => state.treeTabs.indexOf(s) > activeIndexInTree)
             if (siblingBelow) return siblingBelow.id
           }
-        } else if (Number.isFinite(parentId) && !closeIds.has(parentId)) {
-          // Rule: Last child closed -> activate parent
-          return parentId
+        }
+
+        if (unclosedChildren.length > 0) {
+          return unclosedChildren[0].id
+        }
+
+        // If no sibling/children, walk up ancestors to find the nearest non-closed parent
+        let ancestorId = parentId
+        while (Number.isFinite(ancestorId)) {
+          if (!closeIds.has(ancestorId)) {
+            return ancestorId
+          }
+          const ancestorItem = state.treeTabs.find(item => item.id === ancestorId)
+          ancestorId = ancestorItem ? ancestorItem.parentId : null
         }
       }
     }
@@ -600,14 +617,14 @@ function createTabStore(api) {
     return null
   }
 
-  function activateBeforeCloseIfNeeded(targetIds) {
+  async function activateBeforeCloseIfNeeded(targetIds) {
     const activateTabId = getActivationTargetBeforeClose(targetIds)
     if (!Number.isFinite(activateTabId)) return
     pendingActiveRepairTabId = null
-    api.activateTab(activateTabId)
+    await api.activateTab(activateTabId)
   }
 
-  function closeTabIds(tabIds) {
+  async function closeTabIds(tabIds) {
     const targetIds = normalizeUniqueIds(tabIds)
     if (targetIds.length === 0) return
     
@@ -620,12 +637,12 @@ function createTabStore(api) {
 
     pendingNativeReconcileReason = 'close'
     lockCurrentContext()
-    activateBeforeCloseIfNeeded(validTargetIds)
+    await activateBeforeCloseIfNeeded(validTargetIds)
     if (validTargetIds.length === 1) {
-      api.closeTab(validTargetIds[0])
+      await api.closeTab(validTargetIds[0])
       return
     }
-    api.closeTabs(validTargetIds)
+    await api.closeTabs(validTargetIds)
   }
 
   async function updateTabs(tabIds, properties) {
@@ -1054,7 +1071,16 @@ function createTabStore(api) {
       if (closedTab && treeController.recordClosedTab) {
         treeController.recordClosedTab(closedTab)
       }
+
+      const wasActive = state.activeTabId === tabId
+      const targetActiveId = wasActive ? getActivationTargetBeforeClose([tabId]) : null
+
       treeController.handleRemovedTab(tabId)
+
+      if (Number.isFinite(targetActiveId)) {
+        api.activateTab(targetActiveId)
+      }
+
       refreshPreservingContext(tabId)
     }
 
@@ -1220,7 +1246,7 @@ function createTabStore(api) {
       api.activateTab(tabId)
     },
 
-    closeTab(tabId) {
+    async closeTab(tabId) {
       if (!state.canCloseVisibleTabs) return
       
       const tab = getTabById(tabId)
@@ -1230,12 +1256,12 @@ function createTabStore(api) {
       if (closeTargetIds.length === 0) return
       pendingNativeReconcileReason = 'close'
       lockCurrentContext()
-      activateBeforeCloseIfNeeded(closeTargetIds)
+      await activateBeforeCloseIfNeeded(closeTargetIds)
       if (closeTargetIds.length === 1) {
-        api.closeTab(closeTargetIds[0])
+        await api.closeTab(closeTargetIds[0])
         return
       }
-      api.closeTabs(closeTargetIds)
+      await api.closeTabs(closeTargetIds)
     },
 
     closeTabIds,
@@ -1401,6 +1427,24 @@ function createTabStore(api) {
       if (!await treeController.moveTabs(tabIds, targetId, position, state.tabs)) return false
       pendingNativeReconcileReason = 'move-tree-tabs'
       await syncTabs({ preserveContext: true }, 'move-tree-tabs')
+      return true
+    },
+
+    async moveSelectionToTop(tabId, selectedIds) {
+      const targetIds = getActionTargetIds(tabId, selectedIds)
+      if (targetIds.length === 0) return false
+      if (!await treeController.moveTabsToTop(targetIds, state.tabs)) return false
+      pendingNativeReconcileReason = 'move-top'
+      await syncTabs({ preserveContext: true }, 'move-top')
+      return true
+    },
+
+    async moveSelectionToBottom(tabId, selectedIds) {
+      const targetIds = getActionTargetIds(tabId, selectedIds)
+      if (targetIds.length === 0) return false
+      if (!await treeController.moveTabsToBottom(targetIds, state.tabs)) return false
+      pendingNativeReconcileReason = 'move-bottom'
+      await syncTabs({ preserveContext: true }, 'move-bottom')
       return true
     },
 

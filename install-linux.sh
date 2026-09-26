@@ -1,6 +1,9 @@
 #!/bin/bash
 
 # Vivaldi Auto-Patch Installer for Arch Linux
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+cd "$SCRIPT_DIR" || exit 1
+
 INSTALL_DIR="$HOME/.local/share/vivaldi-patch"
 HOOK_DIR="/etc/pacman.d/hooks"
 HOOK_FILE="vivaldi-patch.hook"

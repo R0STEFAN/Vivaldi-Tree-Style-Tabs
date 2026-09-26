@@ -719,6 +719,77 @@ function createTreeController(api) {
         parentId: position === 'inside' ? targetId : treeStore.getParentId(moveIds[0]),
       }
     },
+
+    async moveTabsToTop(tabIds, tabs) {
+      const moveIds = normalizeTopLevelMoveIds(Array.isArray(tabIds) ? tabIds : [tabIds])
+      if (moveIds.length === 0) return false
+
+      const treeState = treeStore.exportState()
+      const rootIds = treeState.rootIds || []
+      const tabsById = new Map((Array.isArray(tabs) ? tabs : []).map(t => [t.id, t]))
+
+      const firstUnpinnedRootTabId = rootIds.find(id => {
+        if (moveIds.includes(id)) return false
+        const t = tabsById.get(id)
+        return !(t && t.vivExtData && t.vivExtData.pinnedFolder)
+      })
+
+      let changed = false
+      if (firstUnpinnedRootTabId != null) {
+        for (const tabId of moveIds) {
+          changed = treeStore.attachBefore(tabId, firstUnpinnedRootTabId) || changed
+        }
+      } else {
+        const lastPinnedFolderId = rootIds.slice().reverse().find(id => {
+          if (moveIds.includes(id)) return false
+          const t = tabsById.get(id)
+          return !!(t && t.vivExtData && t.vivExtData.pinnedFolder)
+        })
+
+        if (lastPinnedFolderId != null) {
+          const orderedMoveIds = moveIds.slice().reverse()
+          for (const tabId of orderedMoveIds) {
+            changed = treeStore.attachAfter(tabId, lastPinnedFolderId) || changed
+          }
+        } else {
+          for (let i = 0; i < moveIds.length; i += 1) {
+            changed = treeStore.moveRoot(moveIds[i], i) || changed
+          }
+        }
+      }
+
+      if (!changed) return false
+      invalidateDerivedView()
+      persistCurrentTree(tabs)
+      return { movedIds: moveIds }
+    },
+
+    async moveTabsToBottom(tabIds, tabs) {
+      const moveIds = normalizeTopLevelMoveIds(Array.isArray(tabIds) ? tabIds : [tabIds])
+      if (moveIds.length === 0) return false
+
+      const treeState = treeStore.exportState()
+      const rootIds = treeState.rootIds || []
+      const lastRootId = rootIds.slice().reverse().find(id => !moveIds.includes(id))
+
+      let changed = false
+      if (lastRootId != null) {
+        const orderedMoveIds = moveIds.slice().reverse()
+        for (const tabId of orderedMoveIds) {
+          changed = treeStore.attachAfter(tabId, lastRootId) || changed
+        }
+      } else {
+        for (let i = 0; i < moveIds.length; i += 1) {
+          changed = treeStore.moveRoot(moveIds[i], undefined) || changed
+        }
+      }
+
+      if (!changed) return false
+      invalidateDerivedView()
+      persistCurrentTree(tabs)
+      return { movedIds: moveIds }
+    },
+
     getParentId(tabId) {
       return treeStore.getParentId(tabId)
     },
