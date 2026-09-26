@@ -842,6 +842,19 @@ body.svb-is-resizing {
 
 #svb-root .svb-tab__favicon.is-folder {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+#svb-root .svb-tab__favicon.is-folder svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
 }
 
 #svb-root .svb-tab__pinned-badge {
@@ -8884,7 +8897,7 @@ function syncTabLeadIcon(lead, tab) {
 
     const folderIcon = createNodeFromHtml(`
       <span class="svb-tab__favicon is-folder" style="color: ${folderColor};">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
           <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
         </svg>
         ${pinBadge}
@@ -9059,7 +9072,7 @@ function renderTab(tab, compact, canClose, item, editing, visualState) {
       : ''
     icon = `
       <span class="svb-tab__favicon is-folder" style="color: ${folderColor};">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
           <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
         </svg>
         ${pinBadge}

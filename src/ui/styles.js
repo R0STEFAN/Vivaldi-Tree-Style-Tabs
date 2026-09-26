@@ -808,6 +808,19 @@ body.svb-is-resizing {
 
 #svb-root .svb-tab__favicon.is-folder {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+#svb-root .svb-tab__favicon.is-folder svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
 }
 
 #svb-root .svb-tab__pinned-badge {
