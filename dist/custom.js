@@ -670,21 +670,14 @@ body.svb-is-resizing {
   align-items: center;
   gap: 5px;
   min-height: 30px;
-  padding: 0 6px 0 7px;
+  padding: 0 6px 0 8px;
   border: 1px solid transparent;
   border-radius: var(--svb-radius);
   background: var(--svb-panel);
   box-shadow: 0 1px 1px 0 rgba(0, 0, 0, 0.12);
   z-index: 1;
-  transition:
-    padding var(--svb-d-norm) var(--svb-ease-out),
-    background var(--svb-d-fast) ease;
-}
-
-#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__body {
-  padding: 0 4px !important;
-  justify-content: center !important;
-  gap: 0 !important;
+  overflow: hidden;
+  transition: background var(--svb-d-fast) ease;
 }
 
 #svb-root.is-transparent-tabs .svb-tab:not(.is-active):not(.is-selected) .svb-tab__body {
@@ -965,12 +958,6 @@ body.svb-is-resizing {
 #svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__content {
   opacity: 0 !important;
   pointer-events: none !important;
-  width: 0 !important;
-  min-width: 0 !important;
-  max-width: 0 !important;
-  overflow: hidden !important;
-  margin: 0 !important;
-  padding: 0 !important;
 }
 
 #svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__close,
@@ -979,7 +966,6 @@ body.svb-is-resizing {
 #svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__child-count {
   opacity: 0 !important;
   pointer-events: none !important;
-  display: none !important;
 }
 
 #svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-pinned-grid {
@@ -1181,10 +1167,10 @@ body.svb-is-resizing {
 #svb-root .svb-new-folder-button {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 8px;
   min-height: 30px;
-  padding: 0 10px;
+  padding: 0 6px 0 8px;
   border: 1px solid transparent;
   border-radius: var(--svb-radius);
   color: var(--svb-text-strong);
@@ -1192,6 +1178,7 @@ body.svb-is-resizing {
   box-shadow: none;
   cursor: pointer;
   text-align: left;
+  overflow: hidden;
 }
 
 #svb-root .svb-new-tab-button {
@@ -1201,6 +1188,7 @@ body.svb-is-resizing {
 #svb-root .svb-new-folder-button {
   flex: 0 0 32px;
   padding: 0;
+  justify-content: center;
   transition: opacity var(--svb-d-fast) ease;
 }
 
@@ -1215,6 +1203,7 @@ body.svb-is-resizing {
   justify-content: center;
   width: 16px;
   height: 16px;
+  flex: 0 0 16px;
   font-size: 15px;
   line-height: 1;
 }
@@ -1232,19 +1221,11 @@ body.svb-is-resizing {
 
 #svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-new-tab-button__label {
   opacity: 0 !important;
-  max-width: 0 !important;
-  display: none !important;
+  pointer-events: none !important;
 }
 
 #svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-new-folder-button {
   display: none !important;
-}
-
-#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-new-tab-button {
-  padding: 0 !important;
-  justify-content: center !important;
-  min-width: 0 !important;
-  flex: 1 1 100% !important;
 }
 
 #svb-root .svb-tab-list::-webkit-scrollbar {
