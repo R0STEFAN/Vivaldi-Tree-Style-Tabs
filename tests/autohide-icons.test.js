@@ -159,4 +159,28 @@ describe('layoutAdapter - autoHideMode', () => {
     assert.strictEqual(root.style.width, '42px')
     assert.strictEqual(host.style.getPropertyValue('--svb-sidebar-width'), '42px')
   })
+
+  it('keeps panel fully revealed when context menu is open in icons mode', () => {
+    settingsStore.set('autoHideMode', 'icons')
+    panelStore.togglePinned() // unpin
+    layout.apply()
+
+    assert.strictEqual(root.style.width, '42px')
+    assert.strictEqual(root.classList.contains('is-revealed'), false)
+
+    // Simulate opening context menu (marks root as is-menu-open)
+    root.classList.add('is-menu-open')
+    layout.apply()
+
+    assert.strictEqual(root.style.width, '280px')
+    assert.strictEqual(root.classList.contains('is-revealed'), true)
+    assert.strictEqual(host.style.getPropertyValue('--svb-rendered-width'), '280px')
+
+    // Simulate closing context menu
+    root.classList.remove('is-menu-open')
+    layout.apply()
+
+    assert.strictEqual(root.style.width, '42px')
+    assert.strictEqual(root.classList.contains('is-revealed'), false)
+  })
 })

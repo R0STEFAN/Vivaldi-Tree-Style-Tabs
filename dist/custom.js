@@ -112,7 +112,7 @@ const STYLE_TEXT = `
 
 .svb-layout-host.svb-position-right #svb-root-drag-shield.svb-drag-shield.is-menu-backdrop {
   left: 0 !important;
-  right: var(--svb-sidebar-width, 300px) !important;
+  right: var(--svb-rendered-width, var(--svb-sidebar-width, 300px)) !important;
 }
 
 .svb-layout-host.svb-position-right #svb-root.svb-shell:not(.is-unified) .svb-frame {
@@ -273,7 +273,7 @@ body.svb-is-resizing {
 #svb-root-drag-shield.svb-drag-shield.is-menu-backdrop {
   display: block;
   cursor: default;
-  left: var(--svb-sidebar-width, 300px);
+  left: var(--svb-rendered-width, var(--svb-sidebar-width, 300px));
 }
 
 #svb-root .svb-frame {
@@ -8146,6 +8146,10 @@ function createLayoutAdapter(options) {
       || hasFullscreenClass(app)
   }
 
+  function isMenuOpen() {
+    return !!(root && (root.classList.contains('is-menu-open') || (root.querySelector && root.querySelector('.svb-menu'))))
+  }
+
   function apply() {
     if (!root || !trigger || !dragShield) return
 
@@ -8166,6 +8170,9 @@ function createLayoutAdapter(options) {
     const autoHideMode = settingsStore.get('autoHideMode') || 'full'
     const isIconsMode = autoHideMode === 'icons' && !currentPinned
     const renderedWidth = getRenderedWidth()
+    const effectiveRevealed = revealed || isMenuOpen()
+
+    currentHost.style.setProperty('--svb-rendered-width', `${renderedWidth}px`)
 
     if (isIconsMode) {
       // In icons mode when unpinned:
@@ -8174,7 +8181,7 @@ function createLayoutAdapter(options) {
         currentHost.style.setProperty('--svb-sidebar-width', `${ICON_STRIP_WIDTH}px`)
       }
 
-      const rootTargetWidth = revealed ? renderedWidth : ICON_STRIP_WIDTH
+      const rootTargetWidth = effectiveRevealed ? renderedWidth : ICON_STRIP_WIDTH
       if (root.style.width !== `${rootTargetWidth}px`) {
         root.style.width = `${rootTargetWidth}px`
       }
@@ -8209,8 +8216,8 @@ function createLayoutAdapter(options) {
     currentHost.classList.toggle('svb-position-right', panelPosition === 'right')
     trigger.classList.toggle('svb-position-right', panelPosition === 'right')
 
-    root.classList.toggle('is-revealed', !fullscreen && (currentPinned || revealed))
-    trigger.classList.toggle('is-enabled', !fullscreen && !currentPinned && !revealed && !isIconsMode)
+    root.classList.toggle('is-revealed', !fullscreen && (currentPinned || effectiveRevealed))
+    trigger.classList.toggle('is-enabled', !fullscreen && !currentPinned && !effectiveRevealed && !isIconsMode)
     dragShield.classList.toggle('is-active', !fullscreen && Boolean(dragState))
   }
 
@@ -8227,6 +8234,7 @@ function createLayoutAdapter(options) {
 
   function setRevealed(value) {
     if (currentPinned) return
+    if (!value && isMenuOpen()) return
     if (revealed === value) return
     revealed = value
     apply()
@@ -8396,12 +8404,14 @@ function createLayoutAdapter(options) {
 
     rootMouseLeave = (e) => {
       clearRevealDelay()
+      if (isMenuOpen()) return
       if (e && e.relatedTarget && trigger.contains(e.relatedTarget)) return
       if (isCursorAtScreenEdge(e)) return
       setRevealed(false)
     }
     rootPointerLeave = (e) => {
       clearRevealDelay()
+      if (isMenuOpen()) return
       if (e && e.relatedTarget && trigger.contains(e.relatedTarget)) return
       if (isCursorAtScreenEdge(e)) return
       setRevealed(false)
@@ -8416,6 +8426,7 @@ function createLayoutAdapter(options) {
     // Also handles dynamic webview container creation and moving the mouse out of the panel into other UI.
     hideOnExternalHover = event => {
       if (!revealed || currentPinned || fullscreen || dragState) return
+      if (isMenuOpen()) return
 
       if (isCursorAtScreenEdge(event)) return
 
@@ -10479,6 +10490,8 @@ function createSidebarRenderer(options) {
 
     event.preventDefault()
     event.stopPropagation()
+
+    root.classList.add('is-menu-open')
     
     const showMenu = () => {
       const rootRect = root.getBoundingClientRect()
@@ -10495,7 +10508,10 @@ function createSidebarRenderer(options) {
     if (onOpenContextMenu) {
       const result = onOpenContextMenu(tabId)
       if (result && typeof result.then === 'function') {
-        result.then(showMenu).catch(console.error)
+        result.then(showMenu).catch(err => {
+          console.error(err)
+          root.classList.remove('is-menu-open')
+        })
       } else {
         showMenu()
       }

@@ -78,7 +78,7 @@ const STYLE_TEXT = `
 
 .svb-layout-host.svb-position-right #svb-root-drag-shield.svb-drag-shield.is-menu-backdrop {
   left: 0 !important;
-  right: var(--svb-sidebar-width, 300px) !important;
+  right: var(--svb-rendered-width, var(--svb-sidebar-width, 300px)) !important;
 }
 
 .svb-layout-host.svb-position-right #svb-root.svb-shell:not(.is-unified) .svb-frame {
@@ -239,7 +239,7 @@ body.svb-is-resizing {
 #svb-root-drag-shield.svb-drag-shield.is-menu-backdrop {
   display: block;
   cursor: default;
-  left: var(--svb-sidebar-width, 300px);
+  left: var(--svb-rendered-width, var(--svb-sidebar-width, 300px));
 }
 
 #svb-root .svb-frame {

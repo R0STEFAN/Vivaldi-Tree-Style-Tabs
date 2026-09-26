@@ -1939,6 +1939,8 @@ function createSidebarRenderer(options) {
 
     event.preventDefault()
     event.stopPropagation()
+
+    root.classList.add('is-menu-open')
     
     const showMenu = () => {
       const rootRect = root.getBoundingClientRect()
@@ -1955,7 +1957,10 @@ function createSidebarRenderer(options) {
     if (onOpenContextMenu) {
       const result = onOpenContextMenu(tabId)
       if (result && typeof result.then === 'function') {
-        result.then(showMenu).catch(console.error)
+        result.then(showMenu).catch(err => {
+          console.error(err)
+          root.classList.remove('is-menu-open')
+        })
       } else {
         showMenu()
       }
