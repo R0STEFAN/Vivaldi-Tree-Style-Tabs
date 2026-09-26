@@ -135,7 +135,7 @@ const STYLE_TEXT = `
   --svb-guide-opacity: 0.35;
   --svb-d-swift: 100ms;
   --svb-d-fast: 120ms;
-  --svb-d-norm: 200ms;
+  --svb-d-norm: 180ms;
   --svb-ease: cubic-bezier(0.2, 0, 0, 1);
   --svb-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   position: absolute !important;
@@ -152,6 +152,8 @@ const STYLE_TEXT = `
   transform: translateX(-100%) !important;
   transition:
     transform var(--svb-d-norm) var(--svb-ease-out),
+    width var(--svb-d-norm) var(--svb-ease-out),
+    box-shadow var(--svb-d-norm) var(--svb-ease-out),
     opacity var(--svb-d-fast) linear;
 }
 
@@ -182,7 +184,32 @@ body.svb-is-resizing {
   transform: translateX(0) !important;
 }
 
-.svb-layout-host.svb-mode-overlay #svb-root.svb-shell .svb-frame {
+/* Icon strip auto-hide mode */
+#svb-root.svb-shell.svb-autohide-icons {
+  opacity: 1 !important;
+  transform: translateX(0) !important;
+  z-index: 20 !important;
+}
+
+.svb-layout-host.svb-position-right #svb-root.svb-shell.svb-autohide-icons {
+  transform: translateX(0) !important;
+}
+
+#svb-root.svb-shell.svb-autohide-icons.is-revealed {
+  z-index: 1000 !important;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.42), 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.svb-layout-host.svb-position-right #svb-root.svb-shell.svb-autohide-icons.is-revealed {
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.42), 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-resize-handle {
+  display: none !important;
+}
+
+.svb-layout-host.svb-mode-overlay #svb-root.svb-shell .svb-frame,
+#svb-root.svb-shell.svb-autohide-icons.is-revealed .svb-frame {
   background-color: var(--colorBg, var(--svb-bg)) !important;
   backdrop-filter: none !important;
   background-image: none !important;
@@ -385,6 +412,27 @@ body.svb-is-resizing {
   align-items: center;
   padding: 6px;
   border-bottom: 0;
+  transition: padding var(--svb-d-norm) var(--svb-ease-out);
+}
+
+#svb-root .svb-header__left,
+#svb-root .svb-header__actions {
+  transition: opacity var(--svb-d-fast) ease;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-header {
+  padding: 4px 2px;
+  overflow: hidden;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-header__left,
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-header__actions {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-header__count {
+  display: none !important;
 }
 
 #svb-root .svb-header__count {
@@ -546,6 +594,14 @@ body.svb-is-resizing {
   display: block;
   width: calc(100% - (var(--svb-depth) * var(--svb-tree-indent)));
   margin-left: calc(var(--svb-depth) * var(--svb-tree-indent));
+  transition:
+    margin-left var(--svb-d-norm) var(--svb-ease-out),
+    width var(--svb-d-norm) var(--svb-ease-out);
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__outer {
+  margin-left: 0 !important;
+  width: 100% !important;
 }
 
 #svb-root .svb-tab__guides {
@@ -553,6 +609,12 @@ body.svb-is-resizing {
   inset: 0;
   pointer-events: none;
   z-index: 0;
+  transition: opacity var(--svb-d-fast) ease;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__guides {
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 #svb-root .svb-tab__guide {
@@ -580,6 +642,15 @@ body.svb-is-resizing {
   background: var(--svb-panel);
   box-shadow: 0 1px 1px 0 rgba(0, 0, 0, 0.12);
   z-index: 1;
+  transition:
+    padding var(--svb-d-norm) var(--svb-ease-out),
+    background var(--svb-d-fast) ease;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__body {
+  padding: 0 4px !important;
+  justify-content: center !important;
+  gap: 0 !important;
 }
 
 #svb-root.is-transparent-tabs .svb-tab:not(.is-active):not(.is-selected) .svb-tab__body {
@@ -854,6 +925,39 @@ body.svb-is-resizing {
   min-width: 0;
   flex: 1;
   padding-right: 0;
+  transition: opacity var(--svb-d-fast) ease;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__content {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__close,
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__add,
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__exp,
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__child-count {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  display: none !important;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-pinned-grid {
+  justify-content: center !important;
+  padding: 4px 0 6px !important;
+}
+
+#svb-root .svb-tab__close,
+#svb-root .svb-tab__add,
+#svb-root .svb-tab__exp,
+#svb-root .svb-tab__child-count {
+  transition: opacity var(--svb-d-fast) ease;
 }
 
 #svb-root .svb-tab.has-add.is-active .svb-tab__content,
@@ -1063,6 +1167,7 @@ body.svb-is-resizing {
 #svb-root .svb-new-folder-button {
   flex: 0 0 32px;
   padding: 0;
+  transition: opacity var(--svb-d-fast) ease;
 }
 
 #svb-root .svb-new-tab-button:hover,
@@ -1088,10 +1193,33 @@ body.svb-is-resizing {
   font-weight: 500;
   white-space: nowrap;
   text-overflow: ellipsis;
+  transition: opacity var(--svb-d-fast) ease;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-new-tab-button__label {
+  opacity: 0 !important;
+  max-width: 0 !important;
+  display: none !important;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-new-folder-button {
+  display: none !important;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-new-tab-button {
+  padding: 0 !important;
+  justify-content: center !important;
+  min-width: 0 !important;
+  flex: 1 1 100% !important;
 }
 
 #svb-root .svb-tab-list::-webkit-scrollbar {
   width: 6px;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab-list::-webkit-scrollbar {
+  width: 0px !important;
+  display: none !important;
 }
 
 #svb-root .svb-tab-list::-webkit-scrollbar-thumb {

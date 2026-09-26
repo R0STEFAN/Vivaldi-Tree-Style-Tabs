@@ -4,10 +4,12 @@ function createLayoutAdapter(options) {
   const { root, host, trigger, dragShield, panelStore } = options
   const MIN_WIDTH = 30
   const MAX_WIDTH = 520
+  const ICON_STRIP_WIDTH = 42
   let observer = null
   let resizeHandler = null
   let revealed = false
   let unlistenPanel = null
+  let unlistenSettings = null
   let currentPinned = panelStore.getState().pinned
   let currentWidth = panelStore.getState().width
   let dragState = null
@@ -56,19 +58,41 @@ function createLayoutAdapter(options) {
       currentHost.classList.add('svb-layout-host')
     }
 
+    const autoHideMode = settingsStore.get('autoHideMode') || 'full'
+    const isIconsMode = autoHideMode === 'icons' && !currentPinned
     const renderedWidth = getRenderedWidth()
 
-    // Sync both variables immediately for smooth layout movement
-    if (currentHost.style.getPropertyValue('--svb-sidebar-width') !== `${renderedWidth}px`) {
-      currentHost.style.setProperty('--svb-sidebar-width', `${renderedWidth}px`)
+    if (isIconsMode) {
+      // In icons mode when unpinned:
+      // Webview stays docked at 42px so web content is never obscured and doesn't jump on hover
+      if (currentHost.style.getPropertyValue('--svb-sidebar-width') !== `${ICON_STRIP_WIDTH}px`) {
+        currentHost.style.setProperty('--svb-sidebar-width', `${ICON_STRIP_WIDTH}px`)
+      }
+
+      const rootTargetWidth = revealed ? renderedWidth : ICON_STRIP_WIDTH
+      if (root.style.width !== `${rootTargetWidth}px`) {
+        root.style.width = `${rootTargetWidth}px`
+      }
+
+      currentHost.classList.add('svb-mode-docked')
+      currentHost.classList.remove('svb-mode-overlay')
+      currentHost.classList.add('svb-autohide-icons')
+      root.classList.add('svb-autohide-icons')
+    } else {
+      if (currentHost.style.getPropertyValue('--svb-sidebar-width') !== `${renderedWidth}px`) {
+        currentHost.style.setProperty('--svb-sidebar-width', `${renderedWidth}px`)
+      }
+
+      if (root.style.width !== `${renderedWidth}px`) {
+        root.style.width = `${renderedWidth}px`
+      }
+
+      currentHost.classList.toggle('svb-mode-docked', currentPinned)
+      currentHost.classList.toggle('svb-mode-overlay', !currentPinned)
+      currentHost.classList.remove('svb-autohide-icons')
+      root.classList.remove('svb-autohide-icons')
     }
 
-    if (root.style.width !== `${renderedWidth}px`) {
-      root.style.width = `${renderedWidth}px`
-    }
-
-    currentHost.classList.toggle('svb-mode-docked', currentPinned)
-    currentHost.classList.toggle('svb-mode-overlay', !currentPinned)
     currentHost.classList.toggle('svb-is-fullscreen', fullscreen)
 
     const browser = document.querySelector('#browser')
@@ -81,7 +105,7 @@ function createLayoutAdapter(options) {
     trigger.classList.toggle('svb-position-right', panelPosition === 'right')
 
     root.classList.toggle('is-revealed', !fullscreen && (currentPinned || revealed))
-    trigger.classList.toggle('is-enabled', !fullscreen && !currentPinned && !revealed)
+    trigger.classList.toggle('is-enabled', !fullscreen && !currentPinned && !revealed && !isIconsMode)
     dragShield.classList.toggle('is-active', !fullscreen && Boolean(dragState))
   }
 
@@ -228,7 +252,7 @@ function createLayoutAdapter(options) {
     window.addEventListener('resize', refreshFullscreen)
 
     let revealTimeout = null
-    const REVEAL_DELAY = 150 // Delay in ms before showing panel
+    const REVEAL_DELAY = 120 // Delay in ms before showing panel
 
     clearRevealDelay = () => {
       if (revealTimeout) {
@@ -251,8 +275,13 @@ function createLayoutAdapter(options) {
     trigger.addEventListener('mouseleave', clearRevealDelay)
     
     rootMouseEnter = () => {
-      clearRevealDelay()
-      setRevealed(true)
+      const autoHideMode = settingsStore.get('autoHideMode') || 'full'
+      if (autoHideMode === 'icons' && !currentPinned) {
+        triggerRevealWithDelay()
+      } else {
+        clearRevealDelay()
+        setRevealed(true)
+      }
     }
     const isCursorAtScreenEdge = (e) => {
       if (!e) return false;
@@ -261,11 +290,13 @@ function createLayoutAdapter(options) {
     }
 
     rootMouseLeave = (e) => {
+      clearRevealDelay()
       if (e && e.relatedTarget && trigger.contains(e.relatedTarget)) return
       if (isCursorAtScreenEdge(e)) return
       setRevealed(false)
     }
     rootPointerLeave = (e) => {
+      clearRevealDelay()
       if (e && e.relatedTarget && trigger.contains(e.relatedTarget)) return
       if (isCursorAtScreenEdge(e)) return
       setRevealed(false)
@@ -315,9 +346,11 @@ function createLayoutAdapter(options) {
         return
       }
       
+      const autoHideMode = settingsStore.get('autoHideMode') || 'full'
+      const isIconsMode = autoHideMode === 'icons' && !currentPinned
       const panelPosition = settingsStore.get('panelPosition')
       const isRight = panelPosition === 'right'
-      const threshold = 15 // Wider logical trigger zone (doesn't block clicks)
+      const threshold = isIconsMode ? ICON_STRIP_WIDTH : 15 // Check icon strip width in icons mode
       
       const inZone = !isRight ? (latestMouseX <= threshold) : (latestMouseX >= window.innerWidth - threshold)
       
@@ -349,6 +382,10 @@ function createLayoutAdapter(options) {
       if (currentPinned) {
         revealed = false
       }
+      apply()
+    })
+
+    unlistenSettings = settingsStore.subscribe(() => {
       apply()
     })
   }
@@ -386,6 +423,7 @@ function createLayoutAdapter(options) {
 
     if (clearRevealDelay) clearRevealDelay()
     if (unlistenPanel) unlistenPanel()
+    if (unlistenSettings) unlistenSettings()
   }
 
   return { apply, start, dispose }

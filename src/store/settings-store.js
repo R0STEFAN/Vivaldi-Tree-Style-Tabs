@@ -7,6 +7,7 @@ const DEFAULT_SETTINGS = {
   panelPosition: 'left',
   autoCloseTabsDays: 0,
   newTabPlacement: 'bottom',
+  autoHideMode: 'full',
 }
 
 function createSettingsStore() {

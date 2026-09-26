@@ -169,7 +169,7 @@ const STYLE_TEXT = `
   --svb-guide-opacity: 0.35;
   --svb-d-swift: 100ms;
   --svb-d-fast: 120ms;
-  --svb-d-norm: 200ms;
+  --svb-d-norm: 180ms;
   --svb-ease: cubic-bezier(0.2, 0, 0, 1);
   --svb-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   position: absolute !important;
@@ -186,6 +186,8 @@ const STYLE_TEXT = `
   transform: translateX(-100%) !important;
   transition:
     transform var(--svb-d-norm) var(--svb-ease-out),
+    width var(--svb-d-norm) var(--svb-ease-out),
+    box-shadow var(--svb-d-norm) var(--svb-ease-out),
     opacity var(--svb-d-fast) linear;
 }
 
@@ -216,7 +218,32 @@ body.svb-is-resizing {
   transform: translateX(0) !important;
 }
 
-.svb-layout-host.svb-mode-overlay #svb-root.svb-shell .svb-frame {
+/* Icon strip auto-hide mode */
+#svb-root.svb-shell.svb-autohide-icons {
+  opacity: 1 !important;
+  transform: translateX(0) !important;
+  z-index: 20 !important;
+}
+
+.svb-layout-host.svb-position-right #svb-root.svb-shell.svb-autohide-icons {
+  transform: translateX(0) !important;
+}
+
+#svb-root.svb-shell.svb-autohide-icons.is-revealed {
+  z-index: 1000 !important;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.42), 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.svb-layout-host.svb-position-right #svb-root.svb-shell.svb-autohide-icons.is-revealed {
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.42), 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-resize-handle {
+  display: none !important;
+}
+
+.svb-layout-host.svb-mode-overlay #svb-root.svb-shell .svb-frame,
+#svb-root.svb-shell.svb-autohide-icons.is-revealed .svb-frame {
   background-color: var(--colorBg, var(--svb-bg)) !important;
   backdrop-filter: none !important;
   background-image: none !important;
@@ -419,6 +446,27 @@ body.svb-is-resizing {
   align-items: center;
   padding: 6px;
   border-bottom: 0;
+  transition: padding var(--svb-d-norm) var(--svb-ease-out);
+}
+
+#svb-root .svb-header__left,
+#svb-root .svb-header__actions {
+  transition: opacity var(--svb-d-fast) ease;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-header {
+  padding: 4px 2px;
+  overflow: hidden;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-header__left,
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-header__actions {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-header__count {
+  display: none !important;
 }
 
 #svb-root .svb-header__count {
@@ -580,6 +628,14 @@ body.svb-is-resizing {
   display: block;
   width: calc(100% - (var(--svb-depth) * var(--svb-tree-indent)));
   margin-left: calc(var(--svb-depth) * var(--svb-tree-indent));
+  transition:
+    margin-left var(--svb-d-norm) var(--svb-ease-out),
+    width var(--svb-d-norm) var(--svb-ease-out);
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__outer {
+  margin-left: 0 !important;
+  width: 100% !important;
 }
 
 #svb-root .svb-tab__guides {
@@ -587,6 +643,12 @@ body.svb-is-resizing {
   inset: 0;
   pointer-events: none;
   z-index: 0;
+  transition: opacity var(--svb-d-fast) ease;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__guides {
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 #svb-root .svb-tab__guide {
@@ -614,6 +676,15 @@ body.svb-is-resizing {
   background: var(--svb-panel);
   box-shadow: 0 1px 1px 0 rgba(0, 0, 0, 0.12);
   z-index: 1;
+  transition:
+    padding var(--svb-d-norm) var(--svb-ease-out),
+    background var(--svb-d-fast) ease;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__body {
+  padding: 0 4px !important;
+  justify-content: center !important;
+  gap: 0 !important;
 }
 
 #svb-root.is-transparent-tabs .svb-tab:not(.is-active):not(.is-selected) .svb-tab__body {
@@ -888,6 +959,39 @@ body.svb-is-resizing {
   min-width: 0;
   flex: 1;
   padding-right: 0;
+  transition: opacity var(--svb-d-fast) ease;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__content {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__close,
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__add,
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__exp,
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__child-count {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  display: none !important;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-pinned-grid {
+  justify-content: center !important;
+  padding: 4px 0 6px !important;
+}
+
+#svb-root .svb-tab__close,
+#svb-root .svb-tab__add,
+#svb-root .svb-tab__exp,
+#svb-root .svb-tab__child-count {
+  transition: opacity var(--svb-d-fast) ease;
 }
 
 #svb-root .svb-tab.has-add.is-active .svb-tab__content,
@@ -1097,6 +1201,7 @@ body.svb-is-resizing {
 #svb-root .svb-new-folder-button {
   flex: 0 0 32px;
   padding: 0;
+  transition: opacity var(--svb-d-fast) ease;
 }
 
 #svb-root .svb-new-tab-button:hover,
@@ -1122,10 +1227,33 @@ body.svb-is-resizing {
   font-weight: 500;
   white-space: nowrap;
   text-overflow: ellipsis;
+  transition: opacity var(--svb-d-fast) ease;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-new-tab-button__label {
+  opacity: 0 !important;
+  max-width: 0 !important;
+  display: none !important;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-new-folder-button {
+  display: none !important;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-new-tab-button {
+  padding: 0 !important;
+  justify-content: center !important;
+  min-width: 0 !important;
+  flex: 1 1 100% !important;
 }
 
 #svb-root .svb-tab-list::-webkit-scrollbar {
   width: 6px;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab-list::-webkit-scrollbar {
+  width: 0px !important;
+  display: none !important;
 }
 
 #svb-root .svb-tab-list::-webkit-scrollbar-thumb {
@@ -1505,6 +1633,7 @@ const DEFAULT_SETTINGS = {
   panelPosition: 'left',
   autoCloseTabsDays: 0,
   newTabPlacement: 'bottom',
+  autoHideMode: 'full',
 }
 
 function createSettingsStore() {
@@ -7964,10 +8093,12 @@ function createLayoutAdapter(options) {
   const { root, host, trigger, dragShield, panelStore } = options
   const MIN_WIDTH = 30
   const MAX_WIDTH = 520
+  const ICON_STRIP_WIDTH = 42
   let observer = null
   let resizeHandler = null
   let revealed = false
   let unlistenPanel = null
+  let unlistenSettings = null
   let currentPinned = panelStore.getState().pinned
   let currentWidth = panelStore.getState().width
   let dragState = null
@@ -8016,19 +8147,41 @@ function createLayoutAdapter(options) {
       currentHost.classList.add('svb-layout-host')
     }
 
+    const autoHideMode = settingsStore.get('autoHideMode') || 'full'
+    const isIconsMode = autoHideMode === 'icons' && !currentPinned
     const renderedWidth = getRenderedWidth()
 
-    // Sync both variables immediately for smooth layout movement
-    if (currentHost.style.getPropertyValue('--svb-sidebar-width') !== `${renderedWidth}px`) {
-      currentHost.style.setProperty('--svb-sidebar-width', `${renderedWidth}px`)
+    if (isIconsMode) {
+      // In icons mode when unpinned:
+      // Webview stays docked at 42px so web content is never obscured and doesn't jump on hover
+      if (currentHost.style.getPropertyValue('--svb-sidebar-width') !== `${ICON_STRIP_WIDTH}px`) {
+        currentHost.style.setProperty('--svb-sidebar-width', `${ICON_STRIP_WIDTH}px`)
+      }
+
+      const rootTargetWidth = revealed ? renderedWidth : ICON_STRIP_WIDTH
+      if (root.style.width !== `${rootTargetWidth}px`) {
+        root.style.width = `${rootTargetWidth}px`
+      }
+
+      currentHost.classList.add('svb-mode-docked')
+      currentHost.classList.remove('svb-mode-overlay')
+      currentHost.classList.add('svb-autohide-icons')
+      root.classList.add('svb-autohide-icons')
+    } else {
+      if (currentHost.style.getPropertyValue('--svb-sidebar-width') !== `${renderedWidth}px`) {
+        currentHost.style.setProperty('--svb-sidebar-width', `${renderedWidth}px`)
+      }
+
+      if (root.style.width !== `${renderedWidth}px`) {
+        root.style.width = `${renderedWidth}px`
+      }
+
+      currentHost.classList.toggle('svb-mode-docked', currentPinned)
+      currentHost.classList.toggle('svb-mode-overlay', !currentPinned)
+      currentHost.classList.remove('svb-autohide-icons')
+      root.classList.remove('svb-autohide-icons')
     }
 
-    if (root.style.width !== `${renderedWidth}px`) {
-      root.style.width = `${renderedWidth}px`
-    }
-
-    currentHost.classList.toggle('svb-mode-docked', currentPinned)
-    currentHost.classList.toggle('svb-mode-overlay', !currentPinned)
     currentHost.classList.toggle('svb-is-fullscreen', fullscreen)
 
     const browser = document.querySelector('#browser')
@@ -8041,7 +8194,7 @@ function createLayoutAdapter(options) {
     trigger.classList.toggle('svb-position-right', panelPosition === 'right')
 
     root.classList.toggle('is-revealed', !fullscreen && (currentPinned || revealed))
-    trigger.classList.toggle('is-enabled', !fullscreen && !currentPinned && !revealed)
+    trigger.classList.toggle('is-enabled', !fullscreen && !currentPinned && !revealed && !isIconsMode)
     dragShield.classList.toggle('is-active', !fullscreen && Boolean(dragState))
   }
 
@@ -8188,7 +8341,7 @@ function createLayoutAdapter(options) {
     window.addEventListener('resize', refreshFullscreen)
 
     let revealTimeout = null
-    const REVEAL_DELAY = 150 // Delay in ms before showing panel
+    const REVEAL_DELAY = 120 // Delay in ms before showing panel
 
     clearRevealDelay = () => {
       if (revealTimeout) {
@@ -8211,8 +8364,13 @@ function createLayoutAdapter(options) {
     trigger.addEventListener('mouseleave', clearRevealDelay)
     
     rootMouseEnter = () => {
-      clearRevealDelay()
-      setRevealed(true)
+      const autoHideMode = settingsStore.get('autoHideMode') || 'full'
+      if (autoHideMode === 'icons' && !currentPinned) {
+        triggerRevealWithDelay()
+      } else {
+        clearRevealDelay()
+        setRevealed(true)
+      }
     }
     const isCursorAtScreenEdge = (e) => {
       if (!e) return false;
@@ -8221,11 +8379,13 @@ function createLayoutAdapter(options) {
     }
 
     rootMouseLeave = (e) => {
+      clearRevealDelay()
       if (e && e.relatedTarget && trigger.contains(e.relatedTarget)) return
       if (isCursorAtScreenEdge(e)) return
       setRevealed(false)
     }
     rootPointerLeave = (e) => {
+      clearRevealDelay()
       if (e && e.relatedTarget && trigger.contains(e.relatedTarget)) return
       if (isCursorAtScreenEdge(e)) return
       setRevealed(false)
@@ -8275,9 +8435,11 @@ function createLayoutAdapter(options) {
         return
       }
       
+      const autoHideMode = settingsStore.get('autoHideMode') || 'full'
+      const isIconsMode = autoHideMode === 'icons' && !currentPinned
       const panelPosition = settingsStore.get('panelPosition')
       const isRight = panelPosition === 'right'
-      const threshold = 15 // Wider logical trigger zone (doesn't block clicks)
+      const threshold = isIconsMode ? ICON_STRIP_WIDTH : 15 // Check icon strip width in icons mode
       
       const inZone = !isRight ? (latestMouseX <= threshold) : (latestMouseX >= window.innerWidth - threshold)
       
@@ -8309,6 +8471,10 @@ function createLayoutAdapter(options) {
       if (currentPinned) {
         revealed = false
       }
+      apply()
+    })
+
+    unlistenSettings = settingsStore.subscribe(() => {
       apply()
     })
   }
@@ -8346,6 +8512,7 @@ function createLayoutAdapter(options) {
 
     if (clearRevealDelay) clearRevealDelay()
     if (unlistenPanel) unlistenPanel()
+    if (unlistenSettings) unlistenSettings()
   }
 
   return { apply, start, dispose }
@@ -9187,6 +9354,19 @@ function createSidebarRenderer(options) {
                 <label class="svb-settings-option">
                   <input type="radio" name="panelPosition" value="right">
                   <span>Right side</span>
+                </label>
+              </div>
+            </div>
+            <div class="svb-settings-group">
+              <label class="svb-settings-label">Auto-hide mode</label>
+              <div class="svb-settings-options">
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoHideMode" value="full">
+                  <span>Full auto-hide</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoHideMode" value="icons">
+                  <span>Icon strip</span>
                 </label>
               </div>
             </div>
@@ -10991,6 +11171,10 @@ async function main() {
 
   unsubscribers.push(dragStore.subscribe(state => {
     latestDragState = state
+    syncView()
+  }))
+
+  unsubscribers.push(settingsStore.subscribe(() => {
     syncView()
   }))
 

@@ -834,6 +834,19 @@ function createSidebarRenderer(options) {
               </div>
             </div>
             <div class="svb-settings-group">
+              <label class="svb-settings-label">Auto-hide mode</label>
+              <div class="svb-settings-options">
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoHideMode" value="full">
+                  <span>Full auto-hide</span>
+                </label>
+                <label class="svb-settings-option">
+                  <input type="radio" name="autoHideMode" value="icons">
+                  <span>Icon strip</span>
+                </label>
+              </div>
+            </div>
+            <div class="svb-settings-group">
               <label class="svb-settings-label">New tab & folder position</label>
               <div class="svb-settings-options">
                 <label class="svb-settings-option">

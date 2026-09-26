@@ -310,6 +310,10 @@ async function main() {
     syncView()
   }))
 
+  unsubscribers.push(settingsStore.subscribe(() => {
+    syncView()
+  }))
+
   theme.start()
   layout.start()
   window.__svbDispose = () => {
