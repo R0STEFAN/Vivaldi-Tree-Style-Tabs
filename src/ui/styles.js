@@ -402,7 +402,11 @@ body.svb-is-resizing {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
   padding: 6px;
+  box-sizing: border-box;
   border-bottom: 0;
   transition: padding var(--svb-d-norm) var(--svb-ease-out);
 }
@@ -419,8 +423,12 @@ body.svb-is-resizing {
 }
 
 #svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-header {
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
   padding: 6px 2px;
   justify-content: center;
+  box-sizing: border-box;
   overflow: hidden;
 }
 
@@ -952,7 +960,7 @@ body.svb-is-resizing {
 
 #svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-pinned-grid {
   justify-content: center !important;
-  padding: 4px 0 6px !important;
+  padding: 4px 2px 8px !important;
 }
 
 #svb-root .svb-tab__close,
