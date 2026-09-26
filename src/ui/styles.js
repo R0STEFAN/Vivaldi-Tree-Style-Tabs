@@ -1148,6 +1148,7 @@ body.svb-is-resizing {
   display: flex;
   gap: 4px;
   margin: 0 2px 2px;
+  transition: gap var(--svb-d-norm) var(--svb-ease-out);
 }
 
 #svb-root .svb-new-item-buttons.is-inline {
@@ -1188,9 +1189,17 @@ body.svb-is-resizing {
 
 #svb-root .svb-new-folder-button {
   flex: 0 0 32px;
+  max-width: 32px;
+  min-width: 32px;
   padding: 0;
   justify-content: center;
-  transition: opacity var(--svb-d-fast) ease;
+  opacity: 1;
+  overflow: hidden;
+  transition:
+    opacity var(--svb-d-fast) ease 40ms,
+    max-width var(--svb-d-norm) var(--svb-ease-out),
+    min-width var(--svb-d-norm) var(--svb-ease-out),
+    flex var(--svb-d-norm) var(--svb-ease-out);
 }
 
 #svb-root .svb-new-tab-button:hover,
@@ -1217,16 +1226,35 @@ body.svb-is-resizing {
   font-weight: 500;
   white-space: nowrap;
   text-overflow: ellipsis;
-  transition: opacity var(--svb-d-fast) ease;
+  opacity: 1;
+  transition: opacity var(--svb-d-fast) ease 40ms;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-new-item-buttons {
+  gap: 0 !important;
 }
 
 #svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-new-tab-button__label {
   opacity: 0 !important;
   pointer-events: none !important;
+  transition: opacity var(--svb-d-swift) ease 0ms;
 }
 
 #svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-new-folder-button {
-  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  max-width: 0 !important;
+  min-width: 0 !important;
+  flex: 0 0 0px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-width: 0 !important;
+  overflow: hidden !important;
+  transition:
+    opacity var(--svb-d-swift) ease 0ms,
+    max-width var(--svb-d-swift) var(--svb-ease-out) 0ms,
+    min-width var(--svb-d-swift) var(--svb-ease-out) 0ms,
+    flex var(--svb-d-swift) var(--svb-ease-out) 0ms;
 }
 
 #svb-root .svb-tab-list::-webkit-scrollbar {
