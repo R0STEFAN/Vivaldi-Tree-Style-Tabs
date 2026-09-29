@@ -1,4 +1,5 @@
 const { settingsStore } = require('../store/settings-store.js')
+const { syncPinnedGrid } = require('./pinned-grid.js')
 
 function getTabHoverTitle(tab, isActive) {
   let title = tab.title || ''
@@ -704,6 +705,7 @@ function createSidebarRenderer(options) {
   let latestState = null
   let renderCurrent = () => {}
   let shell = null
+  let pinnedGridObserver = null
   let editingTabId = null
   let isSettingsOpen = false
   const eventController = new AbortController()
@@ -915,6 +917,10 @@ function createSidebarRenderer(options) {
     }
 
     shell.footer.appendChild(createNodeFromHtml(renderNewTabButton(false)))
+
+    if (pinnedGridObserver) pinnedGridObserver.disconnect()
+    pinnedGridObserver = new ResizeObserver(() => syncPinnedGrid(shell.pinnedGrid))
+    pinnedGridObserver.observe(shell.pinnedGrid)
 
     // Setup native drag-and-drop for external content
     shell.frame.addEventListener('dragover', event => {
@@ -2194,6 +2200,7 @@ function createSidebarRenderer(options) {
       }
       if (!structureChanged) {
         updateVisualOnlyNodes(state, treeTabs, visualState, currentShell, contentChangedIds)
+        syncPinnedGrid(currentShell.pinnedGrid)
         syncScroll(currentShell.tabList, state)
       } else {
         const previousScrollTop = currentShell.tabList ? currentShell.tabList.scrollTop : 0
@@ -2293,6 +2300,7 @@ function createSidebarRenderer(options) {
           currentShell.inlineNewTabButton.style.top = ''
         }
 
+        syncPinnedGrid(currentShell.pinnedGrid)
         updateContextMenu(currentShell, state)
 
         syncOverflowState()
@@ -2326,6 +2334,7 @@ function createSidebarRenderer(options) {
     },
 
     dispose() {
+      if (pinnedGridObserver) pinnedGridObserver.disconnect()
       eventController.abort()
       stopDragAutoScroll()
       pointerDrag = null

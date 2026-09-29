@@ -1007,9 +1007,28 @@ body.svb-is-resizing {
   pointer-events: none !important;
 }
 
-#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-pinned-grid {
-  justify-content: center !important;
-  padding: 4px 2px 8px !important;
+#svb-root.svb-shell.svb-autohide-icons .svb-frame {
+  box-sizing: border-box;
+}
+
+/* Keep the expanded wrapping and row heights throughout the width animation. */
+#svb-root.svb-shell.svb-autohide-icons .svb-section--pinned {
+  box-sizing: border-box;
+  width: calc(var(--svb-rendered-width, 300px) - 1px);
+  flex-shrink: 0;
+}
+
+#svb-root.svb-shell.svb-autohide-icons.is-unified .svb-section--pinned {
+  width: calc(var(--svb-rendered-width, 300px) - 2px);
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-pinned-tab {
+  visibility: hidden;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-pinned-tab[data-strip-visible="true"] {
+  visibility: visible;
+  translate: var(--svb-strip-offset, 0px) 0;
 }
 
 #svb-root .svb-tab__close,

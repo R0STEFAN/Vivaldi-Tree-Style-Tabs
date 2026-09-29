@@ -1041,9 +1041,28 @@ body.svb-is-resizing {
   pointer-events: none !important;
 }
 
-#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-pinned-grid {
-  justify-content: center !important;
-  padding: 4px 2px 8px !important;
+#svb-root.svb-shell.svb-autohide-icons .svb-frame {
+  box-sizing: border-box;
+}
+
+/* Keep the expanded wrapping and row heights throughout the width animation. */
+#svb-root.svb-shell.svb-autohide-icons .svb-section--pinned {
+  box-sizing: border-box;
+  width: calc(var(--svb-rendered-width, 300px) - 1px);
+  flex-shrink: 0;
+}
+
+#svb-root.svb-shell.svb-autohide-icons.is-unified .svb-section--pinned {
+  width: calc(var(--svb-rendered-width, 300px) - 2px);
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-pinned-tab {
+  visibility: hidden;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-pinned-tab[data-strip-visible="true"] {
+  visibility: visible;
+  translate: var(--svb-strip-offset, 0px) 0;
 }
 
 #svb-root .svb-tab__close,
@@ -8614,8 +8633,35 @@ function createLayoutAdapter(options) {
 module.exports = { createLayoutAdapter }
 
     },
+    "ui/pinned-grid.js": function(require, module, exports) {
+// Read the full-width layout, even while the shell is collapsed. Visibility
+// and translate do not affect these offsets or the space occupied by a row.
+function syncPinnedGrid(grid) {
+  const rows = new Map()
+  const entries = Array.from(grid.children, node => ({
+    node, left: node.offsetLeft, top: node.offsetTop,
+  }))
+  for (const entry of entries) {
+    let row = rows.get(entry.top)
+    if (!row) {
+      row = { left: entry.left, representative: entry.node }
+      rows.set(entry.top, row)
+    }
+    if (entry.node.classList.contains('is-active')) row.representative = entry.node
+  }
+  for (const { node, left, top } of entries) {
+    const row = rows.get(top)
+    node.dataset.stripVisible = String(node === row.representative)
+    node.style.setProperty('--svb-strip-offset', `${row.left - left}px`)
+  }
+}
+
+module.exports = { syncPinnedGrid }
+
+    },
     "ui/render.js": function(require, module, exports) {
 const { settingsStore } = require('../store/settings-store.js')
+const { syncPinnedGrid } = require('./pinned-grid.js')
 
 function getTabHoverTitle(tab, isActive) {
   let title = tab.title || ''
@@ -9321,6 +9367,7 @@ function createSidebarRenderer(options) {
   let latestState = null
   let renderCurrent = () => {}
   let shell = null
+  let pinnedGridObserver = null
   let editingTabId = null
   let isSettingsOpen = false
   const eventController = new AbortController()
@@ -9532,6 +9579,10 @@ function createSidebarRenderer(options) {
     }
 
     shell.footer.appendChild(createNodeFromHtml(renderNewTabButton(false)))
+
+    if (pinnedGridObserver) pinnedGridObserver.disconnect()
+    pinnedGridObserver = new ResizeObserver(() => syncPinnedGrid(shell.pinnedGrid))
+    pinnedGridObserver.observe(shell.pinnedGrid)
 
     // Setup native drag-and-drop for external content
     shell.frame.addEventListener('dragover', event => {
@@ -10811,6 +10862,7 @@ function createSidebarRenderer(options) {
       }
       if (!structureChanged) {
         updateVisualOnlyNodes(state, treeTabs, visualState, currentShell, contentChangedIds)
+        syncPinnedGrid(currentShell.pinnedGrid)
         syncScroll(currentShell.tabList, state)
       } else {
         const previousScrollTop = currentShell.tabList ? currentShell.tabList.scrollTop : 0
@@ -10910,6 +10962,7 @@ function createSidebarRenderer(options) {
           currentShell.inlineNewTabButton.style.top = ''
         }
 
+        syncPinnedGrid(currentShell.pinnedGrid)
         updateContextMenu(currentShell, state)
 
         syncOverflowState()
@@ -10943,6 +10996,7 @@ function createSidebarRenderer(options) {
     },
 
     dispose() {
+      if (pinnedGridObserver) pinnedGridObserver.disconnect()
       eventController.abort()
       stopDragAutoScroll()
       pointerDrag = null
