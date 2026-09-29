@@ -16,7 +16,8 @@ const { STYLE_TEXT } = require(process.cwd() + '/src/ui/styles.js')
  }
  await page.evaluate(()=>{
   window.root=document.querySelector('#svb-root')
-  window.state={ready:true,pinnedTabs:Array.from({length:10},(_,i)=>({id:i+1,title:String(i+1),pinned:true})), tabs:[], treeTabs:[], activeTabId:null}
+  const regularTab={id:100,title:'Regular tab',pinned:false}
+  window.state={ready:true,pinnedTabs:Array.from({length:10},(_,i)=>({id:i+1,title:String(i+1),pinned:true})), tabs:[regularTab], treeTabs:[{id:100,tab:regularTab,depth:0,visibleIndex:0,ancestorIds:[]}], activeTabId:null}
   window.rendererInstance=renderer.createSidebarRenderer({root})
   rendererInstance.render(state)
   window.snapshot=()=>({height:document.querySelector('.svb-section--pinned').getBoundingClientRect().height, below:document.querySelector('.svb-section--fill').getBoundingClientRect().top, tabs:[...document.querySelectorAll('.svb-pinned-tab')].map(n=>({id:Number(n.dataset.tabId),top:n.getBoundingClientRect().top,left:n.getBoundingClientRect().left,visible:getComputedStyle(n).visibility==='visible', offsetTop:n.offsetTop}))})
@@ -71,6 +72,11 @@ const { STYLE_TEXT } = require(process.cwd() + '/src/ui/styles.js')
    },{right,unified})
    await page.waitForTimeout(220)
    const before=await page.evaluate(()=>snapshot())
+   const expandedIcons=await page.evaluate(()=>({
+    regular:document.querySelector('.svb-tab-list .svb-tab__favicon').getBoundingClientRect().left,
+    pinned:document.querySelector('.svb-pinned-tab .svb-tab__favicon').getBoundingClientRect().left,
+   }))
+   assert.equal(expandedIcons.pinned,expandedIcons.regular,'Expanded favicons must align')
    await page.evaluate(()=>{root.style.width='42px';root.classList.remove('is-revealed')})
    await page.waitForTimeout(220)
    const after=await page.evaluate(()=>snapshot())
@@ -78,6 +84,11 @@ const { STYLE_TEXT } = require(process.cwd() + '/src/ui/styles.js')
    assert.equal(after.below,before.below)
    assert.deepEqual(after.tabs.filter(t=>t.visible).map(t=>t.id),[1,8])
    assert.equal(after.tabs[7].left,after.tabs[0].left)
+   const icons=await page.evaluate(()=>({
+    regular:document.querySelector('.svb-tab-list .svb-tab__favicon').getBoundingClientRect().left,
+    pinned:[...document.querySelectorAll('.svb-pinned-tab[data-strip-visible="true"] .svb-tab__favicon')].map(n=>n.getBoundingClientRect().left),
+   }))
+   for (const left of icons.pinned) assert.equal(left,icons.regular,'Pinned and regular favicons must align')
   }
  }
  await page.evaluate(()=>rendererInstance.dispose())

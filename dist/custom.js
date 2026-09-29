@@ -622,7 +622,8 @@ body.svb-is-resizing {
   display: flex;
   flex-wrap: wrap;
   gap: var(--svb-gap);
-  padding: 4px 2px 8px;
+  /* Align compact favicons with regular tabs without changing wrap width. */
+  padding: 4px 0 8px 4px;
   position: relative;
 }
 
