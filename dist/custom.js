@@ -3499,6 +3499,8 @@ function createTreeController(api) {
         currentContextKey,
         activeRegularTabId,
         sourceActiveTabId,
+        pinnedTabs = [],
+        unpinnedTabIds = [],
       } = options
 
       const contextChanged = await ensureContext(contextKey, tabs, currentContextKey)
@@ -3509,6 +3511,15 @@ function createTreeController(api) {
         persistenceDirty = true
         structuralDirty = true
         pendingRemovalDirty = false
+      }
+
+      // Pinning removes only the parent from the regular tree. Promote its
+      // children in place before repair can treat them as orphaned roots.
+      for (const tab of pinnedTabs) {
+        if (treeStore.removeTab(tab.id)) {
+          persistenceDirty = true
+          structuralDirty = true
+        }
       }
 
       if (treeStore.repair(tabs.map(tab => tab.id))) {
@@ -3638,6 +3649,18 @@ function createTreeController(api) {
         }
 
         pendingCreatedTabs.delete(tab.id)
+      }
+
+      // Unpinning is not a creation event. Place these tabs explicitly, keeping
+      // their pinned-strip order and leaving previously promoted children alone.
+      let unpinnedRootIndex = getFirstUnpinnedRootIndex()
+      const unpinAtTop = settingsStore.get('newTabPlacement') === 'top'
+      for (const tabId of unpinnedTabIds) {
+        if (!tabsById.has(tabId)) continue
+        if (treeStore.moveRoot(tabId, unpinAtTop ? unpinnedRootIndex++ : undefined)) {
+          persistenceDirty = true
+          structuralDirty = true
+        }
       }
 
       if (activeRegularTabId != null) {
@@ -5155,6 +5178,10 @@ function createTabStore(api) {
 
     const treeResult = await treeController.sync({
       tabs,
+      pinnedTabs,
+      unpinnedTabIds: state.pinnedTabs
+        .filter(previousTab => tabs.some(tab => tab.id === previousTab.id))
+        .map(tab => tab.id),
       contextKey,
       currentContextKey: state.treeContextKey,
       activeRegularTabId,

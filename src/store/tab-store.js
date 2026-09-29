@@ -904,6 +904,10 @@ function createTabStore(api) {
 
     const treeResult = await treeController.sync({
       tabs,
+      pinnedTabs,
+      unpinnedTabIds: state.pinnedTabs
+        .filter(previousTab => tabs.some(tab => tab.id === previousTab.id))
+        .map(tab => tab.id),
       contextKey,
       currentContextKey: state.treeContextKey,
       activeRegularTabId,
