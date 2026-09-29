@@ -110,11 +110,6 @@ const STYLE_TEXT = `
   flex-direction: row-reverse;
 }
 
-.svb-layout-host.svb-position-right #svb-root-drag-shield.svb-drag-shield.is-menu-backdrop {
-  left: 0 !important;
-  right: var(--svb-rendered-width, var(--svb-sidebar-width, 300px)) !important;
-}
-
 .svb-layout-host.svb-position-right #svb-root.svb-shell:not(.is-unified) .svb-frame {
   border-left: 1px solid var(--svb-border);
   border-right: 0;
@@ -196,7 +191,9 @@ const STYLE_TEXT = `
   border-bottom: 0;
 }
 
-#svb-root.svb-shell.is-menu-open {
+#svb-root.svb-shell.is-menu-open,
+#svb-root.svb-shell.svb-autohide-icons.is-menu-open,
+#svb-root.svb-shell.svb-autohide-icons.is-revealed.is-menu-open {
   z-index: 1000001 !important;
 }
 
@@ -273,7 +270,12 @@ body.svb-is-resizing {
 #svb-root-drag-shield.svb-drag-shield.is-menu-backdrop {
   display: block;
   cursor: default;
-  left: var(--svb-rendered-width, var(--svb-sidebar-width, 300px));
+  inset: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  z-index: 999999 !important;
 }
 
 #svb-root .svb-frame {
@@ -859,6 +861,12 @@ body.svb-is-resizing {
   min-width: 30px;
   flex: 0 0 30px;
   padding: 0;
+  translate: 0 0;
+  opacity: 1;
+  transition:
+    translate var(--svb-d-norm) var(--svb-ease-out),
+    opacity var(--svb-d-fast) ease,
+    background-color var(--svb-d-fast) ease;
 }
 
 #svb-root .svb-tab__lead {
@@ -1057,13 +1065,33 @@ body.svb-is-resizing {
   width: calc(var(--svb-rendered-width, 300px) - 2px);
 }
 
+#svb-root.svb-shell.svb-autohide-icons .svb-pinned-tab {
+  transition:
+    translate var(--svb-d-norm) var(--svb-ease-out),
+    opacity var(--svb-d-fast) ease,
+    visibility 0s linear 0s,
+    background-color var(--svb-d-fast) ease;
+}
+
 #svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-pinned-tab {
+  opacity: 0;
+  pointer-events: none;
   visibility: hidden;
+  transition:
+    translate var(--svb-d-norm) var(--svb-ease-out),
+    opacity var(--svb-d-fast) ease,
+    visibility 0s linear var(--svb-d-fast);
 }
 
 #svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-pinned-tab[data-strip-visible="true"] {
+  opacity: 1;
+  pointer-events: auto;
   visibility: visible;
   translate: var(--svb-strip-offset, 0px) 0;
+  transition:
+    translate var(--svb-d-norm) var(--svb-ease-out),
+    opacity var(--svb-d-fast) ease,
+    visibility 0s linear 0s;
 }
 
 #svb-root .svb-tab__close,
@@ -1365,6 +1393,13 @@ body.svb-is-resizing {
 
 #svb-root .svb-tab-list::-webkit-scrollbar-track {
   background: transparent;
+}
+
+#svb-root .svb-menu-host {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483647;
 }
 
 #svb-root .svb-menu {
