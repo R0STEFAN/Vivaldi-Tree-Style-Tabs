@@ -749,7 +749,6 @@ function createSidebarRenderer(options) {
             <div class="svb-header__count">0</div>
           </div>
           <div class="svb-header__actions">
-            <button type="button" data-role="activation-trace" title="Відкрити журнал активації вкладок">Журнал</button>
             <button class="svb-icon-button" data-role="collapse-all" title="Collapse all trees" aria-label="Collapse all trees"></button>
             <button class="svb-icon-button" data-role="toggle-pinned" title="Pin panel"></button>
           </div>
@@ -775,6 +774,10 @@ function createSidebarRenderer(options) {
             <h2 class="svb-settings-title">Settings</h2>
           </div>
           <div class="svb-settings-content">
+            <div class="svb-settings-group">
+              <div class="svb-settings-label">Діагностика</div>
+              <button type="button" data-role="activation-trace" title="Відкрити журнал активації вкладок">Журнал</button>
+            </div>
             <div class="svb-settings-group">
               <label class="svb-settings-label">New child tab position</label>
               <div class="svb-settings-options">
