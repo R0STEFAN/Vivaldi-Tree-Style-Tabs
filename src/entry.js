@@ -10,6 +10,8 @@ const { createLayoutAdapter } = require('./adapters/layout.js')
 const { createSidebarRenderer } = require('./ui/render.js')
 const { settingsStore } = require('./store/settings-store.js')
 
+const { createActivationTrace, installTraceDownload } = require('./diagnostics/activation-trace.js')
+
 const APP_ID = 'svb-root'
 
 function createTabLookupCache() {
@@ -78,7 +80,8 @@ async function main() {
     dragShield: mount.dragShield,
     panelStore,
   })
-  const api = createTabsApi()
+  const activationTrace = createActivationTrace(createTabsApi())
+  const api = activationTrace.api
   const store = createTabStore(api)
   const selectionStore = createSelectionStore()
   const dragStore = createDragStore()
@@ -254,7 +257,13 @@ async function main() {
   let previousVisibleActiveTabId = null
   const getTabLookup = createTabLookupCache()
   const entryEventController = new AbortController()
-  const unsubscribers = []
+  const traceContext = () => ({
+    activeTabId: latestTabState && latestTabState.activeTabId,
+    direction: settingsStore.get('activateAfterClose'),
+    adaptive: settingsStore.get('adaptiveActivation'),
+    tree: latestTabState ? latestTabState.treeTabs.map(item => ({ id: item.id, parentId: item.parentId })) : [],
+  })
+  const unsubscribers = [installTraceDownload(activationTrace, mount.root, traceContext)]
 
   function syncView() {
     if (!latestTabState) return
@@ -273,6 +282,7 @@ async function main() {
 
   unsubscribers.push(store.subscribe(state => {
     latestTabState = state
+    activationTrace.record('store.snapshot', traceContext())
     const { visibleIds, treeItemsById } = getTabLookup(state)
     const activeRegularVisible = Number.isFinite(state.activeTabId) && treeItemsById.has(state.activeTabId)
     const activeTabChanged = state.activeTabId !== previousVisibleActiveTabId
