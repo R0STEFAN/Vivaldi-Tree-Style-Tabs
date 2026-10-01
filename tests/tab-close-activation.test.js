@@ -119,6 +119,11 @@ describe('tab close adaptive activation', () => {
     assert.strictEqual(callSequence[1].action, 'closeTab')
     assert.strictEqual(callSequence[1].tabId, 11)
     assert.strictEqual(callSequence[1].activeAtTimeOfClose, 12, 'Tab 12 must ALREADY be active when closeTab is executed')
+    assert.strictEqual(
+      callSequence.filter(call => call.action === 'activateTab').length,
+      1,
+      'The removal event must not issue a second activation after the pre-close activation',
+    )
 
     store.dispose()
   })

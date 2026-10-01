@@ -366,6 +366,7 @@ function createTabStore(api) {
   const nativeReconcile = createNativeReconcile(api)
   let contextLock = null
   let pendingActiveRepairTabId = null
+  const pendingPreactivatedCloseTimers = new Map()
   let pendingNativeReconcileReason = null
   let bookmarkSyncTimer = null
   let scheduledSyncTimer = null
@@ -531,6 +532,32 @@ function createTabStore(api) {
     return getAllVisibleTabs().find(tab => tab.id === tabId) || null
   }
 
+  function markTabsPreactivatedBeforeClose(tabIds) {
+    for (const tabId of tabIds) {
+      const previousTimer = pendingPreactivatedCloseTimers.get(tabId)
+      if (previousTimer) clearTimeout(previousTimer)
+      const timer = setTimeout(() => pendingPreactivatedCloseTimers.delete(tabId), 1500)
+      if (timer && typeof timer.unref === 'function') timer.unref()
+      pendingPreactivatedCloseTimers.set(tabId, timer)
+    }
+  }
+
+  function consumePreactivatedClose(tabId) {
+    const timer = pendingPreactivatedCloseTimers.get(tabId)
+    if (!timer) return false
+    clearTimeout(timer)
+    pendingPreactivatedCloseTimers.delete(tabId)
+    return true
+  }
+
+  function clearPreactivatedCloseMarks(tabIds) {
+    for (const tabId of tabIds) {
+      const timer = pendingPreactivatedCloseTimers.get(tabId)
+      if (timer) clearTimeout(timer)
+      pendingPreactivatedCloseTimers.delete(tabId)
+    }
+  }
+
   function getActivationTargetBeforeClose(targetIds) {
     const activeTabId = state.activeTabId
     if (!Number.isFinite(activeTabId)) return null
@@ -638,11 +665,17 @@ function createTabStore(api) {
     pendingNativeReconcileReason = 'close'
     lockCurrentContext()
     await activateBeforeCloseIfNeeded(validTargetIds)
-    if (validTargetIds.length === 1) {
-      await api.closeTab(validTargetIds[0])
-      return
+    markTabsPreactivatedBeforeClose(validTargetIds)
+    try {
+      if (validTargetIds.length === 1) {
+        await api.closeTab(validTargetIds[0])
+        return
+      }
+      await api.closeTabs(validTargetIds)
+    } catch (error) {
+      clearPreactivatedCloseMarks(validTargetIds)
+      throw error
     }
-    await api.closeTabs(validTargetIds)
   }
 
   async function updateTabs(tabIds, properties) {
@@ -1078,10 +1111,11 @@ function createTabStore(api) {
 
       const wasActive = state.activeTabId === tabId
       const targetActiveId = wasActive ? getActivationTargetBeforeClose([tabId]) : null
+      const wasPreactivatedForClose = consumePreactivatedClose(tabId)
 
       treeController.handleRemovedTab(tabId)
 
-      if (Number.isFinite(targetActiveId)) {
+      if (!wasPreactivatedForClose && Number.isFinite(targetActiveId)) {
         api.activateTab(targetActiveId)
       }
 
@@ -1261,11 +1295,17 @@ function createTabStore(api) {
       pendingNativeReconcileReason = 'close'
       lockCurrentContext()
       await activateBeforeCloseIfNeeded(closeTargetIds)
-      if (closeTargetIds.length === 1) {
-        await api.closeTab(closeTargetIds[0])
-        return
+      markTabsPreactivatedBeforeClose(closeTargetIds)
+      try {
+        if (closeTargetIds.length === 1) {
+          await api.closeTab(closeTargetIds[0])
+          return
+        }
+        await api.closeTabs(closeTargetIds)
+      } catch (error) {
+        clearPreactivatedCloseMarks(closeTargetIds)
+        throw error
       }
-      await api.closeTabs(closeTargetIds)
     },
 
     closeTabIds,
