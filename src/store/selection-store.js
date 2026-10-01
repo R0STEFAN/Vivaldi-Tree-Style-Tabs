@@ -18,7 +18,7 @@ function createSelectionStore() {
     return result
   }
 
-  function setState(nextState) {
+  function setState(nextState, source = 'user') {
     state = {
       selectedIds: normalizeIds(nextState.selectedIds),
       anchorId: Number.isFinite(nextState.anchorId) ? nextState.anchorId : null,
@@ -28,7 +28,7 @@ function createSelectionStore() {
       selectedIds: state.selectedIds.slice(),
       anchorId: state.anchorId,
       focusedId: state.focusedId,
-    })
+    }, source)
   }
 
   function buildRange(anchorId, targetId, orderedVisibleIds) {
@@ -72,12 +72,12 @@ function createSelectionStore() {
       return state.selectedIds.includes(tabId)
     },
 
-    selectSingle(tabId) {
+    selectSingle(tabId, { source = 'user' } = {}) {
       setState({
         selectedIds: [tabId],
         anchorId: tabId,
         focusedId: tabId,
-      })
+      }, source)
     },
 
     toggleSelected(tabId) {
@@ -142,7 +142,7 @@ function createSelectionStore() {
         selectedIds,
         anchorId,
         focusedId,
-      })
+      }, 'browser')
     },
   }
 }

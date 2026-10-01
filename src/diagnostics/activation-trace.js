@@ -14,7 +14,7 @@ function createActivationTrace(raw, capacity = 2000) {
     openerTabId: tab.openerTabId, windowId: tab.windowId,
   })) : undefined
   const api = { ...raw }
-  for (const name of ['activateTab', 'closeTab', 'closeTabs', 'getTabs', 'moveTab']) {
+  for (const name of ['activateTab', 'closeTab', 'closeTabs', 'getTabs', 'moveTab', 'syncNativeSelection']) {
     if (typeof raw[name] !== 'function') continue
     api[name] = (...args) => {
       const id = ++operation

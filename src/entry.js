@@ -293,7 +293,7 @@ async function main() {
       && latestSelectionState.selectedIds.length <= 1
       && latestSelectionState.selectedIds[0] !== state.activeTabId
     ) {
-      selectionStore.selectSingle(state.activeTabId)
+      selectionStore.selectSingle(state.activeTabId, { source: 'browser' })
     } else {
       selectionStore.retainValid(visibleIds)
     }
@@ -307,9 +307,11 @@ async function main() {
     syncView()
   }))
 
-  unsubscribers.push(selectionStore.subscribe(state => {
+  unsubscribers.push(selectionStore.subscribe((state, source) => {
     latestSelectionState = state
-    if (state.selectedIds && state.selectedIds.length > 0) {
+    // Browser events only update our display. Replaying them into Vivaldi's
+    // index-based highlight API can activate a different tab during removal.
+    if (source !== 'browser' && state.selectedIds && state.selectedIds.length > 0) {
       api.syncNativeSelection(state.selectedIds)
     }
     syncView()

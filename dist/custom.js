@@ -6437,7 +6437,7 @@ function createSelectionStore() {
     return result
   }
 
-  function setState(nextState) {
+  function setState(nextState, source = 'user') {
     state = {
       selectedIds: normalizeIds(nextState.selectedIds),
       anchorId: Number.isFinite(nextState.anchorId) ? nextState.anchorId : null,
@@ -6447,7 +6447,7 @@ function createSelectionStore() {
       selectedIds: state.selectedIds.slice(),
       anchorId: state.anchorId,
       focusedId: state.focusedId,
-    })
+    }, source)
   }
 
   function buildRange(anchorId, targetId, orderedVisibleIds) {
@@ -6491,12 +6491,12 @@ function createSelectionStore() {
       return state.selectedIds.includes(tabId)
     },
 
-    selectSingle(tabId) {
+    selectSingle(tabId, { source = 'user' } = {}) {
       setState({
         selectedIds: [tabId],
         anchorId: tabId,
         focusedId: tabId,
-      })
+      }, source)
     },
 
     toggleSelected(tabId) {
@@ -6561,7 +6561,7 @@ function createSelectionStore() {
         selectedIds,
         anchorId,
         focusedId,
-      })
+      }, 'browser')
     },
   }
 }
@@ -11168,7 +11168,7 @@ function createActivationTrace(raw, capacity = 2000) {
     openerTabId: tab.openerTabId, windowId: tab.windowId,
   })) : undefined
   const api = { ...raw }
-  for (const name of ['activateTab', 'closeTab', 'closeTabs', 'getTabs', 'moveTab']) {
+  for (const name of ['activateTab', 'closeTab', 'closeTabs', 'getTabs', 'moveTab', 'syncNativeSelection']) {
     if (typeof raw[name] !== 'function') continue
     api[name] = (...args) => {
       const id = ++operation
@@ -11566,7 +11566,7 @@ async function main() {
       && latestSelectionState.selectedIds.length <= 1
       && latestSelectionState.selectedIds[0] !== state.activeTabId
     ) {
-      selectionStore.selectSingle(state.activeTabId)
+      selectionStore.selectSingle(state.activeTabId, { source: 'browser' })
     } else {
       selectionStore.retainValid(visibleIds)
     }
@@ -11580,9 +11580,11 @@ async function main() {
     syncView()
   }))
 
-  unsubscribers.push(selectionStore.subscribe(state => {
+  unsubscribers.push(selectionStore.subscribe((state, source) => {
     latestSelectionState = state
-    if (state.selectedIds && state.selectedIds.length > 0) {
+    // Browser events only update our display. Replaying them into Vivaldi's
+    // index-based highlight API can activate a different tab during removal.
+    if (source !== 'browser' && state.selectedIds && state.selectedIds.length > 0) {
       api.syncNativeSelection(state.selectedIds)
     }
     syncView()
