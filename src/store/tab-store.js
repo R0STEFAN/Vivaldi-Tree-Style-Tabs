@@ -648,7 +648,38 @@ function createTabStore(api) {
     const activateTabId = getActivationTargetBeforeClose(targetIds)
     if (!Number.isFinite(activateTabId)) return
     pendingActiveRepairTabId = null
-    await api.activateTab(activateTabId)
+
+    let resolveActivation
+    const activationEvent = new Promise(resolve => { resolveActivation = resolve })
+    const unsubscribe = api.onActivated
+      ? api.onActivated(activeInfo => {
+        if (activeInfo && activeInfo.tabId === activateTabId) resolveActivation(true)
+      })
+      : () => {}
+    let activationTimeout
+
+    try {
+      await api.activateTab(activateTabId)
+      const tabs = await api.getTabs(state.windowId)
+      if (tabs.some(tab => tab.id === activateTabId && tab.active)) return
+
+      const activated = await Promise.race([
+        activationEvent,
+        new Promise(resolve => {
+          activationTimeout = setTimeout(() => resolve(false), 1500)
+          if (activationTimeout && typeof activationTimeout.unref === 'function') activationTimeout.unref()
+        }),
+      ])
+      if (!activated) {
+        const latestTabs = await api.getTabs(state.windowId)
+        if (!latestTabs.some(tab => tab.id === activateTabId && tab.active)) {
+          throw new Error(`Tab ${activateTabId} did not become active before closing the current tab`)
+        }
+      }
+    } finally {
+      if (activationTimeout) clearTimeout(activationTimeout)
+      if (typeof unsubscribe === 'function') unsubscribe()
+    }
   }
 
   async function closeTabIds(tabIds) {

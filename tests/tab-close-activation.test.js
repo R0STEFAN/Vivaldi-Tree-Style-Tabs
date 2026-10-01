@@ -56,6 +56,11 @@ describe('tab close adaptive activation', () => {
       triggerNativeRemove: (tabId) => {
         currentTabs = currentTabs.filter(t => t.id !== tabId)
         if (onRemovedListener) onRemovedListener(tabId)
+      },
+      triggerNativeActivation: (tabId) => {
+        activeTabInApi = tabId
+        for (const t of currentTabs) t.active = t.id === tabId
+        if (onActivatedListener) onActivatedListener({ tabId })
       }
     }
   }
@@ -231,6 +236,43 @@ describe('tab close adaptive activation', () => {
     assert.strictEqual(callSequence[0].tabId, 13, 'Should activate sibling tab 13 below')
     assert.strictEqual(callSequence[1].activeAtTimeOfClose, 13)
 
+    store.dispose()
+  })
+
+  it('waits for the sibling activation event before closing so native fallback cannot leave the tree', async () => {
+    settingsStore.set('activateAfterClose', 'below')
+    const tabs = [
+      { id: 10, index: 0, windowId: 1, active: false, pinned: false,
+        vivExtData: { svbTree: { contextKey: 'window:1', nodeId: 'node_10', parentNodeId: null, order: 0 } } },
+      { id: 11, index: 1, windowId: 1, active: false, pinned: false,
+        vivExtData: { svbTree: { contextKey: 'window:1', nodeId: 'node_11', parentNodeId: 'node_10', order: 0 } } },
+      { id: 12, index: 2, windowId: 1, active: true, pinned: false,
+        vivExtData: { svbTree: { contextKey: 'window:1', nodeId: 'node_12', parentNodeId: 'node_10', order: 1 } } },
+      { id: 20, index: 3, windowId: 1, active: false, pinned: false,
+        vivExtData: { svbTree: { contextKey: 'window:1', nodeId: 'node_20', parentNodeId: null, order: 1 } } },
+      { id: 13, index: 4, windowId: 1, active: false, pinned: false,
+        vivExtData: { svbTree: { contextKey: 'window:1', nodeId: 'node_13', parentNodeId: 'node_10', order: 2 } } },
+    ]
+    const api = createMockApi(tabs)
+    api.activateTab = async tabId => {
+      callSequence.push({ action: 'activateTab', tabId })
+      setTimeout(() => api.triggerNativeActivation(tabId), 30)
+    }
+    const closeTab = api.closeTab
+    api.closeTab = async tabId => {
+      await closeTab(tabId)
+      if (activeTabInApi === tabId) api.triggerNativeActivation(20)
+    }
+    const store = createTabStore(api)
+    await store.init()
+    callSequence = []
+    activeTabInApi = 12
+
+    await store.closeTab(12)
+
+    const closeCall = callSequence.find(call => call.action === 'closeTab')
+    assert.strictEqual(closeCall.activeAtTimeOfClose, 13, 'The selected sibling must be active before removal')
+    assert.strictEqual(callSequence.some(call => call.action === 'nativeActivate' && call.tabId === 20), false)
     store.dispose()
   })
 
