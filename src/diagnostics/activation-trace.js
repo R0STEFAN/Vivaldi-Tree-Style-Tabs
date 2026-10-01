@@ -46,20 +46,52 @@ function createActivationTrace(raw, capacity = 2000) {
 }
 
 function installTraceDownload(trace, root, getContext) {
+  let dialog = null
   function download() {
     const payload = { format: 'svb-activation-trace-v1', capturedAt: new Date().toISOString(), context: getContext(), events: trace.snapshot() }
-    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `svb-activation-${Date.now()}.json`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 10000)
+    if (dialog) dialog.remove()
+    dialog = document.createElement('dialog')
+    dialog.style.cssText = 'width: min(720px, 85vw); padding: 20px; background: #242424; color: white; border: 1px solid #888; border-radius: 8px;'
+    const heading = document.createElement('h2')
+    heading.textContent = 'Журнал активації вкладок'
+    const help = document.createElement('p')
+    help.textContent = 'Скопіюй текст (Ctrl+A, Ctrl+C) і надішли його в чат або збережи у файл .json.'
+    const field = document.createElement('textarea')
+    field.readOnly = true
+    field.setAttribute('aria-label', 'Журнал активації вкладок JSON')
+    field.style.cssText = 'display: block; width: 100%; height: 45vh; margin-bottom: 12px;'
+    field.value = JSON.stringify(payload, null, 2)
+    const save = document.createElement('button')
+    save.textContent = 'Зберегти JSON'
+    save.onclick = () => {
+      const url = URL.createObjectURL(new Blob([field.value], { type: 'application/json' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `svb-activation-${Date.now()}.json`
+      dialog.appendChild(link)
+      link.click()
+      link.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 10000)
+    }
+    const close = document.createElement('button')
+    close.textContent = 'Закрити'
+    close.onclick = () => { dialog.remove(); dialog = null }
+    dialog.append(heading, help, field, save, close)
+    document.body.appendChild(dialog)
+    dialog.showModal()
+    field.focus()
+    field.select()
   }
+
   // Capture before rendering can replace the clicked row.
   function click(event) {
     const target = event.target.closest('[data-role]')
+    if (target && target.dataset.role === 'activation-trace') {
+      event.preventDefault()
+      event.stopPropagation()
+      download()
+      return
+    }
     if (target) trace.record('panel.click', { role: target.dataset.role, tabId: Number(target.dataset.tabId) || null })
   }
   function key(event) {
@@ -76,6 +108,7 @@ function installTraceDownload(trace, root, getContext) {
     root.removeEventListener('click', click, true)
     window.removeEventListener('keydown', key, true)
     delete window.__svbDownloadActivationTrace
+    if (dialog) dialog.remove()
     trace.dispose()
   }
 }

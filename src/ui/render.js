@@ -749,6 +749,7 @@ function createSidebarRenderer(options) {
             <div class="svb-header__count">0</div>
           </div>
           <div class="svb-header__actions">
+            <button type="button" data-role="activation-trace" title="Відкрити журнал активації вкладок">Журнал</button>
             <button class="svb-icon-button" data-role="collapse-all" title="Collapse all trees" aria-label="Collapse all trees"></button>
             <button class="svb-icon-button" data-role="toggle-pinned" title="Pin panel"></button>
           </div>
