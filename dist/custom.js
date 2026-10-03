@@ -9491,6 +9491,7 @@ function createSidebarRenderer(options) {
   let previousDropTargetId = null
   let previousDropPosition = null
   const tabNodesByKey = new Map()
+  const pinnedFolderGroupsById = new Map()
   const enteringNodes = new WeakSet()
   const pendingEnterNodes = new Set()
   let pointerDrag = null
@@ -10877,6 +10878,12 @@ function createSidebarRenderer(options) {
 
     const activeTab = list.querySelector(`.svb-tab[data-tab-id="${state.activeTabId}"]`)
     if (activeTab) {
+      if (activeTab.closest('.svb-pinned-folder-group')) {
+        pendingScrollToActive = false
+        pendingScrollSourceTabId = null
+        return
+      }
+
       const listRect = list.getBoundingClientRect()
       const activeRect = activeTab.getBoundingClientRect()
       const epsilon = 1
@@ -11029,7 +11036,24 @@ function createSidebarRenderer(options) {
         }
 
         const regularNodes = []
-        let currentStickyGroup = null
+        let currentPinnedFolderId = null
+        let currentGroupNodes = []
+
+        const flushCurrentStickyGroup = () => {
+          if (currentPinnedFolderId != null && currentGroupNodes.length > 0) {
+            let group = pinnedFolderGroupsById.get(currentPinnedFolderId)
+            if (!group) {
+              group = document.createElement('div')
+              group.className = 'svb-pinned-folder-group'
+              group.setAttribute('data-pinned-folder-id', String(currentPinnedFolderId))
+              pinnedFolderGroupsById.set(currentPinnedFolderId, group)
+            }
+            syncChildren(group, currentGroupNodes)
+            regularNodes.push(group)
+            currentPinnedFolderId = null
+            currentGroupNodes = []
+          }
+        }
 
         for (const item of treeTabs) {
           const tab = findTab(item.id)
@@ -11037,18 +11061,30 @@ function createSidebarRenderer(options) {
           activeKeys.add(getTabKey(tab, false))
           const node = getOrUpdateTabNode(tab, false, state.canCloseVisibleTabs, item, visualState)
 
-          const belongsToPinnedFolder = pinnedFolderIds.has(item.id) || (item.ancestorIds && item.ancestorIds.some(id => pinnedFolderIds.has(id)))
+          let parentPinnedFolderId = null
+          if (pinnedFolderIds.has(item.id)) {
+            parentPinnedFolderId = item.id
+          } else if (item.ancestorIds && item.ancestorIds.length > 0) {
+            parentPinnedFolderId = item.ancestorIds.find(id => pinnedFolderIds.has(id)) || null
+          }
 
-          if (belongsToPinnedFolder) {
-            if (!currentStickyGroup) {
-              currentStickyGroup = document.createElement('div')
-              currentStickyGroup.className = 'svb-pinned-folder-group'
-              regularNodes.push(currentStickyGroup)
+          if (parentPinnedFolderId != null) {
+            if (currentPinnedFolderId != null && currentPinnedFolderId !== parentPinnedFolderId) {
+              flushCurrentStickyGroup()
             }
-            currentStickyGroup.appendChild(node)
+            currentPinnedFolderId = parentPinnedFolderId
+            currentGroupNodes.push(node)
           } else {
-            currentStickyGroup = null
+            flushCurrentStickyGroup()
             regularNodes.push(node)
+          }
+        }
+        flushCurrentStickyGroup()
+
+        for (const [folderId, group] of pinnedFolderGroupsById.entries()) {
+          if (!pinnedFolderIds.has(folderId)) {
+            group.remove()
+            pinnedFolderGroupsById.delete(folderId)
           }
         }
 
@@ -11142,6 +11178,7 @@ function createSidebarRenderer(options) {
       contextMenu = null
       pendingEnterNodes.clear()
       tabNodesByKey.clear()
+      pinnedFolderGroupsById.clear()
       renderCurrent = () => {}
       latestState = null
     },
