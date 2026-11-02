@@ -1697,6 +1697,134 @@ body.svb-is-resizing {
   font-size: 12px;
   color: var(--svb-text);
 }
+
+#svb-root .svb-workspaces {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 6px 6px;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-workspaces {
+  display: none !important;
+}
+
+#svb-root .svb-workspaces__row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+#svb-root .svb-workspaces__icons {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  position: relative;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  --svb-ws-fade-start: 0px;
+  --svb-ws-fade-end: 0px;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--svb-ws-fade-start), #000 calc(100% - var(--svb-ws-fade-end)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--svb-ws-fade-start), #000 calc(100% - var(--svb-ws-fade-end)), transparent 100%);
+}
+
+#svb-root .svb-workspaces__icons::-webkit-scrollbar {
+  display: none;
+}
+
+#svb-root .svb-workspaces__icons.has-overflow-start {
+  --svb-ws-fade-start: 18px;
+}
+
+#svb-root .svb-workspaces__icons.has-overflow-end {
+  --svb-ws-fade-end: 18px;
+}
+
+#svb-root .svb-workspace {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--svb-text-muted);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+
+#svb-root .svb-workspace:hover {
+  color: var(--svb-text);
+  background: color-mix(in srgb, var(--svb-text) 10%, transparent);
+}
+
+#svb-root .svb-workspace.is-active {
+  color: var(--svb-text-strong);
+  border-color: color-mix(in srgb, var(--svb-accent) 60%, transparent);
+  background: var(--svb-accent-soft);
+}
+
+#svb-root .svb-workspace__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  line-height: 1;
+}
+
+#svb-root .svb-workspace__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+#svb-root .svb-workspace__icon--text {
+  font-size: 15px;
+}
+
+#svb-root .svb-workspace--add {
+  border-style: dashed;
+  border-color: var(--svb-border);
+}
+
+#svb-root .svb-workspaces__title {
+  min-height: 18px;
+  padding: 0 2px;
+  overflow: hidden;
+  color: var(--svb-text-strong);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#svb-root .svb-workspaces__title.is-preview {
+  color: var(--svb-text-muted);
+  font-weight: 500;
+}
+
+#svb-root .svb-workspace__input {
+  width: 100%;
+  min-width: 0;
+  min-height: 26px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--svb-accent) 72%, transparent);
+  border-radius: 999px;
+  outline: none;
+  color: var(--svb-text-strong);
+  background: color-mix(in srgb, var(--svb-accent) 12%, var(--svb-panel));
+  font: inherit;
+  font-size: 12px;
+}
 `
 
 module.exports = { STYLE_TEXT }

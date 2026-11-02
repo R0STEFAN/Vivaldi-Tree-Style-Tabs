@@ -19,7 +19,6 @@ let pageActions = null
 let collectionModule = null
 let workspaceStore = null
 let mainView = null
-const workspaceRepairTasksById = new Map()
 
 function getVivaldiMainView() {
   if (mainView && !mainView.closed) return mainView
@@ -92,10 +91,11 @@ function getVivaldiMainView() {
 
   function getWorkspaceManager() {
     if (workspaceManager) return workspaceManager
-    workspaceManager = findModuleByExports(m => 
-      typeof m.addWorkspace === 'function' && 
-      typeof m.removeWorkspace === 'function' &&
-      typeof m.activateWorkspaceByIndex === 'function'
+    workspaceManager = findModuleByExports(m =>
+      typeof m.addWorkspace === 'function'
+      && typeof m.removeWorkspace === 'function'
+      && typeof m.activateWorkspaceByIndex === 'function'
+      && typeof m.setName === 'function'
     )
     return workspaceManager
   }
@@ -133,90 +133,15 @@ function getVivaldiMainView() {
     return collectionModule
   }
 
-  function repairWorkspaceRuntime(workspace) {
-    const manager = getWorkspaceManager()
-    if (!manager) return false
-
-    try {
-      manager.setName(workspace.id, workspace.name)
-      const setIcon = manager.setIcon || manager.setWorkspaceIcon
-      if (typeof setIcon === 'function' && workspace.icon) {
-        setIcon(workspace.id, workspace.icon)
-      }
-      return true
-    } catch (error) {
-      console.warn('[svb] cannot repair workspace runtime', error)
-      return false
-    }
+  function getWorkspaceStore() {
+    if (workspaceStore) return workspaceStore
+    workspaceStore = findModuleByExports(m => 
+      typeof m.getWorkspaces === 'function' && 
+      typeof m.getActiveWorkspaceId === 'function' &&
+      typeof m.addListener === 'function'
+    )
+    return workspaceStore
   }
-
-  async function upsertWorkspacePref(workspace) {
-    const prefsApi = getPrefsApi()
-    if (!prefsApi || typeof prefsApi.get !== 'function' || typeof prefsApi.set !== 'function') return false
-
-    const current = await promisifyChromeApi(prefsApi.get, workspacesPrefPath)
-    const workspaces = Array.isArray(current) ? current.slice() : []
-    const index = workspaces.findIndex(item => Number(item && item.id) === workspace.id)
-    const nextWorkspace = {
-      ...(index >= 0 && workspaces[index] && typeof workspaces[index] === 'object' ? workspaces[index] : {}),
-      id: workspace.id,
-      name: workspace.name,
-      icon: workspace.icon,
-    }
-
-    if (index >= 0) {
-      workspaces[index] = nextWorkspace
-    } else {
-      workspaces.push(nextWorkspace)
-    }
-
-    await setPref(workspacesPrefPath, workspaces)
-    return true
-  }
-
-  function scheduleWorkspacePrefRepair(workspace) {
-    const workspaceId = Number(workspace && workspace.id)
-    if (!Number.isFinite(workspaceId)) return
-
-    const pending = workspaceRepairTasksById.get(workspaceId)
-    if (pending) {
-      pending.timeouts.forEach(timeoutId => clearTimeout(timeoutId))
-    }
-
-    const delays = [100, 300, 700, 1200, 2000, 3500, 5000]
-    const token = Symbol(`workspace-repair:${workspaceId}`)
-    const timeouts = []
-    workspaceRepairTasksById.set(workspaceId, { token, timeouts })
-
-    for (const delayMs of delays) {
-      const timeoutId = setTimeout(() => {
-        const current = workspaceRepairTasksById.get(workspaceId)
-        if (!current || current.token !== token) return
-
-        repairWorkspaceRuntime(workspace)
-        upsertWorkspacePref(workspace).catch(error => {
-          console.error('[svb] cannot repair workspace pref', error)
-        })
-
-        if (delayMs === delays[delays.length - 1]) {
-          const latest = workspaceRepairTasksById.get(workspaceId)
-          if (latest && latest.token === token) {
-            workspaceRepairTasksById.delete(workspaceId)
-          }
-        }
-      }, delayMs)
-      timeouts.push(timeoutId)
-    }
-  }
-
-    function getWorkspaceStore() {
-      if (workspaceStore) return workspaceStore
-      workspaceStore = findModuleByExports(m => 
-        typeof m.getWorkspaces === 'function' && 
-        typeof m.getActiveWorkspaceId === 'function'
-      )
-      return workspaceStore
-    }
 
   function normalizeWorkspace(workspace) {
     if (!workspace || typeof workspace !== 'object') return null
@@ -273,12 +198,15 @@ function getVivaldiMainView() {
       return []
     },
 
+    // Read the native active workspace id for a window. Returns a number,
+    // null (no workspace active / default area), or undefined (store
+    // unavailable — caller should fall back to legacy inference).
     getActiveWorkspaceId(windowId) {
       const store = getWorkspaceStore()
       if (!store || typeof store.getActiveWorkspaceId !== 'function') return undefined
       try {
-        const id = store.getActiveWorkspaceId(windowId)
-        return id != null ? Number(id) : null
+        const id = windowId != null ? store.getActiveWorkspaceId(windowId) : store.getActiveWorkspaceId()
+        return id == null ? null : Number(id)
       } catch (error) {
         return undefined
       }

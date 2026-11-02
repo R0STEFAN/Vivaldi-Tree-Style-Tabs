@@ -72,6 +72,107 @@ function renderMenuIcon(name) {
   return `<svg class="svb-menu__icon" viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.workspace}</svg>`
 }
 
+function getActiveWorkspaceKey(state) {
+  if (state.outsideWorkspace) return 'outside'
+  return state.activeWorkspaceId == null ? 'none' : Number(state.activeWorkspaceId)
+}
+
+// Native workspace icons are either Vivaldi SVG markup or an emoji. Only a
+// plain <svg> without scripts/handlers is inlined; anything else is text.
+function renderWorkspaceIcon(icon, fallback) {
+  const value = typeof icon === 'string' ? icon.trim() : ''
+  if (/^<svg[\s>]/i.test(value) && !/<script|\son\w+\s*=|javascript:/i.test(value)) {
+    return `<span class="svb-workspace__icon">${value}</span>`
+  }
+  if (value && !value.startsWith('<') && [...value].length <= 4) {
+    return `<span class="svb-workspace__icon svb-workspace__icon--text">${escapeHtml(value)}</span>`
+  }
+  return `<span class="svb-workspace__icon">${renderMenuIcon(fallback)}</span>`
+}
+
+function getWorkspaceBarEntries(state) {
+  const workspaces = Array.isArray(state.workspaces) ? state.workspaces : []
+  const activeKey = getActiveWorkspaceKey(state)
+  const entries = []
+
+  if (state.hasTabsOutsideWorkspace) {
+    entries.push({ id: '', name: 'Default', icon: null, fallback: 'window', isActive: activeKey === 'outside' || activeKey === 'none' })
+  }
+
+  for (const workspace of workspaces) {
+    const id = Number(workspace.id)
+    if (!Number.isFinite(id)) continue
+    entries.push({ id, name: workspace.name || `Workspace ${id}`, icon: workspace.icon, fallback: 'workspace', isActive: activeKey === id })
+  }
+
+  return entries
+}
+
+// Workspace switcher, modeled on Vivaldi's own workspace popup: a single
+// horizontally scrolling row of icon buttons (the "+" stays pinned at the
+// end), with a full-width title line underneath naming the active workspace
+// (or the one under the pointer).
+// Hidden when there are no workspaces, so single-workspace users see no
+// extra chrome.
+function renderWorkspaceBar(state, creating, renamingId) {
+  const workspaces = Array.isArray(state.workspaces) ? state.workspaces : []
+  if (workspaces.length === 0) return ''
+
+  const entries = getWorkspaceBarEntries(state)
+  const active = entries.find(entry => entry.isActive) || null
+
+  const buttons = entries.map(entry => `<button class="svb-workspace${entry.isActive ? ' is-active' : ''}" data-role="switch-workspace" data-workspace-id="${entry.id}" data-workspace-name="${escapeHtml(entry.name)}" title="${escapeHtml(entry.name)}" aria-label="${escapeHtml(entry.name)}">${renderWorkspaceIcon(entry.icon, entry.fallback)}</button>`)
+  const addButton = `<button class="svb-workspace svb-workspace--add" data-role="create-workspace" data-workspace-name="New workspace" title="New workspace" aria-label="New workspace">${renderMenuIcon('add')}</button>`
+
+  // While naming/renaming, the title line becomes the input so the field is
+  // full-width and never scrolls the panel.
+  let titleLine
+  if (creating || renamingId != null) {
+    let value = ''
+    if (renamingId != null) {
+      const target = workspaces.find(workspace => Number(workspace.id) === Number(renamingId))
+      value = target ? (target.name || '') : ''
+    }
+    titleLine = `<input class="svb-workspace__input" data-role="workspace-name-input" placeholder="Workspace name" spellcheck="false" maxlength="60" value="${escapeHtml(value)}">`
+  } else {
+    const activeName = active ? active.name : ''
+    titleLine = `<div class="svb-workspaces__title" data-active-name="${escapeHtml(activeName)}">${escapeHtml(activeName)}</div>`
+  }
+
+  return `<div class="svb-workspaces__row"><div class="svb-workspaces__icons">${buttons.join('')}</div>${addButton}</div>${titleLine}`
+}
+
+function workspaceBarSignature(state, creating, renamingId) {
+  const workspaces = Array.isArray(state.workspaces) ? state.workspaces : []
+  if (workspaces.length === 0) return ''
+  return [
+    creating ? 'creating' : '',
+    renamingId != null ? `rename:${renamingId}` : '',
+    getActiveWorkspaceKey(state),
+    state.hasTabsOutsideWorkspace ? 'd' : '',
+    ...workspaces.map(workspace => `${workspace.id}:${workspace.name || ''}:${workspace.icon || ''}`),
+  ].join('|')
+}
+
+// Right-click menu for a workspace chip. Delete closes the workspace's tabs
+// (matching Vivaldi's native "Delete Workspace").
+function renderWorkspaceMenu(state, menu) {
+  if (!menu) return ''
+  const workspaces = Array.isArray(state.workspaces) ? state.workspaces : []
+  const workspace = workspaces.find(ws => Number(ws.id) === Number(menu.workspaceId)) || null
+  const name = workspace ? (workspace.name || `Workspace ${workspace.id}`) : `Workspace ${menu.workspaceId}`
+  const menuX = Math.max(4, menu.x)
+  const menuY = Math.max(4, menu.y)
+
+  return `
+    <div class="svb-menu" style="left:${menuX}px;top:${menuY}px" data-workspace-id="${escapeHtml(String(menu.workspaceId))}" role="menu">
+      ${renderContextMenuItem({ action: 'rename-workspace', icon: 'rename', label: `Rename "${name}"`, workspaceId: Number(menu.workspaceId) })}
+      <div class="svb-menu__separator"></div>
+      ${renderContextMenuItem({ action: 'delete-workspace', icon: 'close', label: `Delete "${name}"`, danger: true, workspaceId: Number(menu.workspaceId) })}
+    </div>
+  `
+}
+
 function renderContextMenuItem(options) {
   const {
     action,
@@ -670,6 +771,9 @@ function createSidebarRenderer(options) {
     onCreateChildTab,
     onRenameTab,
     onTogglePinned,
+    onSwitchWorkspace,
+    onCreateWorkspace,
+    onRenameWorkspace,
     onToggleMute,
     onToggleCollapse,
     onCollapseAll,
@@ -693,6 +797,7 @@ function createSidebarRenderer(options) {
   let previousCanCloseVisibleTabs = null
   let previousPanelPinned = null
   let previousIsSettingsOpen = false
+  let previousCreatingWorkspace = false
   let previousNewTabPlacement = null
   let previousSelectedIds = []
   let previousDraggedIds = []
@@ -713,8 +818,11 @@ function createSidebarRenderer(options) {
   let renderCurrent = () => {}
   let shell = null
   let pinnedGridObserver = null
+  let workspaceBarObserver = null
   let editingTabId = null
   let isSettingsOpen = false
+  let creatingWorkspace = false
+  let renamingWorkspaceId = null
   const eventController = new AbortController()
   const eventOptions = { signal: eventController.signal }
   const tabsById = new Map()
@@ -749,6 +857,23 @@ function createSidebarRenderer(options) {
     }
   }
 
+  function stopWorkspaceInput(commit, value) {
+    const renameId = renamingWorkspaceId
+    const wasCreating = creatingWorkspace
+    if (!wasCreating && renameId == null) return
+    creatingWorkspace = false
+    renamingWorkspaceId = null
+    if (commit) {
+      const name = typeof value === 'string' ? value.trim() : ''
+      if (renameId != null) {
+        if (name && onRenameWorkspace) onRenameWorkspace(renameId, name)
+      } else if (onCreateWorkspace) {
+        onCreateWorkspace(name)
+      }
+    }
+    renderCurrent()
+  }
+
   function startEditing(tabId) {
     if (!Number.isFinite(tabId)) return
     const tab = findTab(tabId)
@@ -775,6 +900,7 @@ function createSidebarRenderer(options) {
         </div>
 
         <div class="svb-main-view">
+          <div class="svb-workspaces" style="display:none"></div>
           <section class="svb-section svb-section--pinned">
             <div class="svb-pinned-grid"></div>
           </section>
@@ -911,6 +1037,7 @@ function createSidebarRenderer(options) {
     shell = {
       frame: root.querySelector('.svb-frame'),
       mainView: root.querySelector('.svb-main-view'),
+      workspaceBar: root.querySelector('.svb-workspaces'),
       settingsView: root.querySelector('.svb-settings-view'),
       count: root.querySelector('.svb-header__count'),
       settingsButton: root.querySelector('[data-role="toggle-settings"]'),
@@ -931,6 +1058,31 @@ function createSidebarRenderer(options) {
     if (pinnedGridObserver) pinnedGridObserver.disconnect()
     pinnedGridObserver = new ResizeObserver(() => syncPinnedGrid(shell.pinnedGrid))
     pinnedGridObserver.observe(shell.pinnedGrid)
+
+    // Workspace row: a vertical wheel scrolls it horizontally (like a tab
+    // strip); edge fades follow scroll position and panel width.
+    if (workspaceBarObserver) workspaceBarObserver.disconnect()
+    workspaceBarObserver = new ResizeObserver(() => {
+      const scroller = shell.workspaceBar.querySelector('.svb-workspaces__icons')
+      if (scroller) syncWorkspaceScrollEdges(scroller)
+    })
+    workspaceBarObserver.observe(shell.workspaceBar)
+    shell.workspaceBar.addEventListener('wheel', event => {
+      const scroller = event.target.closest('.svb-workspaces__icons')
+      if (!scroller || scroller.scrollWidth <= scroller.clientWidth) return
+      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
+      if (!delta) return
+      event.preventDefault()
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? scroller.clientWidth : 1
+      // Mouse-wheel notches glide; trackpad deltas are already fine-grained.
+      const isNotch = event.deltaMode !== 0 || Math.abs(delta) >= 50
+      scroller.scrollBy({ left: delta * unit, behavior: isNotch ? 'smooth' : 'auto' })
+    }, { ...eventOptions, passive: false })
+    shell.workspaceBar.addEventListener('scroll', event => {
+      if (event.target instanceof Element && event.target.classList.contains('svb-workspaces__icons')) {
+        syncWorkspaceScrollEdges(event.target)
+      }
+    }, { ...eventOptions, capture: true })
 
     // Setup native drag-and-drop for external content
     shell.frame.addEventListener('dragover', event => {
@@ -1001,6 +1153,8 @@ function createSidebarRenderer(options) {
   function buildVisualState(state) {
     const selectedIds = Array.isArray(state.selectedIds) ? state.selectedIds : []
     const dragState = state && state.drag ? state.drag : null
+
+
     return {
       activeTabId: Number.isFinite(state.activeTabId) ? state.activeTabId : null,
       selectedIds,
@@ -1099,6 +1253,29 @@ function createSidebarRenderer(options) {
     return changedIds
   }
 
+  // Signature-gated, so it is cheap to call on every render.
+  function syncWorkspaceBar(currentShell, state) {
+    if (!currentShell.workspaceBar) return
+    const signature = workspaceBarSignature(state, creatingWorkspace, renamingWorkspaceId)
+    currentShell.workspaceBar.style.display = signature ? '' : 'none'
+    if (currentShell.workspaceBar.dataset.sig !== signature) {
+      const previousScroller = currentShell.workspaceBar.querySelector('.svb-workspaces__icons')
+      const previousScrollLeft = previousScroller ? previousScroller.scrollLeft : 0
+      currentShell.workspaceBar.innerHTML = signature ? renderWorkspaceBar(state, creatingWorkspace, renamingWorkspaceId) : ''
+      currentShell.workspaceBar.dataset.sig = signature
+      const scroller = currentShell.workspaceBar.querySelector('.svb-workspaces__icons')
+      if (scroller) {
+        scroller.scrollLeft = previousScrollLeft
+        revealActiveWorkspace(scroller)
+        syncWorkspaceScrollEdges(scroller)
+      }
+      if (creatingWorkspace || renamingWorkspaceId != null) {
+        const input = currentShell.workspaceBar.querySelector('[data-role="workspace-name-input"]')
+        if (input) { input.focus({ preventScroll: true }); input.select() }
+      }
+    }
+  }
+
   function updateShellControls(currentShell, state, treeTabs) {
     const totalTabs = state.pinnedTabs.length + state.tabs.length
     currentShell.count.textContent = String(totalTabs)
@@ -1110,6 +1287,9 @@ function createSidebarRenderer(options) {
     currentShell.pinButton.title = state.panelPinned ? 'Unpin panel' : 'Pin panel'
     currentShell.pinButton.innerHTML = renderPinIcon(state.panelPinned)
     currentShell.settingsButton.innerHTML = renderMenuIcon('settings')
+
+    syncWorkspaceBar(currentShell, state)
+
     const isTopMode = (settingsStore.get('newTabPlacement') || 'bottom') === 'top'
     currentShell.frame.classList.toggle('is-top-mode', isTopMode)
     currentShell.mainView.style.display = isSettingsOpen ? 'none' : 'flex'
@@ -1144,6 +1324,22 @@ function createSidebarRenderer(options) {
       return
     }
 
+    if (contextMenu.kind === 'workspace') {
+      const existing = currentShell.menuHost.querySelector('.svb-menu')
+      const renderedWs = existing ? existing.getAttribute('data-workspace-id') : null
+      if (!existing || renderedWs !== String(contextMenu.workspaceId)) {
+        currentShell.menuHost.innerHTML = renderWorkspaceMenu(state, contextMenu)
+        positionContextMenu()
+        const menuNode = currentShell.menuHost.querySelector('.svb-menu')
+        if (menuNode) {
+          void menuNode.offsetWidth
+          menuNode.classList.add('is-visible')
+        }
+      }
+      return
+    }
+
+    // Render if empty OR if requested for a different tab
     // Render if empty, if requested for a different tab, or if workspaces changed
     const existingMenu = currentShell.menuHost.querySelector('.svb-menu')
     const renderedTabId = existingMenu ? Number(existingMenu.getAttribute('data-tab-id')) : null
@@ -1216,8 +1412,14 @@ function createSidebarRenderer(options) {
       }
     }
 
-    if (previousPanelPinned !== state.panelPinned || previousIsSettingsOpen !== isSettingsOpen) {
+    if (
+      previousPanelPinned !== state.panelPinned
+      || previousIsSettingsOpen !== isSettingsOpen
+      || previousCreatingWorkspace !== creatingWorkspace
+    ) {
       updateShellControls(currentShell, state, treeTabs)
+    } else {
+      syncWorkspaceBar(currentShell, state)
     }
 
     updateContextMenu(currentShell, state)
@@ -1715,6 +1917,16 @@ function createSidebarRenderer(options) {
     if (menuAction) {
       event.preventDefault()
       event.stopPropagation()
+
+      // Workspace rename is a renderer-side edit mode, not a store action.
+      if (menuAction.getAttribute('data-action') === 'rename-workspace') {
+        const wsId = Number(menuAction.getAttribute('data-workspace-id'))
+        if (Number.isFinite(wsId)) renamingWorkspaceId = wsId
+        contextMenu = null
+        renderCurrent()
+        return
+      }
+
       if (!menuAction.classList.contains('is-disabled') && contextMenu && onContextMenuAction) {
         const workspaceId = Number(menuAction.getAttribute('data-workspace-id'))
         const colorKey = menuAction.getAttribute('data-color-key')
@@ -1754,6 +1966,19 @@ function createSidebarRenderer(options) {
 
     const role = target.dataset.role
     const tabId = Number(target.getAttribute('data-tab-id'))
+
+    if (role === 'switch-workspace') {
+      const raw = target.getAttribute('data-workspace-id')
+      const workspaceId = raw === '' || raw == null ? null : Number(raw)
+      if (onSwitchWorkspace) onSwitchWorkspace(workspaceId)
+      return
+    }
+
+    if (role === 'create-workspace') {
+      creatingWorkspace = true
+      renderCurrent()
+      return
+    }
 
     if (role === 'toggle-mute' && Number.isFinite(tabId)) {
       event.preventDefault()
@@ -1996,7 +2221,28 @@ function createSidebarRenderer(options) {
   }, eventOptions)
 
   root.addEventListener('contextmenu', event => {
-    if (event.target.closest('[data-role="rename-input"]')) return
+    if (event.target.closest('[data-role="rename-input"]') || event.target.closest('[data-role="workspace-name-input"]')) return
+
+    const chip = event.target.closest('.svb-workspace[data-workspace-id]')
+    if (chip) {
+      const raw = chip.getAttribute('data-workspace-id')
+      const workspaceId = raw === '' || raw == null ? null : Number(raw)
+      if (!Number.isFinite(workspaceId)) return
+      event.preventDefault()
+      event.stopPropagation()
+      const rootRect = root.getBoundingClientRect()
+      contextMenu = {
+        kind: 'workspace',
+        workspaceId,
+        x: event.clientX - rootRect.left,
+        y: event.clientY - rootRect.top,
+        viewportX: event.clientX,
+        viewportY: event.clientY,
+      }
+      renderCurrent()
+      return
+    }
+
     const tabButton = event.target.closest('.svb-tab[data-tab-id]')
     if (!tabButton) return
 
@@ -2064,9 +2310,45 @@ function createSidebarRenderer(options) {
     }
 
     const menuItem = event.target.closest('.svb-menu__item.has-submenu')
-    if (!menuItem) return
-    positionSubmenu(menuItem)
+    if (menuItem) positionSubmenu(menuItem)
+    syncWorkspaceTitle(event.target.closest('.svb-workspace[data-workspace-name]'))
   }, eventOptions)
+
+  root.addEventListener('pointerout', event => {
+    if (!event.target.closest('.svb-workspace[data-workspace-name]')) return
+    const next = event.relatedTarget instanceof Element ? event.relatedTarget.closest('.svb-workspace[data-workspace-name]') : null
+    syncWorkspaceTitle(next)
+  }, eventOptions)
+
+  // Keep the active workspace icon inside the visible part of the scroller.
+  function revealActiveWorkspace(scroller) {
+    const active = scroller.querySelector('.svb-workspace.is-active')
+    if (!active) return
+    const start = active.offsetLeft
+    const end = start + active.offsetWidth
+    if (start < scroller.scrollLeft) {
+      scroller.scrollLeft = start
+    } else if (end > scroller.scrollLeft + scroller.clientWidth) {
+      scroller.scrollLeft = end - scroller.clientWidth
+    }
+  }
+
+  // Fade whichever edge has more icons hidden behind it.
+  function syncWorkspaceScrollEdges(scroller) {
+    const maxScroll = scroller.scrollWidth - scroller.clientWidth
+    scroller.classList.toggle('has-overflow-start', scroller.scrollLeft > 1)
+    scroller.classList.toggle('has-overflow-end', maxScroll - scroller.scrollLeft > 1)
+  }
+
+  // The title line under the workspace icons previews the hovered workspace
+  // and falls back to the active one. Text-only update; no re-render.
+  function syncWorkspaceTitle(button) {
+    const title = shell && shell.workspaceBar ? shell.workspaceBar.querySelector('.svb-workspaces__title') : null
+    if (!title) return
+    const text = button ? button.getAttribute('data-workspace-name') : title.getAttribute('data-active-name')
+    if (title.textContent !== text) title.textContent = text || ''
+    title.classList.toggle('is-preview', !!button && !button.classList.contains('is-active'))
+  }
 
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && pointerDrag) {
@@ -2121,6 +2403,24 @@ function createSidebarRenderer(options) {
     if (!input) return
     if (input.contains(event.relatedTarget)) return
     stopEditing(false)
+  }, eventOptions)
+
+  root.addEventListener('keydown', event => {
+    const input = event.target.closest('[data-role="workspace-name-input"]')
+    if (!input) return
+
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      stopWorkspaceInput(true, input.value)
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      stopWorkspaceInput(false)
+    }
+  }, eventOptions)
+
+  root.addEventListener('focusout', event => {
+    if (!event.target.closest('[data-role="workspace-name-input"]')) return
+    stopWorkspaceInput(false)
   }, eventOptions)
 
   function syncScroll(list, state, previousScrollTop) {
@@ -2415,6 +2715,7 @@ function createSidebarRenderer(options) {
       previousCanCloseVisibleTabs = state.canCloseVisibleTabs
       previousPanelPinned = state.panelPinned
       previousIsSettingsOpen = isSettingsOpen
+      previousCreatingWorkspace = creatingWorkspace
       previousNewTabPlacement = currentNewTabPlacement
       previousSelectedIds = visualState.selectedIds.slice()
       previousDraggedIds = visualState.draggedIds.slice()
@@ -2431,6 +2732,7 @@ function createSidebarRenderer(options) {
 
     dispose() {
       if (pinnedGridObserver) pinnedGridObserver.disconnect()
+      if (workspaceBarObserver) workspaceBarObserver.disconnect()
       eventController.abort()
       stopDragAutoScroll()
       pointerDrag = null

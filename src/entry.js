@@ -98,6 +98,9 @@ async function main() {
     onCreateChildTab: id => store.createChildTab(id),
     onRenameTab: (id, title) => { void store.renameTab(id, title) },
     onTogglePinned: () => panelStore.togglePinned(),
+    onSwitchWorkspace: workspaceId => { void store.switchToWorkspace(workspaceId) },
+    onCreateWorkspace: name => { void store.createWorkspace(name) },
+    onRenameWorkspace: (workspaceId, name) => { void store.renameWorkspace(workspaceId, name) },
     onToggleMute: id => {
       const selectedIds = selectionStore.getState().selectedIds || []
       void store.toggleMutedForSelection(id, selectedIds)
@@ -114,6 +117,11 @@ async function main() {
       }
     },
     onContextMenuAction: (action, payload) => {
+      if (action === 'delete-workspace') {
+        void store.deleteWorkspace(payload && payload.workspaceId)
+        return
+      }
+
       const tabId = payload && payload.tabId
       const selectedIds = latestSelectionState.selectedIds || []
       if (!Number.isFinite(tabId)) return
