@@ -604,7 +604,8 @@ body.svb-is-resizing {
   right: -2px;
   bottom: 0;
   height: 1px;
-  background: var(--svb-border);
+  background: var(--svb-accent);
+  opacity: var(--svb-guide-opacity, 0.35);
 }
 
 #svb-root .svb-tab-list {
@@ -618,10 +619,11 @@ body.svb-is-resizing {
   contain: layout;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--svb-text) 18%, transparent) transparent;
-  transition: scrollbar-color var(--svb-d-fast) ease 60ms;
+  transition: scrollbar-color var(--svb-d-fast) ease 80ms;
 }
 
 #svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab-list {
+  scrollbar-width: none !important;
   scrollbar-color: transparent transparent !important;
   transition: scrollbar-color var(--svb-d-swift) ease 0ms;
 }
@@ -1356,6 +1358,11 @@ body.svb-is-resizing {
 
 #svb-root .svb-tab-list::-webkit-scrollbar {
   width: 6px;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab-list::-webkit-scrollbar {
+  width: 0px !important;
+  display: none !important;
 }
 
 #svb-root .svb-tab-list::-webkit-scrollbar-thumb {
