@@ -10736,6 +10736,7 @@ function createSidebarRenderer(options) {
   let previousPanelPinned = null
   let previousIsSettingsOpen = false
   let previousCreatingWorkspace = false
+  let previousIsAiGroupingInProgress = false
   let previousNewTabPlacement = null
   let previousSelectedIds = []
   let previousDraggedIds = []
@@ -11479,6 +11480,7 @@ function createSidebarRenderer(options) {
       previousPanelPinned !== state.panelPinned
       || previousIsSettingsOpen !== isSettingsOpen
       || previousCreatingWorkspace !== creatingWorkspace
+      || previousIsAiGroupingInProgress !== isAiGroupingInProgress
     ) {
       updateShellControls(currentShell, state, treeTabs)
     } else {
@@ -12187,6 +12189,13 @@ function createSidebarRenderer(options) {
         })
         .finally(() => {
           isAiGroupingInProgress = false
+          if (shell) {
+            try {
+              updateShellControls(shell, latestState, latestTreeTabs)
+            } catch (_e) {
+              void _e
+            }
+          }
           renderCurrent()
         })
       return
@@ -12905,6 +12914,7 @@ function createSidebarRenderer(options) {
       previousPanelPinned = state.panelPinned
       previousIsSettingsOpen = isSettingsOpen
       previousCreatingWorkspace = creatingWorkspace
+      previousIsAiGroupingInProgress = isAiGroupingInProgress
       previousNewTabPlacement = currentNewTabPlacement
       previousSelectedIds = visualState.selectedIds.slice()
       previousDraggedIds = visualState.draggedIds.slice()

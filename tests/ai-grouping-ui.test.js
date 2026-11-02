@@ -28,4 +28,13 @@ describe('AI Grouping UI & Toast Notifications', () => {
     assert.ok(renderSrc.includes('showToast('), 'Renderer should invoke showToast')
     assert.ok(renderSrc.includes('let latestTreeTabs = []') || renderSrc.includes('let latestTreeTabs = null'), 'Renderer should declare latestTreeTabs')
   })
+
+  it('resets shell controls explicitly when grouping finishes in finally block', () => {
+    const renderSrc = fs.readFileSync(path.join(__dirname, '../src/ui/render.js'), 'utf-8')
+    assert.ok(
+      renderSrc.includes('isAiGroupingInProgress = false') &&
+      renderSrc.includes('previousIsAiGroupingInProgress'),
+      'Renderer should track previousIsAiGroupingInProgress and restore shell controls'
+    )
+  })
 })
