@@ -838,6 +838,7 @@ function createSidebarRenderer(options) {
   let suppressCollapseAllClick = false
   let contextMenu = null
   let latestState = null
+  let latestTreeTabs = []
   let renderCurrent = () => {}
   let shell = null
   let pinnedGridObserver = null
@@ -1405,10 +1406,11 @@ function createSidebarRenderer(options) {
     syncWorkspaceStrip(currentShell.workspaceBar)
   }
 
-  function updateShellControls(currentShell, state, treeTabs) {
-    const totalTabs = state.pinnedTabs.length + state.tabs.length
+  function updateShellControls(currentShell, state, treeTabs = (latestTreeTabs || (state && state.treeTabs) || [])) {
+    const safeTreeTabs = Array.isArray(treeTabs) ? treeTabs : (state && Array.isArray(state.treeTabs) ? state.treeTabs : [])
+    const totalTabs = state ? state.pinnedTabs.length + state.tabs.length : 0
     currentShell.count.textContent = String(totalTabs)
-    const canCollapseAll = treeTabs.some(item => item && item.hasChildren && !item.collapsed)
+    const canCollapseAll = safeTreeTabs.some(item => item && item.hasChildren && !item.collapsed)
     currentShell.collapseAllButton.className = `svb-icon-button${canCollapseAll ? '' : ' is-disabled'}`
     currentShell.collapseAllButton.disabled = !canCollapseAll
     currentShell.collapseAllButton.innerHTML = renderCollapseAllIcon()
@@ -2227,7 +2229,12 @@ function createSidebarRenderer(options) {
 
       if (isAiGroupingInProgress) return
       isAiGroupingInProgress = true
-      updateShellControls(shell, latestState, latestTreeTabs)
+
+      try {
+        updateShellControls(shell, latestState, latestTreeTabs)
+      } catch (err) {
+        console.warn('[svb-ui] Failed to update shell controls before AI grouping', err)
+      }
 
       Promise.resolve()
         .then(async () => {
@@ -2793,6 +2800,7 @@ function createSidebarRenderer(options) {
     render(state) {
       if (!state) return
       latestState = state
+      latestTreeTabs = Array.isArray(state.treeTabs) ? state.treeTabs : []
       updateTabsLookup(state)
       renderCurrent = () => this.render(latestState)
       const currentShell = ensureShell()
@@ -3013,6 +3021,7 @@ function createSidebarRenderer(options) {
       pinnedFolderGroupsById.clear()
       renderCurrent = () => {}
       latestState = null
+      latestTreeTabs = []
     },
   }
 }

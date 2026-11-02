@@ -5,9 +5,10 @@ const assert = require('node:assert/strict')
 const { STYLE_TEXT } = require('../src/ui/styles.js')
 
 describe('AI Grouping UI & Toast Notifications', () => {
-  it('defines animated AI spinner styles', () => {
+  it('defines animated AI spinner styles and button active state', () => {
     assert.ok(STYLE_TEXT.includes('.svb-ai-spinner-icon'), 'Should define .svb-ai-spinner-icon')
     assert.ok(STYLE_TEXT.includes('@keyframes svb-spinner-rotate'), 'Should define svb-spinner-rotate keyframes')
+    assert.ok(STYLE_TEXT.includes('#svb-root .svb-icon-button:active'), 'Should define :active state for icon buttons')
   })
 
   it('defines toast notification styles and animations', () => {
@@ -25,5 +26,6 @@ describe('AI Grouping UI & Toast Notifications', () => {
     assert.ok(renderSrc.includes('<div class="svb-toast-host" aria-live="polite"></div>'), 'Shell should have toast-host')
     assert.ok(renderSrc.includes('renderAiSpinnerIcon()'), 'Renderer should use renderAiSpinnerIcon')
     assert.ok(renderSrc.includes('showToast('), 'Renderer should invoke showToast')
+    assert.ok(renderSrc.includes('let latestTreeTabs = []') || renderSrc.includes('let latestTreeTabs = null'), 'Renderer should declare latestTreeTabs')
   })
 })

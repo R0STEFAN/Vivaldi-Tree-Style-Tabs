@@ -538,6 +538,11 @@ body.svb-is-resizing {
   background: color-mix(in srgb, var(--svb-text) 10%, transparent);
 }
 
+#svb-root .svb-icon-button:active {
+  background: color-mix(in srgb, var(--svb-text) 18%, transparent);
+  transform: scale(0.94);
+}
+
 #svb-root .svb-icon-button.is-active {
   color: var(--svb-text-strong);
   background: color-mix(in srgb, var(--svb-text) 10%, transparent);
