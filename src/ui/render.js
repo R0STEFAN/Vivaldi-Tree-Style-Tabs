@@ -1056,9 +1056,9 @@ function createSidebarRenderer(options) {
                 <label class="svb-settings-label" for="svb-gemini-key">Gemini API Key</label>
                 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="svb-settings-link">Get Free Key</a>
               </div>
-              <div class="svb-settings-input-row">
-                <input type="password" id="svb-gemini-key" name="geminiApiKey" class="svb-settings-input" placeholder="AIzaSy..." autocomplete="off" spellcheck="false">
-                <button type="button" class="svb-settings-button-small" data-role="toggle-key-visibility" title="Show / Hide key">👁</button>
+              <input type="password" id="svb-gemini-key" name="geminiApiKey" class="svb-settings-input" placeholder="AIzaSy..." autocomplete="off" spellcheck="false">
+              <div class="svb-settings-key-actions">
+                <button type="button" class="svb-settings-button-small" data-role="toggle-key-visibility" title="Show / Hide key">👁 Show key</button>
               </div>
             </div>
 
@@ -2181,8 +2181,13 @@ function createSidebarRenderer(options) {
       event.preventDefault()
       event.stopPropagation()
       const keyInput = shell && shell.settingsView ? shell.settingsView.querySelector('input[name="geminiApiKey"]') : null
+      const btn = event.target.closest('[data-role="toggle-key-visibility"]')
       if (keyInput) {
-        keyInput.type = keyInput.type === 'password' ? 'text' : 'password'
+        const isPassword = keyInput.type === 'password'
+        keyInput.type = isPassword ? 'text' : 'password'
+        if (btn) {
+          btn.textContent = isPassword ? '🙈 Hide key' : '👁 Show key'
+        }
       }
       return
     }

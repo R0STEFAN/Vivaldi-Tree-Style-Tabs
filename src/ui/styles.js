@@ -439,7 +439,7 @@ body.svb-is-resizing {
   display: flex;
   gap: 2px;
   align-items: center;
-  max-width: 60px;
+  max-width: 96px;
   opacity: 1;
   overflow: hidden;
   transition:
@@ -1638,7 +1638,8 @@ body.svb-is-resizing {
 
 #svb-root .svb-settings-content {
   padding: 8px 10px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 #svb-root .svb-settings-group {
@@ -1724,17 +1725,12 @@ body.svb-is-resizing {
   text-decoration: underline;
 }
 
-#svb-root .svb-settings-input-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 #svb-root .svb-settings-input {
-  flex: 1;
+  width: 100%;
   box-sizing: border-box;
   padding: 5px 8px;
   min-height: 28px;
+  min-width: 0;
   border: 1px solid var(--svb-border);
   border-radius: var(--svb-radius);
   background: var(--svb-panel);
@@ -1749,20 +1745,29 @@ body.svb-is-resizing {
   border-color: var(--svb-accent);
 }
 
+#svb-root .svb-settings-key-actions {
+  display: flex;
+  margin-top: 6px;
+}
+
 #svb-root .svb-settings-button-small {
-  padding: 4px 8px;
-  min-height: 28px;
+  padding: 4px 10px;
+  min-height: 26px;
   border: 1px solid var(--svb-border);
   border-radius: var(--svb-radius);
   background: var(--svb-panel);
   color: var(--svb-text);
   cursor: pointer;
-  font-size: 12px;
-  transition: background var(--svb-d-fast) ease;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  transition: background var(--svb-d-fast) ease, border-color var(--svb-d-fast) ease;
 }
 
 #svb-root .svb-settings-button-small:hover {
   background: var(--svb-panel-hover);
+  border-color: var(--svb-accent);
+}
 }
 
 @keyframes svb-sparkle-pulse {
