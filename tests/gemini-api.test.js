@@ -2,6 +2,7 @@ const { describe, it } = require('node:test')
 const assert = require('node:assert/strict')
 const {
   sanitizeTabForPrompt,
+  sanitizeFolderName,
   fetchAvailableModels,
   groupTabsWithGemini,
   FALLBACK_MODELS,
@@ -33,6 +34,29 @@ describe('Gemini API Service', () => {
       for (const tab of internalTabs) {
         assert.strictEqual(sanitizeTabForPrompt(tab), null)
       }
+    })
+  })
+
+  describe('sanitizeFolderName', () => {
+    it('cleans repetitive hallucinations, numbers, and runaway tokens', () => {
+      const hallucination = '🤖 Штучний інтелект та пошукIQнеопублікованоінше00111222233334444555566667777888899990000111122223333444455556666777788'
+      const cleaned = sanitizeFolderName(hallucination)
+      assert.ok(cleaned.startsWith('🤖 Штучний інтелект та пошук'))
+      assert.ok(!cleaned.includes('00111222'))
+      assert.ok(!cleaned.includes('неопублікованоінше'))
+      assert.ok(cleaned.length <= 35)
+    })
+
+    it('preserves clean normal folder names with emoji', () => {
+      assert.strictEqual(sanitizeFolderName('🛒 Покупки & Замовлення'), '🛒 Покупки & Замовлення')
+      assert.strictEqual(sanitizeFolderName('💻 Development'), '💻 Development')
+      assert.strictEqual(sanitizeFolderName('🎬 YouTube & Media'), '🎬 YouTube & Media')
+    })
+
+    it('enforces reasonable length limit', () => {
+      const longName = '📚 Дуже довга назва для папки з вкладок яка містить надто багато зайвих слів'
+      const cleaned = sanitizeFolderName(longName)
+      assert.ok(cleaned.length <= 35)
     })
   })
 
