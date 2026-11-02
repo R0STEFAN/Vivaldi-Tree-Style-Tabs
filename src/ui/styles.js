@@ -1683,6 +1683,105 @@ body.svb-is-resizing {
   color: var(--svb-text);
 }
 
+#svb-root .svb-settings-section-divider {
+  margin: 16px 0 12px;
+  height: 1px;
+  background: var(--svb-border);
+}
+
+#svb-root .svb-settings-title-sub {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--svb-accent);
+  margin-bottom: 10px;
+}
+
+#svb-root .svb-settings-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+#svb-root .svb-settings-label-row .svb-settings-label {
+  margin-bottom: 0;
+}
+
+#svb-root .svb-settings-link,
+#svb-root .svb-settings-link-btn {
+  font-size: 11px;
+  color: var(--svb-accent);
+  text-decoration: none;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+  font-weight: 500;
+}
+
+#svb-root .svb-settings-link:hover,
+#svb-root .svb-settings-link-btn:hover {
+  text-decoration: underline;
+}
+
+#svb-root .svb-settings-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#svb-root .svb-settings-input {
+  flex: 1;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  min-height: 28px;
+  border: 1px solid var(--svb-border);
+  border-radius: var(--svb-radius);
+  background: var(--svb-panel);
+  color: var(--svb-text);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+  transition: border-color var(--svb-d-fast) ease, background var(--svb-d-fast) ease;
+}
+
+#svb-root .svb-settings-input:focus {
+  border-color: var(--svb-accent);
+}
+
+#svb-root .svb-settings-button-small {
+  padding: 4px 8px;
+  min-height: 28px;
+  border: 1px solid var(--svb-border);
+  border-radius: var(--svb-radius);
+  background: var(--svb-panel);
+  color: var(--svb-text);
+  cursor: pointer;
+  font-size: 12px;
+  transition: background var(--svb-d-fast) ease;
+}
+
+#svb-root .svb-settings-button-small:hover {
+  background: var(--svb-panel-hover);
+}
+
+@keyframes svb-sparkle-pulse {
+  0% { transform: scale(1) rotate(0deg); opacity: 0.85; }
+  50% { transform: scale(1.15) rotate(180deg); opacity: 1; filter: drop-shadow(0 0 4px var(--svb-accent)); }
+  100% { transform: scale(1) rotate(360deg); opacity: 0.85; }
+}
+
+#svb-root .svb-icon-button[data-role="ai-group-tabs"] .svb-sparkles-icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+#svb-root .svb-icon-button[data-role="ai-group-tabs"].is-loading svg {
+  animation: svb-sparkle-pulse 1.2s infinite ease-in-out;
+  color: var(--svb-accent);
+}
+
 #svb-root .svb-settings-options {
   display: flex;
   flex-direction: column;
