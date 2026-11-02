@@ -227,8 +227,11 @@ function getVivaldiMainView() {
         icon = defaultWorkspaceIcon
       }
       try {
-        manager.addWorkspace(name, icon)
-        return true
+        const beforeIds = new Set((store && typeof store.getWorkspaces === 'function' ? store.getWorkspaces() : []).map(w => Number(w.id)))
+        const res = manager.addWorkspace(name, icon)
+        const after = store && typeof store.getWorkspaces === 'function' ? store.getWorkspaces() : []
+        const created = after.find(w => !beforeIds.has(Number(w.id))) || (res && res.id ? res : null)
+        return created || true
       } catch (error) {
         console.warn('[svb] native addWorkspace failed', error)
         return false

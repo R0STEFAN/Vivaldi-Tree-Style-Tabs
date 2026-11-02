@@ -100,6 +100,9 @@ async function main() {
     onTogglePinned: () => panelStore.togglePinned(),
     onSwitchWorkspace: workspaceId => { void store.switchToWorkspace(workspaceId) },
     onCreateWorkspace: name => { void store.createWorkspace(name) },
+    onCreateWorkspaceAndMove: (name, tabId, selectedIds) => {
+      void store.createWorkspaceAndMoveSelection(tabId, selectedIds, name)
+    },
     onRenameWorkspace: (workspaceId, name) => { void store.renameWorkspace(workspaceId, name) },
     onToggleMute: id => {
       const selectedIds = selectionStore.getState().selectedIds || []

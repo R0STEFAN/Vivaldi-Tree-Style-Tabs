@@ -1445,9 +1445,14 @@ body.svb-is-resizing {
   gap: 10px;
 }
 
-#svb-root .svb-menu__icon {
+#svb-root .svb-menu__icon,
+#svb-root .svb-menu .svb-workspace__icon {
   width: 16px;
   height: 16px;
+  flex-shrink: 0;
+}
+
+#svb-root .svb-menu__icon {
   fill: none;
   stroke: currentColor;
   stroke-width: 1.85;

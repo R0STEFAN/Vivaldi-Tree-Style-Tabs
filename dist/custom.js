@@ -1479,9 +1479,14 @@ body.svb-is-resizing {
   gap: 10px;
 }
 
-#svb-root .svb-menu__icon {
+#svb-root .svb-menu__icon,
+#svb-root .svb-menu .svb-workspace__icon {
   width: 16px;
   height: 16px;
+  flex-shrink: 0;
+}
+
+#svb-root .svb-menu__icon {
   fill: none;
   stroke: currentColor;
   stroke-width: 1.85;
@@ -5427,7 +5432,8 @@ function createTabStore(api) {
   async function moveTabsToWorkspace(tabIds, workspaceId) {
     const targetIds = normalizeUniqueIds(tabIds)
     if (targetIds.length === 0) return
-    const targetContextKey = `workspace:${workspaceId}`
+    const targetWorkspaceId = workspaceId == null || workspaceId === '' ? null : Number(workspaceId)
+    const targetContextKey = targetWorkspaceId == null ? 'outside' : `workspace:${targetWorkspaceId}`
     const movedIdSet = new Set(targetIds)
     const moveRecords = treeController.getWorkspaceMoveRecords(targetIds)
     const moveRecordById = new Map(moveRecords.map(record => [record.tabId, record]))
@@ -5449,7 +5455,7 @@ function createTabStore(api) {
     let targetRootStartOrder = 0
     try {
       const allTabs = await api.getTabs(state.windowId)
-      const targetTabsInWorkspace = allTabs.filter(tab => !movedIdSet.has(tab.id) && tab.workspaceId === workspaceId)
+      const targetTabsInWorkspace = allTabs.filter(tab => !movedIdSet.has(tab.id) && (targetWorkspaceId == null ? tab.workspaceId == null : tab.workspaceId === targetWorkspaceId))
       const targetRootRecords = targetTabsInWorkspace.map(tab => {
         const record = tab
           && tab.vivExtData
@@ -5496,7 +5502,10 @@ function createTabStore(api) {
         : (previousTreeData && Number.isFinite(Number(previousTreeData.order)) ? Number(previousTreeData.order) : targetRootStartOrder)
       const nextData = {
         ...previousData,
-        workspaceId,
+        workspaceId: targetWorkspaceId,
+      }
+      if (targetWorkspaceId == null) {
+        delete nextData.workspaceId
       }
       nextData[TREE_NAMESPACE_KEY] = {
         ...(previousTreeData || {}),
@@ -6280,8 +6289,9 @@ function createTabStore(api) {
     },
 
     async moveSelectionToWorkspace(tabId, selectedIds, workspaceId) {
-      if (!Number.isFinite(workspaceId)) return
-      await moveTabsToWorkspace(getTreeActionTargetIds(tabId, selectedIds), workspaceId)
+      const targetId = workspaceId == null || workspaceId === '' ? null : Number(workspaceId)
+      if (targetId !== null && !Number.isFinite(targetId)) return
+      await moveTabsToWorkspace(getTreeActionTargetIds(tabId, selectedIds), targetId)
     },
 
     // Switch the panel (and the browser) to another workspace. Vivaldi has no
@@ -6300,12 +6310,41 @@ function createTabStore(api) {
       api.activateWorkspace(state.windowId, targetId)
     },
 
-    async createWorkspaceAndMoveSelection(tabId, selectedIds) {
-      if (state.windowId == null || !api.createWorkspaceWithId) return
-      const workspaceId = Date.now()
-      if (!api.createWorkspaceWithId(workspaceId, 'New Workspace')) return
-      await moveTabsToWorkspace(getTreeActionTargetIds(tabId, selectedIds), workspaceId)
-      if (api.activateWorkspace) api.activateWorkspace(state.windowId, workspaceId)
+    async createWorkspaceAndMoveSelection(tabId, selectedIds, name) {
+      if (state.windowId == null || !api.createWorkspace) return
+      const targetIds = getTreeActionTargetIds(tabId, selectedIds)
+      if (targetIds.length === 0) return
+
+      const workspaceName = typeof name === 'string' && name.trim() ? name.trim() : 'New Workspace'
+      const existingWorkspaces = api.getWorkspaces ? await api.getWorkspaces() : (state.workspaces || [])
+      const existingIds = new Set(existingWorkspaces.map(w => Number(w.id)))
+
+      releaseContextLock()
+      pendingActiveRepairTabId = null
+      const created = await api.createWorkspace(workspaceName)
+
+      let newWorkspaceId = created && typeof created === 'object' && Number.isFinite(Number(created.id))
+        ? Number(created.id)
+        : null
+
+      if (newWorkspaceId == null && api.getWorkspaces) {
+        for (let attempt = 0; attempt < 10; attempt++) {
+          const latest = await api.getWorkspaces()
+          const found = latest.find(w => !existingIds.has(Number(w.id)))
+          if (found && Number.isFinite(Number(found.id))) {
+            newWorkspaceId = Number(found.id)
+            break
+          }
+          await new Promise(r => setTimeout(r, 50))
+        }
+      }
+
+      if (newWorkspaceId != null) {
+        await moveTabsToWorkspace(targetIds, newWorkspaceId)
+        if (api.activateWorkspace) {
+          api.activateWorkspace(state.windowId, newWorkspaceId)
+        }
+      }
     },
 
     // Create a workspace natively (Vivaldi assigns the id, persists it, and
@@ -7374,8 +7413,11 @@ function getVivaldiMainView() {
         icon = defaultWorkspaceIcon
       }
       try {
-        manager.addWorkspace(name, icon)
-        return true
+        const beforeIds = new Set((store && typeof store.getWorkspaces === 'function' ? store.getWorkspaces() : []).map(w => Number(w.id)))
+        const res = manager.addWorkspace(name, icon)
+        const after = store && typeof store.getWorkspaces === 'function' ? store.getWorkspaces() : []
+        const created = after.find(w => !beforeIds.has(Number(w.id))) || (res && res.id ? res : null)
+        return created || true
       } catch (error) {
         console.warn('[svb] native addWorkspace failed', error)
         return false
@@ -9339,7 +9381,7 @@ function getWorkspaceBarEntries(state) {
 // extra chrome.
 function renderWorkspaceBar(state, creating, renamingId) {
   const workspaces = Array.isArray(state.workspaces) ? state.workspaces : []
-  if (workspaces.length === 0) return ''
+  if (workspaces.length === 0 && !creating) return ''
 
   const entries = getWorkspaceBarEntries(state)
   const active = entries.find(entry => entry.isActive) || null
@@ -9367,7 +9409,7 @@ function renderWorkspaceBar(state, creating, renamingId) {
 
 function workspaceBarSignature(state, creating, renamingId) {
   const workspaces = Array.isArray(state.workspaces) ? state.workspaces : []
-  if (workspaces.length === 0) return ''
+  if (workspaces.length === 0 && !creating) return ''
   return [
     creating ? 'creating' : '',
     renamingId != null ? `rename:${renamingId}` : '',
@@ -9400,6 +9442,7 @@ function renderContextMenuItem(options) {
   const {
     action,
     icon,
+    iconHtml,
     label,
     disabled = false,
     danger = false,
@@ -9411,15 +9454,17 @@ function renderContextMenuItem(options) {
     'class="svb-menu__item' + (danger ? ' is-danger' : '') + (disabled ? ' is-disabled' : '') + (submenu ? ' has-submenu' : '') + '"',
     disabled ? 'aria-disabled="true"' : '',
     action ? `data-role="context-menu-action" data-action="${escapeHtml(action)}"` : '',
-    Number.isFinite(workspaceId) ? `data-workspace-id="${workspaceId}"` : '',
+    workspaceId !== undefined && workspaceId !== null ? `data-workspace-id="${escapeHtml(String(workspaceId))}"` : '',
     bookmarkTreeId != null ? `data-bookmark-tree-id="${escapeHtml(bookmarkTreeId)}"` : '',
   ].filter(Boolean).join(' ')
   const tag = submenu ? 'div' : 'button'
   const type = tag === 'button' ? ' type="button"' : ''
 
+  const iconMarkup = iconHtml || renderMenuIcon(icon)
+
   return `
     <${tag} ${attrs}${type}>
-      ${renderMenuIcon(icon)}
+      ${iconMarkup}
       <span class="svb-menu__label">${escapeHtml(label)}</span>
       ${submenu ? `${renderMenuIcon('chevron')}<span class="svb-menu__submenu">${submenu}</span>` : ''}
     </${tag}>
@@ -9495,14 +9540,13 @@ function renderContextMenu(tab, state, contextMenu) {
   const isPinned = !!tab.pinned
   const hasChildren = Array.isArray(state.treeTabs)
     && state.treeTabs.some(item => item && item.id === tab.id && item.hasChildren)
-  const workspaces = (Array.isArray(state.workspaces) ? state.workspaces : [])
-    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
-
-  const workspaceItems = workspaces.map(workspace => renderContextMenuItem({
+  const workspaceEntries = getWorkspaceBarEntries(state)
+  const workspaceItems = workspaceEntries.map(entry => renderContextMenuItem({
     action: 'move-workspace',
-    icon: 'workspace',
-    label: workspace.name || `Workspace ${workspace.id}`,
-    workspaceId: Number(workspace.id),
+    iconHtml: renderWorkspaceIcon(entry.icon, entry.fallback),
+    label: entry.name,
+    workspaceId: entry.id,
+    disabled: entry.isActive,
   })).join('')
 
   const isTopMode = (settingsStore.get('newTabPlacement') || 'bottom') === 'top'
@@ -9513,7 +9557,7 @@ function renderContextMenu(tab, state, contextMenu) {
     ${renderContextMenuItem({ action: 'move-window', icon: 'window', label: 'New Window' })}
     <div class="svb-menu__separator"></div>
     ${workspaceItems || '<div class="svb-menu__empty">No Workspaces</div>'}
-    ${renderContextMenuItem({ action: 'move-new-workspace', icon: 'add', label: 'Create New Workspace and Move Here' })}
+    ${renderContextMenuItem({ action: 'move-new-workspace', icon: 'add', label: 'New Workspace' })}
   `
   const colorSubmenu = `
     ${renderContextMenuColorItem('rose', 'Rose', currentColorKey)}
@@ -9996,6 +10040,7 @@ function createSidebarRenderer(options) {
     onTogglePinned,
     onSwitchWorkspace,
     onCreateWorkspace,
+    onCreateWorkspaceAndMove,
     onRenameWorkspace,
     onToggleMute,
     onToggleCollapse,
@@ -10046,6 +10091,7 @@ function createSidebarRenderer(options) {
   let isSettingsOpen = false
   let creatingWorkspace = false
   let renamingWorkspaceId = null
+  let pendingMoveToWorkspaceTarget = null
   const eventController = new AbortController()
   const eventOptions = { signal: eventController.signal }
   const tabsById = new Map()
@@ -10083,6 +10129,8 @@ function createSidebarRenderer(options) {
   function stopWorkspaceInput(commit, value) {
     const renameId = renamingWorkspaceId
     const wasCreating = creatingWorkspace
+    const moveTarget = pendingMoveToWorkspaceTarget
+    pendingMoveToWorkspaceTarget = null
     if (!wasCreating && renameId == null) return
     creatingWorkspace = false
     renamingWorkspaceId = null
@@ -10090,6 +10138,8 @@ function createSidebarRenderer(options) {
       const name = typeof value === 'string' ? value.trim() : ''
       if (renameId != null) {
         if (name && onRenameWorkspace) onRenameWorkspace(renameId, name)
+      } else if (moveTarget && onCreateWorkspaceAndMove) {
+        onCreateWorkspaceAndMove(name, moveTarget.tabId, moveTarget.selectedIds)
       } else if (onCreateWorkspace) {
         onCreateWorkspace(name)
       }
@@ -11154,13 +11204,24 @@ function createSidebarRenderer(options) {
         return
       }
 
+      if (menuAction.getAttribute('data-action') === 'move-new-workspace' && contextMenu) {
+        const targetTabId = contextMenu.tabId
+        const selIds = previousSelectedIds.includes(targetTabId) ? previousSelectedIds.slice() : [targetTabId]
+        pendingMoveToWorkspaceTarget = { tabId: targetTabId, selectedIds: selIds }
+        creatingWorkspace = true
+        contextMenu = null
+        renderCurrent()
+        return
+      }
+
       if (!menuAction.classList.contains('is-disabled') && contextMenu && onContextMenuAction) {
-        const workspaceId = Number(menuAction.getAttribute('data-workspace-id'))
+        const rawWs = menuAction.getAttribute('data-workspace-id')
+        const workspaceId = rawWs === '' ? '' : (rawWs != null ? Number(rawWs) : null)
         const colorKey = menuAction.getAttribute('data-color-key')
         const bookmarkTreeId = menuAction.getAttribute('data-bookmark-tree-id')
         onContextMenuAction(menuAction.getAttribute('data-action'), {
           tabId: contextMenu.tabId,
-          workspaceId: Number.isFinite(workspaceId) ? workspaceId : null,
+          workspaceId: workspaceId === '' ? '' : (Number.isFinite(workspaceId) ? workspaceId : null),
           colorKey: typeof colorKey === 'string' ? colorKey : null,
           bookmarkTreeId: bookmarkTreeId || null,
         })
@@ -11975,7 +12036,7 @@ function createSidebarRenderer(options) {
   }
 }
 
-module.exports = { createSidebarRenderer }
+module.exports = { createSidebarRenderer, renderContextMenu }
 
     },
     "diagnostics/activation-trace.js": function(require, module, exports) {
@@ -12200,6 +12261,9 @@ async function main() {
     onTogglePinned: () => panelStore.togglePinned(),
     onSwitchWorkspace: workspaceId => { void store.switchToWorkspace(workspaceId) },
     onCreateWorkspace: name => { void store.createWorkspace(name) },
+    onCreateWorkspaceAndMove: (name, tabId, selectedIds) => {
+      void store.createWorkspaceAndMoveSelection(tabId, selectedIds, name)
+    },
     onRenameWorkspace: (workspaceId, name) => { void store.renameWorkspace(workspaceId, name) },
     onToggleMute: id => {
       const selectedIds = selectionStore.getState().selectedIds || []

@@ -117,7 +117,7 @@ function getWorkspaceBarEntries(state) {
 // extra chrome.
 function renderWorkspaceBar(state, creating, renamingId) {
   const workspaces = Array.isArray(state.workspaces) ? state.workspaces : []
-  if (workspaces.length === 0) return ''
+  if (workspaces.length === 0 && !creating) return ''
 
   const entries = getWorkspaceBarEntries(state)
   const active = entries.find(entry => entry.isActive) || null
@@ -145,7 +145,7 @@ function renderWorkspaceBar(state, creating, renamingId) {
 
 function workspaceBarSignature(state, creating, renamingId) {
   const workspaces = Array.isArray(state.workspaces) ? state.workspaces : []
-  if (workspaces.length === 0) return ''
+  if (workspaces.length === 0 && !creating) return ''
   return [
     creating ? 'creating' : '',
     renamingId != null ? `rename:${renamingId}` : '',
@@ -178,6 +178,7 @@ function renderContextMenuItem(options) {
   const {
     action,
     icon,
+    iconHtml,
     label,
     disabled = false,
     danger = false,
@@ -189,15 +190,17 @@ function renderContextMenuItem(options) {
     'class="svb-menu__item' + (danger ? ' is-danger' : '') + (disabled ? ' is-disabled' : '') + (submenu ? ' has-submenu' : '') + '"',
     disabled ? 'aria-disabled="true"' : '',
     action ? `data-role="context-menu-action" data-action="${escapeHtml(action)}"` : '',
-    Number.isFinite(workspaceId) ? `data-workspace-id="${workspaceId}"` : '',
+    workspaceId !== undefined && workspaceId !== null ? `data-workspace-id="${escapeHtml(String(workspaceId))}"` : '',
     bookmarkTreeId != null ? `data-bookmark-tree-id="${escapeHtml(bookmarkTreeId)}"` : '',
   ].filter(Boolean).join(' ')
   const tag = submenu ? 'div' : 'button'
   const type = tag === 'button' ? ' type="button"' : ''
 
+  const iconMarkup = iconHtml || renderMenuIcon(icon)
+
   return `
     <${tag} ${attrs}${type}>
-      ${renderMenuIcon(icon)}
+      ${iconMarkup}
       <span class="svb-menu__label">${escapeHtml(label)}</span>
       ${submenu ? `${renderMenuIcon('chevron')}<span class="svb-menu__submenu">${submenu}</span>` : ''}
     </${tag}>
@@ -273,14 +276,13 @@ function renderContextMenu(tab, state, contextMenu) {
   const isPinned = !!tab.pinned
   const hasChildren = Array.isArray(state.treeTabs)
     && state.treeTabs.some(item => item && item.id === tab.id && item.hasChildren)
-  const workspaces = (Array.isArray(state.workspaces) ? state.workspaces : [])
-    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
-
-  const workspaceItems = workspaces.map(workspace => renderContextMenuItem({
+  const workspaceEntries = getWorkspaceBarEntries(state)
+  const workspaceItems = workspaceEntries.map(entry => renderContextMenuItem({
     action: 'move-workspace',
-    icon: 'workspace',
-    label: workspace.name || `Workspace ${workspace.id}`,
-    workspaceId: Number(workspace.id),
+    iconHtml: renderWorkspaceIcon(entry.icon, entry.fallback),
+    label: entry.name,
+    workspaceId: entry.id,
+    disabled: entry.isActive,
   })).join('')
 
   const isTopMode = (settingsStore.get('newTabPlacement') || 'bottom') === 'top'
@@ -291,7 +293,7 @@ function renderContextMenu(tab, state, contextMenu) {
     ${renderContextMenuItem({ action: 'move-window', icon: 'window', label: 'New Window' })}
     <div class="svb-menu__separator"></div>
     ${workspaceItems || '<div class="svb-menu__empty">No Workspaces</div>'}
-    ${renderContextMenuItem({ action: 'move-new-workspace', icon: 'add', label: 'Create New Workspace and Move Here' })}
+    ${renderContextMenuItem({ action: 'move-new-workspace', icon: 'add', label: 'New Workspace' })}
   `
   const colorSubmenu = `
     ${renderContextMenuColorItem('rose', 'Rose', currentColorKey)}
@@ -774,6 +776,7 @@ function createSidebarRenderer(options) {
     onTogglePinned,
     onSwitchWorkspace,
     onCreateWorkspace,
+    onCreateWorkspaceAndMove,
     onRenameWorkspace,
     onToggleMute,
     onToggleCollapse,
@@ -824,6 +827,7 @@ function createSidebarRenderer(options) {
   let isSettingsOpen = false
   let creatingWorkspace = false
   let renamingWorkspaceId = null
+  let pendingMoveToWorkspaceTarget = null
   const eventController = new AbortController()
   const eventOptions = { signal: eventController.signal }
   const tabsById = new Map()
@@ -861,6 +865,8 @@ function createSidebarRenderer(options) {
   function stopWorkspaceInput(commit, value) {
     const renameId = renamingWorkspaceId
     const wasCreating = creatingWorkspace
+    const moveTarget = pendingMoveToWorkspaceTarget
+    pendingMoveToWorkspaceTarget = null
     if (!wasCreating && renameId == null) return
     creatingWorkspace = false
     renamingWorkspaceId = null
@@ -868,6 +874,8 @@ function createSidebarRenderer(options) {
       const name = typeof value === 'string' ? value.trim() : ''
       if (renameId != null) {
         if (name && onRenameWorkspace) onRenameWorkspace(renameId, name)
+      } else if (moveTarget && onCreateWorkspaceAndMove) {
+        onCreateWorkspaceAndMove(name, moveTarget.tabId, moveTarget.selectedIds)
       } else if (onCreateWorkspace) {
         onCreateWorkspace(name)
       }
@@ -1932,13 +1940,24 @@ function createSidebarRenderer(options) {
         return
       }
 
+      if (menuAction.getAttribute('data-action') === 'move-new-workspace' && contextMenu) {
+        const targetTabId = contextMenu.tabId
+        const selIds = previousSelectedIds.includes(targetTabId) ? previousSelectedIds.slice() : [targetTabId]
+        pendingMoveToWorkspaceTarget = { tabId: targetTabId, selectedIds: selIds }
+        creatingWorkspace = true
+        contextMenu = null
+        renderCurrent()
+        return
+      }
+
       if (!menuAction.classList.contains('is-disabled') && contextMenu && onContextMenuAction) {
-        const workspaceId = Number(menuAction.getAttribute('data-workspace-id'))
+        const rawWs = menuAction.getAttribute('data-workspace-id')
+        const workspaceId = rawWs === '' ? '' : (rawWs != null ? Number(rawWs) : null)
         const colorKey = menuAction.getAttribute('data-color-key')
         const bookmarkTreeId = menuAction.getAttribute('data-bookmark-tree-id')
         onContextMenuAction(menuAction.getAttribute('data-action'), {
           tabId: contextMenu.tabId,
-          workspaceId: Number.isFinite(workspaceId) ? workspaceId : null,
+          workspaceId: workspaceId === '' ? '' : (Number.isFinite(workspaceId) ? workspaceId : null),
           colorKey: typeof colorKey === 'string' ? colorKey : null,
           bookmarkTreeId: bookmarkTreeId || null,
         })
@@ -2753,4 +2772,4 @@ function createSidebarRenderer(options) {
   }
 }
 
-module.exports = { createSidebarRenderer }
+module.exports = { createSidebarRenderer, renderContextMenu }

@@ -829,7 +829,8 @@ function createTabStore(api) {
   async function moveTabsToWorkspace(tabIds, workspaceId) {
     const targetIds = normalizeUniqueIds(tabIds)
     if (targetIds.length === 0) return
-    const targetContextKey = `workspace:${workspaceId}`
+    const targetWorkspaceId = workspaceId == null || workspaceId === '' ? null : Number(workspaceId)
+    const targetContextKey = targetWorkspaceId == null ? 'outside' : `workspace:${targetWorkspaceId}`
     const movedIdSet = new Set(targetIds)
     const moveRecords = treeController.getWorkspaceMoveRecords(targetIds)
     const moveRecordById = new Map(moveRecords.map(record => [record.tabId, record]))
@@ -851,7 +852,7 @@ function createTabStore(api) {
     let targetRootStartOrder = 0
     try {
       const allTabs = await api.getTabs(state.windowId)
-      const targetTabsInWorkspace = allTabs.filter(tab => !movedIdSet.has(tab.id) && tab.workspaceId === workspaceId)
+      const targetTabsInWorkspace = allTabs.filter(tab => !movedIdSet.has(tab.id) && (targetWorkspaceId == null ? tab.workspaceId == null : tab.workspaceId === targetWorkspaceId))
       const targetRootRecords = targetTabsInWorkspace.map(tab => {
         const record = tab
           && tab.vivExtData
@@ -898,7 +899,10 @@ function createTabStore(api) {
         : (previousTreeData && Number.isFinite(Number(previousTreeData.order)) ? Number(previousTreeData.order) : targetRootStartOrder)
       const nextData = {
         ...previousData,
-        workspaceId,
+        workspaceId: targetWorkspaceId,
+      }
+      if (targetWorkspaceId == null) {
+        delete nextData.workspaceId
       }
       nextData[TREE_NAMESPACE_KEY] = {
         ...(previousTreeData || {}),
@@ -1682,8 +1686,9 @@ function createTabStore(api) {
     },
 
     async moveSelectionToWorkspace(tabId, selectedIds, workspaceId) {
-      if (!Number.isFinite(workspaceId)) return
-      await moveTabsToWorkspace(getTreeActionTargetIds(tabId, selectedIds), workspaceId)
+      const targetId = workspaceId == null || workspaceId === '' ? null : Number(workspaceId)
+      if (targetId !== null && !Number.isFinite(targetId)) return
+      await moveTabsToWorkspace(getTreeActionTargetIds(tabId, selectedIds), targetId)
     },
 
     // Switch the panel (and the browser) to another workspace. Vivaldi has no
@@ -1702,12 +1707,41 @@ function createTabStore(api) {
       api.activateWorkspace(state.windowId, targetId)
     },
 
-    async createWorkspaceAndMoveSelection(tabId, selectedIds) {
-      if (state.windowId == null || !api.createWorkspaceWithId) return
-      const workspaceId = Date.now()
-      if (!api.createWorkspaceWithId(workspaceId, 'New Workspace')) return
-      await moveTabsToWorkspace(getTreeActionTargetIds(tabId, selectedIds), workspaceId)
-      if (api.activateWorkspace) api.activateWorkspace(state.windowId, workspaceId)
+    async createWorkspaceAndMoveSelection(tabId, selectedIds, name) {
+      if (state.windowId == null || !api.createWorkspace) return
+      const targetIds = getTreeActionTargetIds(tabId, selectedIds)
+      if (targetIds.length === 0) return
+
+      const workspaceName = typeof name === 'string' && name.trim() ? name.trim() : 'New Workspace'
+      const existingWorkspaces = api.getWorkspaces ? await api.getWorkspaces() : (state.workspaces || [])
+      const existingIds = new Set(existingWorkspaces.map(w => Number(w.id)))
+
+      releaseContextLock()
+      pendingActiveRepairTabId = null
+      const created = await api.createWorkspace(workspaceName)
+
+      let newWorkspaceId = created && typeof created === 'object' && Number.isFinite(Number(created.id))
+        ? Number(created.id)
+        : null
+
+      if (newWorkspaceId == null && api.getWorkspaces) {
+        for (let attempt = 0; attempt < 10; attempt++) {
+          const latest = await api.getWorkspaces()
+          const found = latest.find(w => !existingIds.has(Number(w.id)))
+          if (found && Number.isFinite(Number(found.id))) {
+            newWorkspaceId = Number(found.id)
+            break
+          }
+          await new Promise(r => setTimeout(r, 50))
+        }
+      }
+
+      if (newWorkspaceId != null) {
+        await moveTabsToWorkspace(targetIds, newWorkspaceId)
+        if (api.activateWorkspace) {
+          api.activateWorkspace(state.windowId, newWorkspaceId)
+        }
+      }
     },
 
     // Create a workspace natively (Vivaldi assigns the id, persists it, and
