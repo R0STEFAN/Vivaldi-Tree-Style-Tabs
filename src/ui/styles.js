@@ -944,6 +944,7 @@ body.svb-is-resizing {
   color: color-mix(in srgb, var(--svb-text-strong) 80%, var(--svb-text));
   transform: rotate(0deg);
   opacity: 0.92;
+  transition: transform var(--svb-d-fast) var(--svb-ease-out);
 }
 
 #svb-root .svb-tab__exp.is-collapsed .svb-tab__exp-icon {

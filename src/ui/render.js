@@ -702,6 +702,8 @@ function createSidebarRenderer(options) {
   let externalDrag = null
   let autoScrollRafId = 0
   let suppressClick = false
+  let suppressToggleClick = false
+  let suppressCollapseAllClick = false
   let contextMenu = null
   let latestState = null
   let renderCurrent = () => {}
@@ -711,10 +713,23 @@ function createSidebarRenderer(options) {
   let isSettingsOpen = false
   const eventController = new AbortController()
   const eventOptions = { signal: eventController.signal }
+  const tabsById = new Map()
+
+  function updateTabsLookup(state) {
+    tabsById.clear()
+    if (!state) return
+    const pinned = state.pinnedTabs || []
+    for (let i = 0; i < pinned.length; i++) {
+      tabsById.set(pinned[i].id, pinned[i])
+    }
+    const regular = state.tabs || []
+    for (let i = 0; i < regular.length; i++) {
+      tabsById.set(regular[i].id, regular[i])
+    }
+  }
 
   function findTab(tabId) {
-    if (!latestState) return null
-    return latestState.pinnedTabs.concat(latestState.tabs).find(tab => tab.id === tabId) || null
+    return tabsById.get(tabId) || null
   }
 
   function stopEditing(cancel) {
@@ -1378,29 +1393,28 @@ function createSidebarRenderer(options) {
 
     const nodes = Array.from(pendingEnterNodes)
     pendingEnterNodes.clear()
-    window.requestAnimationFrame(() => {
-      nodes.forEach(node => {
-        if (node.isConnected) {
-          animateTabEnter(node)
-        }
-      })
+    nodes.forEach(node => {
+      if (node.isConnected) {
+        animateTabEnter(node)
+      }
     })
   }
 
   function measureTabRects() {
     const rects = new Map()
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 1000
     for (const [key, node] of tabNodesByKey.entries()) {
       if (!node.isConnected) continue
       const rect = node.getBoundingClientRect()
+      if (rect.top > viewportHeight + 250 || rect.bottom < -250) continue
       rects.set(key, {
         left: rect.left,
         top: rect.top,
       })
     }
     if (shell && shell.inlineNewTabButton && shell.inlineNewTabButton.isConnected) {
-      const inlineStyle = window.getComputedStyle(shell.inlineNewTabButton)
-      if (inlineStyle.display !== 'none') {
-        const rect = shell.inlineNewTabButton.getBoundingClientRect()
+      const rect = shell.inlineNewTabButton.getBoundingClientRect()
+      if (rect.top <= viewportHeight + 250 && rect.bottom >= -250) {
         rects.set(INLINE_NEW_TAB_KEY, {
           left: rect.left,
           top: rect.top,
@@ -1414,41 +1428,51 @@ function createSidebarRenderer(options) {
     if (!previousRects || previousRects.size === 0) return
     if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
-    const movedNodes = []
+    const updates = []
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 1000
     const motionNodes = Array.from(tabNodesByKey.entries())
     if (shell && shell.inlineNewTabButton) {
       motionNodes.push([INLINE_NEW_TAB_KEY, shell.inlineNewTabButton])
     }
 
+    // Pass 1: READ ONLY — measure all rects without any style writes in between.
+    // This completely eliminates layout thrashing (forced synchronous reflow).
     for (const [key, node] of motionNodes) {
       const previousRect = previousRects.get(key)
       if (!previousRect || !node.isConnected || enteringNodes.has(node) || (enteringNodeSet && enteringNodeSet.has(node))) continue
-      if (window.getComputedStyle(node).display === 'none') continue
 
       const rect = node.getBoundingClientRect()
+      if (rect.top > viewportHeight + 250 || rect.bottom < -250) continue
+
       const deltaX = previousRect.left - rect.left
       const deltaY = previousRect.top - rect.top
       if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) continue
-      if (Math.abs(deltaY) > window.innerHeight) continue
 
+      updates.push({ node, deltaX, deltaY })
+    }
+
+    if (!updates.length) return
+
+    // Pass 2: WRITE ONLY — batch all initial transform offsets.
+    const movedNodes = []
+    for (const { node, deltaX, deltaY } of updates) {
       node.style.transition = 'none'
       node.style.transform = `translate(${deltaX}px, ${deltaY}px)`
       movedNodes.push(node)
     }
 
-    if (!movedNodes.length) return
-
+    // Pass 3: Single forced reflow to register initial transform positions.
     root.offsetHeight
-    window.requestAnimationFrame(() => {
-      movedNodes.forEach(node => {
-        node.style.transition = 'transform var(--svb-d-norm) var(--svb-ease-out), opacity var(--svb-d-fast) linear'
+
+    // Pass 4: Start FLIP transitions.
+    for (const node of movedNodes) {
+      node.style.transition = 'transform var(--svb-d-norm) var(--svb-ease-out), opacity var(--svb-d-fast) linear'
+      node.style.transform = ''
+      node.addEventListener('transitionend', () => {
+        node.style.transition = ''
         node.style.transform = ''
-        node.addEventListener('transitionend', () => {
-          node.style.transition = ''
-          node.style.transform = ''
-        }, { once: true })
-      })
-    })
+      }, { once: true })
+    }
   }
 
   function resolveDropTarget(clientX, clientY) {
@@ -1774,9 +1798,16 @@ function createSidebarRenderer(options) {
       return
     }
 
-    if (role === 'toggle-collapse' && Number.isFinite(tabId)) {
+    if (role === 'toggle-collapse') {
+      event.preventDefault()
       event.stopPropagation()
-      onToggleCollapse(tabId)
+      if (suppressToggleClick) {
+        suppressToggleClick = false
+        return
+      }
+      if (Number.isFinite(tabId) && onToggleCollapse) {
+        onToggleCollapse(tabId)
+      }
       return
     }
 
@@ -1803,7 +1834,13 @@ function createSidebarRenderer(options) {
       return
     }
     if (role === 'collapse-all') {
-      onCollapseAll()
+      event.preventDefault()
+      event.stopPropagation()
+      if (suppressCollapseAllClick) {
+        suppressCollapseAllClick = false
+        return
+      }
+      if (onCollapseAll) onCollapseAll()
       return
     }
     if (role === 'toggle-pinned') onTogglePinned()
@@ -1863,7 +1900,33 @@ function createSidebarRenderer(options) {
     if (event.button !== 0) return
     if (event.target.closest('.svb-menu')) return
     if (event.target.closest('[data-role="rename-input"]')) return
-    if (event.target.closest('[data-role="close-tab"], [data-role="toggle-collapse"], [data-role="create-child-tab"], [data-role="toggle-mute"]')) return
+
+    const toggleTarget = event.target.closest('[data-role="toggle-collapse"]')
+    if (toggleTarget) {
+      const tabButton = event.target.closest('.svb-tab[data-tab-id]')
+      const tabIdRaw = toggleTarget.getAttribute('data-tab-id') || (tabButton ? tabButton.getAttribute('data-tab-id') : null)
+      const tabId = Number(tabIdRaw)
+      event.preventDefault()
+      event.stopPropagation()
+      suppressToggleClick = true
+      if (Number.isFinite(tabId) && onToggleCollapse) {
+        onToggleCollapse(tabId)
+      }
+      return
+    }
+
+    const collapseAllTarget = event.target.closest('[data-role="collapse-all"]')
+    if (collapseAllTarget) {
+      event.preventDefault()
+      event.stopPropagation()
+      suppressCollapseAllClick = true
+      if (onCollapseAll) {
+        onCollapseAll()
+      }
+      return
+    }
+
+    if (event.target.closest('[data-role="close-tab"], [data-role="create-child-tab"], [data-role="toggle-mute"]')) return
 
     const tabButton = event.target.closest('.svb-tab[data-tab-id]:not(.is-compact)')
     if (tabButton) {
@@ -2173,6 +2236,7 @@ function createSidebarRenderer(options) {
     render(state) {
       if (!state) return
       latestState = state
+      updateTabsLookup(state)
       renderCurrent = () => this.render(latestState)
       const currentShell = ensureShell()
       root.classList.toggle('is-menu-open', !!contextMenu)

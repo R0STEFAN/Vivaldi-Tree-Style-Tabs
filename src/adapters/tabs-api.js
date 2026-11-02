@@ -643,9 +643,10 @@ function createTabsApi() {
     isOwnVivExtUpdate(tabId, changeInfo) {
       if (!pendingVivExtUpdateTabIds.has(tabId)) return false
       const info = changeInfo && typeof changeInfo === 'object' ? changeInfo : {}
-      const keys = Object.keys(info)
-      const isVivExtOnly = keys.length === 1 && keys[0] === 'vivExtData'
-      if (!isVivExtOnly) return false
+      // If substantive tab properties like URL or title changed, this is not just our metadata update.
+      if (info.url !== undefined || info.title !== undefined) {
+        return false
+      }
       pendingVivExtUpdateTabIds.delete(tabId)
       return true
     },

@@ -50,6 +50,30 @@ function createTreeController(api) {
     }
   }
 
+  function buildDerivedSnapshot(tabs, treeState) {
+    const treeTabs = buildTreeView({
+      tabs,
+      treeState,
+    }).visibleTabs
+    const fullTreeOrderIds = getFullTreeOrderIds({
+      tabs,
+      treeState,
+    })
+    const parentById = {}
+    const nodesById = treeState && treeState.nodesById ? treeState.nodesById : {}
+    for (const tabId of fullTreeOrderIds) {
+      const node = nodesById[tabId]
+      if (node && Number.isFinite(node.parentId)) {
+        parentById[tabId] = node.parentId
+      }
+    }
+    return {
+      treeTabs,
+      fullTreeOrderIds,
+      parentById,
+    }
+  }
+
   function restoreDerivedViewFromCache(tabs) {
     if (!cachedDerivedView) return null
     if (!haveSameTabOrder(cachedDerivedView.tabs, tabs)) return null
@@ -83,6 +107,30 @@ function createTreeController(api) {
     treeStore.load(contextKey, persistedTree)
     invalidateDerivedView()
     return true
+  }
+
+  let persistDebounceTimer = null
+  let pendingDebounceTabs = null
+
+  function scheduleDebouncedPersist(tabs, delay = 400) {
+    pendingDebounceTabs = tabs
+    if (persistDebounceTimer) clearTimeout(persistDebounceTimer)
+    persistDebounceTimer = setTimeout(() => {
+      persistDebounceTimer = null
+      const toPersist = pendingDebounceTabs
+      pendingDebounceTabs = null
+      persistCurrentTree(toPersist)
+    }, delay)
+  }
+
+  function flushPersist() {
+    if (persistDebounceTimer) {
+      clearTimeout(persistDebounceTimer)
+      persistDebounceTimer = null
+      const toPersist = pendingDebounceTabs
+      pendingDebounceTabs = null
+      return persistCurrentTree(toPersist)
+    }
   }
 
   async function persistCurrentTree(tabs) {
@@ -124,7 +172,12 @@ function createTreeController(api) {
     },
 
     async persistTree(tabs) {
+      flushPersist()
       await persistCurrentTree(tabs)
+    },
+
+    flushPersist() {
+      flushPersist()
     },
 
     registerExpectedCreation(intent) {
@@ -598,22 +651,7 @@ function createTreeController(api) {
       }
 
       const treeState = treeStore.exportState()
-      const treeTabs = buildTreeView({
-        tabs,
-        treeState,
-      }).visibleTabs
-      const fullTreeOrderIds = getFullTreeOrderIds({
-        tabs,
-        treeState,
-      })
-      const parentById = {}
-      const nodesById = treeState && treeState.nodesById ? treeState.nodesById : {}
-      for (const tabId of fullTreeOrderIds) {
-        const node = nodesById[tabId]
-        if (node && Number.isFinite(node.parentId)) {
-          parentById[tabId] = node.parentId
-        }
-      }
+      const { treeTabs, fullTreeOrderIds, parentById } = buildDerivedSnapshot(tabs, treeState)
 
       if (contextChanged || persistenceDirty) {
         persistCurrentTree(tabs)
@@ -630,7 +668,7 @@ function createTreeController(api) {
       }
     },
 
-    async toggleCollapsed(tabId, activeTabId, tabs) {
+    toggleCollapsed(tabId, activeTabId, tabs) {
       const treeState = treeStore.exportState()
       const node = treeState.nodesById && treeState.nodesById[tabId] ? treeState.nodesById[tabId] : null
       const willCollapse = !!(node && !node.collapsed)
@@ -640,14 +678,21 @@ function createTreeController(api) {
         && isDescendantOf(activeTabId, tabId, treeState)
 
       if (!treeStore.toggleCollapsed(tabId)) return false
-      invalidateDerivedView()
-      persistCurrentTree(tabs)
+
+      const nextTreeState = treeStore.exportState()
+      const { treeTabs, fullTreeOrderIds, parentById } = buildDerivedSnapshot(tabs, nextTreeState)
+      const currentTreeState = treeStore.getState()
+      const contextKey = currentTreeState.contextKey
+      cachedDerivedView = createDerivedViewCache(contextKey, tabs, treeTabs, fullTreeOrderIds, parentById)
+      scheduleDebouncedPersist(tabs, 400)
+
       return {
         activateTabId: shouldActivateParent ? tabId : null,
+        treeTabs,
       }
     },
 
-    async collapseAll(activeTabId, tabs) {
+    collapseAll(activeTabId, tabs) {
       const treeState = treeStore.exportState()
       let activateTabId = null
 
@@ -661,9 +706,18 @@ function createTreeController(api) {
       }
 
       if (!treeStore.collapseAll()) return false
-      invalidateDerivedView()
-      persistCurrentTree(tabs)
-      return { activateTabId }
+
+      const nextTreeState = treeStore.exportState()
+      const { treeTabs, fullTreeOrderIds, parentById } = buildDerivedSnapshot(tabs, nextTreeState)
+      const currentTreeState = treeStore.getState()
+      const contextKey = currentTreeState.contextKey
+      cachedDerivedView = createDerivedViewCache(contextKey, tabs, treeTabs, fullTreeOrderIds, parentById)
+      scheduleDebouncedPersist(tabs, 400)
+
+      return {
+        activateTabId,
+        treeTabs,
+      }
     },
 
     async moveTab(tabId, targetId, position, tabs) {

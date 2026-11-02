@@ -1466,29 +1466,51 @@ function createTabStore(api) {
       })
     },
 
-    async toggleCollapsed(tabId) {
-      const result = await treeController.toggleCollapsed(tabId, state.activeTabId, state.tabs)
+    toggleCollapsed(tabId) {
+      const result = treeController.toggleCollapsed(tabId, state.activeTabId, state.tabs)
       if (!result) return
+
+      const targetTab = state.tabs.find(t => t.id === tabId)
+      if (targetTab && targetTab.vivExtData && targetTab.vivExtData.svbTree) {
+        targetTab.vivExtData.svbTree.collapsed = !targetTab.vivExtData.svbTree.collapsed
+      }
+
+      const patch = {
+        treeTabs: result.treeTabs,
+      }
+
       if (Number.isFinite(result.activateTabId)) {
         releaseContextLock()
         pendingActiveRepairTabId = null
+        patch.activeTabId = result.activateTabId
         api.activateTab(result.activateTabId)
       }
-      await syncTabs({ preserveContext: true }, 'toggle-collapsed')
+
+      setState(patch)
     },
 
-    async collapseAll() {
-      const result = await treeController.collapseAll(state.activeTabId, state.tabs)
+    collapseAll() {
+      const result = treeController.collapseAll(state.activeTabId, state.tabs)
       if (!result) return
+
+      for (const t of state.tabs) {
+        if (t && t.vivExtData && t.vivExtData.svbTree) {
+          t.vivExtData.svbTree.collapsed = true
+        }
+      }
+
+      const patch = {
+        treeTabs: result.treeTabs,
+      }
+
       if (Number.isFinite(result.activateTabId)) {
         releaseContextLock()
         pendingActiveRepairTabId = null
+        patch.activeTabId = result.activateTabId
         api.activateTab(result.activateTabId)
       }
-      await syncTabs({
-        preserveContext: true,
-        activeRegularTabIdOverride: Number.isFinite(result.activateTabId) ? result.activateTabId : undefined,
-      }, 'collapse-all')
+
+      setState(patch)
     },
 
     async moveTreeTab(tabId, targetId, position) {
