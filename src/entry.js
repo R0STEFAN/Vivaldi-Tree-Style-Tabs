@@ -336,6 +336,9 @@ async function main() {
 
   unsubscribers.push(settingsStore.subscribe(() => {
     syncView()
+    if (store && typeof store.runAutoCloseJob === 'function') {
+      store.runAutoCloseJob().catch(error => console.warn('[svb] auto-close failed', error))
+    }
   }))
 
   theme.start()

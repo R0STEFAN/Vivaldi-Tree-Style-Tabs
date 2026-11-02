@@ -783,11 +783,15 @@ function createTabStore(api) {
     await activateBeforeCloseIfNeeded(validTargetIds)
     markTabsPreactivatedBeforeClose(validTargetIds)
     try {
-      if (validTargetIds.length === 1) {
+      if (validTargetIds.length === 1 && typeof api.closeTab === 'function') {
         await api.closeTab(validTargetIds[0])
         return
       }
-      await api.closeTabs(validTargetIds)
+      if (typeof api.closeTabs === 'function') {
+        await api.closeTabs(validTargetIds)
+      } else if (typeof api.closeTab === 'function') {
+        await Promise.all(validTargetIds.map(id => api.closeTab(id)))
+      }
     } catch (error) {
       clearPreactivatedCloseMarks(validTargetIds)
       throw error
@@ -1129,6 +1133,10 @@ function createTabStore(api) {
     } else if (shouldScheduleStartupReconcile) {
       nativeReconcile.scheduleStartup()
     }
+
+    if (isWorkspaceEvent) {
+      runAutoCloseJob().catch(error => console.warn('[svb] auto-close workspace sync failed', error))
+    }
   }
 
   function resetListeners() {
@@ -1283,7 +1291,72 @@ function createTabStore(api) {
         scheduleSync({ preserveContext: true }, 'workspaces', 12).catch(error => console.error('[svb] sync failed', error))
       }) : () => {},
       api.onBookmarksChanged ? api.onBookmarksChanged(refreshBookmarks) : () => {},
+      settingsStore.subscribe(() => {
+        runAutoCloseJob().catch(error => console.warn('[svb] auto-close failed', error))
+      }),
     ]
+  }
+
+  let isRunningAutoCloseJob = false
+
+  function isTabOrAncestorPinnedFolder(tabId) {
+    let currentId = tabId
+    const visited = new Set()
+    while (currentId != null && !visited.has(currentId)) {
+      visited.add(currentId)
+      const tab = getTabById(currentId)
+      if (tab && tab.vivExtData && typeof tab.vivExtData === 'object' && tab.vivExtData.pinnedFolder) {
+        return true
+      }
+      currentId = treeController.getParentId(currentId)
+    }
+    return false
+  }
+
+  async function runAutoCloseJob() {
+    const days = Number(settingsStore.get('autoCloseTabsDays'))
+    if (!days || days <= 0) return
+    if (isRunningAutoCloseJob) return
+    isRunningAutoCloseJob = true
+
+    try {
+      const thresholdMs = days * 24 * 60 * 60 * 1000
+      const now = Date.now()
+      const candidateIds = new Set()
+
+      // Check all visible unpinned tabs in the current panel (both root tabs and child tabs)
+      for (const tab of state.tabs) {
+        if (!tab || tab.pinned || isTabOrAncestorPinnedFolder(tab.id)) continue
+        if (tab.id === state.activeTabId || tab.active) continue
+
+        const record = tab.vivExtData && typeof tab.vivExtData === 'object' && tab.vivExtData['svbTree']
+        if (record && record.createdAt) {
+          const age = now - Number(record.createdAt)
+          if (age > thresholdMs) {
+            const isFolder = !!(tab.vivExtData && tab.vivExtData.isFolder)
+            const closeIds = isFolder
+              ? treeController.getSubtreeTargetIds(tab.id)
+              : treeController.getCloseTargetIds(tab.id)
+            const safeCloseIds = (closeIds.length ? closeIds : [tab.id]).filter(id => {
+              if (id === state.activeTabId) return false
+              const t = getTabById(id)
+              if (!t || t.pinned || t.active || isTabOrAncestorPinnedFolder(id)) return false
+              return true
+            })
+            for (const id of safeCloseIds) {
+              candidateIds.add(id)
+            }
+          }
+        }
+      }
+
+      const targetIds = Array.from(candidateIds)
+      if (targetIds.length > 0) {
+        await closeTabIds(targetIds)
+      }
+    } finally {
+      isRunningAutoCloseJob = false
+    }
   }
 
   return {
@@ -1317,11 +1390,13 @@ function createTabStore(api) {
 
     startAutoCloseJob() {
       if (this._autoCloseTimer) clearInterval(this._autoCloseTimer)
-      this.repairMissingCreatedAt().then(() => {
-        this.runAutoCloseJob()
+      this.repairMissingCreatedAt().catch(err => console.warn('[svb] repairMissingCreatedAt error', err)).then(() => {
+        runAutoCloseJob().catch(error => console.warn('[svb] auto-close failed', error))
       })
       // Check every hour
-      this._autoCloseTimer = setInterval(() => this.runAutoCloseJob(), 3600 * 1000)
+      this._autoCloseTimer = setInterval(() => {
+        runAutoCloseJob().catch(error => console.warn('[svb] auto-close failed', error))
+      }, 3600 * 1000)
       if (this._autoCloseTimer && typeof this._autoCloseTimer.unref === 'function') {
         this._autoCloseTimer.unref()
       }
@@ -1349,49 +1424,7 @@ function createTabStore(api) {
     },
 
     runAutoCloseJob() {
-      const days = Number(settingsStore.get('autoCloseTabsDays'))
-      if (!days || days <= 0) return
-
-      const thresholdMs = days * 24 * 60 * 60 * 1000
-      const now = Date.now()
-      const expandedTargetIds = []
-      
-      const treeState = treeController.getState()
-      const rootIds = treeState ? treeState.rootIds : []
-
-      function isTabOrAncestorPinnedFolder(tabId) {
-        let currentId = tabId
-        const visited = new Set()
-        while (currentId != null && !visited.has(currentId)) {
-          visited.add(currentId)
-          const tab = getTabById(currentId)
-          if (tab && tab.vivExtData && typeof tab.vivExtData === 'object' && tab.vivExtData.pinnedFolder) {
-            return true
-          }
-          currentId = treeController.getParentId(currentId)
-        }
-        return false
-      }
-
-      for (const rootId of rootIds) {
-        const tab = state.tabs.find(t => t.id === rootId) || state.pinnedTabs.find(t => t.id === rootId)
-        if (!tab || tab.pinned || isTabOrAncestorPinnedFolder(rootId)) continue
-
-        const record = tab.vivExtData && typeof tab.vivExtData === 'object' && tab.vivExtData['svbTree']
-        if (record && record.createdAt) {
-          const age = now - Number(record.createdAt)
-          if (age > thresholdMs) {
-            const isFolder = tab.vivExtData.isFolder
-            const closeIds = isFolder ? treeController.getSubtreeTargetIds(rootId) : treeController.getCloseTargetIds(rootId)
-            const safeCloseIds = closeIds.filter(id => !isTabOrAncestorPinnedFolder(id))
-            expandedTargetIds.push(...(safeCloseIds.length ? safeCloseIds : [rootId]))
-          }
-        }
-      }
-
-      if (expandedTargetIds.length > 0) {
-        api.closeTabs(expandedTargetIds)
-      }
+      return runAutoCloseJob()
     },
 
     activateTab(tabId) {
