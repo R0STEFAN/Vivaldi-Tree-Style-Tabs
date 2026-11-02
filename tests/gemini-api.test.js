@@ -35,6 +35,19 @@ describe('Gemini API Service', () => {
         assert.strictEqual(sanitizeTabForPrompt(tab), null)
       }
     })
+
+    it('detects search queries, cleans title suffixes, and extracts searchTopic', () => {
+      const googleTab = {
+        id: 201,
+        title: 'cachyos nvidia drivers - Пошук Google',
+        url: 'https://www.google.com/search?q=cachyos+nvidia+drivers&client=vivaldi',
+      }
+      const safe = sanitizeTabForPrompt(googleTab)
+      assert.strictEqual(safe.id, 201)
+      assert.strictEqual(safe.title, 'cachyos nvidia drivers')
+      assert.strictEqual(safe.searchTopic, 'cachyos nvidia drivers')
+      assert.strictEqual(safe.isSearchQuery, true)
+    })
   })
 
   describe('sanitizeFolderName', () => {
@@ -154,6 +167,7 @@ describe('Gemini API Service', () => {
       assert.ok(promptText.includes('💻 Dev'))
       assert.ok(promptText.includes('github.com'))
       assert.ok(promptText.toLowerCase().includes('exhaustive') || promptText.toLowerCase().includes('all relevant thematic groups'))
+      assert.ok(promptText.toLowerCase().includes('search query') || promptText.toLowerCase().includes('search engine'))
       assert.strictEqual(capturedBody.generationConfig.maxOutputTokens, 8192)
 
       // Verify parsed output

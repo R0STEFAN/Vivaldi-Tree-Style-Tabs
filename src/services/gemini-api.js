@@ -45,14 +45,53 @@ function sanitizeTabForPrompt(tab) {
     return null
   }
 
+  const hostname = parsedUrl.hostname.toLowerCase()
   const domain = parsedUrl.hostname.replace(/^www\./i, '')
-  const title = typeof tab.title === 'string' ? tab.title.trim().slice(0, 120) : domain
+  let cleanTitle = typeof tab.title === 'string' ? tab.title.trim() : ''
 
-  return {
+  // Detect search queries (Google, Bing, DuckDuckGo, Brave, Ecosia, Yandex)
+  let isSearchQuery = false
+  let searchTopic = ''
+
+  const isGoogle = (hostname.includes('google.') && (parsedUrl.pathname === '/search' || parsedUrl.searchParams.has('q')))
+  const isBing = (hostname.includes('bing.com') && (parsedUrl.pathname === '/search' || parsedUrl.searchParams.has('q')))
+  const isDuckDuckGo = (hostname.includes('duckduckgo.com') && parsedUrl.searchParams.has('q'))
+  const isBrave = (hostname.includes('brave.com') && parsedUrl.searchParams.has('q'))
+  const isEcosia = (hostname.includes('ecosia.org') && parsedUrl.searchParams.has('q'))
+  const isYandex = (hostname.includes('yandex.') && (parsedUrl.pathname === '/search' || parsedUrl.searchParams.has('text')))
+
+  if (isGoogle || isBing || isDuckDuckGo || isBrave || isEcosia || isYandex) {
+    isSearchQuery = true
+    const rawQuery = isYandex ? parsedUrl.searchParams.get('text') : parsedUrl.searchParams.get('q')
+    if (rawQuery && typeof rawQuery === 'string') {
+      searchTopic = rawQuery.trim().slice(0, 100)
+    }
+
+    // Strip search engine branding from title
+    cleanTitle = cleanTitle.replace(/\s*[-–—|•]\s*(Пошук Google|Google Search|Поиск в Google|Google Suche|Google|DuckDuckGo|Bing Search|Bing|Ecosia|Brave Search)\s*$/i, '')
+    cleanTitle = cleanTitle.replace(/^(Google Search|DuckDuckGo|Bing):\s*/i, '')
+    if (!cleanTitle && searchTopic) {
+      cleanTitle = searchTopic
+    }
+    if (!searchTopic && cleanTitle) {
+      searchTopic = cleanTitle
+    }
+  }
+
+  const title = (cleanTitle || domain).slice(0, 120)
+
+  const result = {
     id: Number(tab.id),
     title,
     domain,
   }
+
+  if (isSearchQuery && searchTopic) {
+    result.searchTopic = searchTopic
+    result.isSearchQuery = true
+  }
+
+  return result
 }
 
 function sanitizeFolderName(rawName) {
@@ -148,6 +187,12 @@ async function groupTabsWithGemini(options) {
             `- Folder names MUST be extremely brief: strictly 1 to 3 words (maximum 30 characters).`,
             `- Folder names MUST start with one relevant emoji followed by a concise category name in ${langInstruction} (e.g. "🤖 Штучний інтелект", "🛒 Покупки", "💻 Розробка", "📰 Новини").`,
             `- NEVER include random numbers, sequences, metadata, or run-on words in folder names.`,
+            ``,
+            `SEARCH ENGINE QUERIES (Google, Bing, DuckDuckGo, etc.):`,
+            `- NEVER create a generic "Пошук" / "Search" / "Google" folder!`,
+            `- Group search queries strictly by their ACTUAL SPECIFIC TOPIC or subject matter (e.g. searching for programming solutions belongs with development tabs; searching for product prices belongs with shopping tabs).`,
+            `- If multiple search queries share the same specific topic, group them under that topic (e.g. "🐧 Linux", "🛒 Покупки"), NEVER under "🔍 Пошук".`,
+            `- If a search query is isolated and has no topic overlap with other tabs, leave it ungrouped.`,
           ].join('\n'),
         },
       ],
@@ -164,8 +209,9 @@ async function groupTabsWithGemini(options) {
               `1. Existing Folders: Check the existing folders first: ${JSON.stringify(existingFolders)}. If any tabs fit into an existing folder, return its "folderId" and add the tab IDs to it.`,
               `2. Exhaustive Multi-group Coverage: Analyze the full list of tabs and return ALL relevant thematic groups in one response. Do NOT stop after just 1 or 2 groups. Group as many tabs as possible into their respective 2+ tab themes.`,
               `3. New Folders: Create a new folder whenever 2 or more tabs share a theme. Isolated tabs that have no topic overlap with other tabs or existing folders must remain ungrouped.`,
-              `4. Naming: Name all new folders in ${langInstruction}. Each new folder name must be short (1-3 words) and begin with an appropriate emoji.`,
-              `5. Colors: Assign a suitable color for new folders from this list: ${JSON.stringify(FOLDER_COLORS)}.`,
+              `4. Search Engine Queries: Do NOT create a generic "Search" or "Google" folder! Look at "searchTopic" or the search terms in the tab title and categorize it by the subject matter being searched (e.g. search for shoes -> 🛒 Shopping; search for Linux drivers -> 🐧 Linux/Tech). Never group unrelated search queries together just because they are on google.com.`,
+              `5. Naming: Name all new folders in ${langInstruction}. Each new folder name must be short (1-3 words) and begin with an appropriate emoji.`,
+              `6. Colors: Assign a suitable color for new folders from this list: ${JSON.stringify(FOLDER_COLORS)}.`,
               ``,
               `Tabs to group:`,
               JSON.stringify(safeTabs, null, 2),
