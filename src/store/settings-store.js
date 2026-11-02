@@ -8,6 +8,9 @@ const DEFAULT_SETTINGS = {
   autoCloseTabsDays: 0,
   newTabPlacement: 'bottom',
   autoHideMode: 'full',
+  geminiApiKey: '',
+  geminiModel: 'gemini-2.5-flash',
+  geminiFolderLanguage: 'uk',
 }
 
 function createSettingsStore() {

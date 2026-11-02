@@ -68,3 +68,33 @@ describe('settingsStore - autoCloseTabsDays', () => {
     }
   })
 })
+
+describe('settingsStore - Gemini AI settings', () => {
+  it('has correct defaults for Gemini settings in DEFAULT_SETTINGS', () => {
+    assert.strictEqual(DEFAULT_SETTINGS.geminiApiKey, '')
+    assert.strictEqual(DEFAULT_SETTINGS.geminiModel, 'gemini-2.5-flash')
+    assert.strictEqual(DEFAULT_SETTINGS.geminiFolderLanguage, 'uk')
+  })
+
+  it('defaults Gemini settings on fresh store', () => {
+    const store = createSettingsStore()
+    assert.strictEqual(store.get('geminiApiKey'), '')
+    assert.strictEqual(store.get('geminiModel'), 'gemini-2.5-flash')
+    assert.strictEqual(store.get('geminiFolderLanguage'), 'uk')
+  })
+
+  it('allows updating Gemini settings', () => {
+    settingsStore.set('geminiApiKey', 'AIzaSyTestKey')
+    settingsStore.set('geminiModel', 'gemini-2.0-flash')
+    settingsStore.set('geminiFolderLanguage', 'en')
+
+    assert.strictEqual(settingsStore.get('geminiApiKey'), 'AIzaSyTestKey')
+    assert.strictEqual(settingsStore.get('geminiModel'), 'gemini-2.0-flash')
+    assert.strictEqual(settingsStore.get('geminiFolderLanguage'), 'en')
+
+    // Clean up
+    settingsStore.set('geminiApiKey', '')
+    settingsStore.set('geminiModel', 'gemini-2.5-flash')
+    settingsStore.set('geminiFolderLanguage', 'uk')
+  })
+})
