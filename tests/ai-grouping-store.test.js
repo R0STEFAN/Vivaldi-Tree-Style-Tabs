@@ -211,6 +211,8 @@ describe('TabStore - AI Grouping Orchestrator', () => {
       await store.init()
       const result = await store.aiGroupTabs({ fetchFn: mockFetch })
       assert.strictEqual(result.success, true)
+      assert.strictEqual(result.count, 3)
+      assert.strictEqual(result.foldersCount, 2)
 
       // Tab 11 should have parentId = 10 (or parentNodeId matching node_10)
       const state = store.getState()
@@ -352,6 +354,8 @@ describe('TabStore - AI Grouping Orchestrator', () => {
       await store.init()
       const result = await store.aiGroupTabs({ fetchFn: mockFetch })
       assert.strictEqual(result.success, true)
+      assert.strictEqual(result.count, 2)
+      assert.strictEqual(result.foldersCount, 1)
 
       const state = store.getState()
       assert.strictEqual(createdTabs.length, 1)

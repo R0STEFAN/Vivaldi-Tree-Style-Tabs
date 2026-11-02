@@ -1802,12 +1802,16 @@ body.svb-is-resizing {
   background: var(--svb-panel-hover);
   border-color: var(--svb-accent);
 }
-}
 
 @keyframes svb-sparkle-pulse {
   0% { transform: scale(1) rotate(0deg); opacity: 0.85; }
   50% { transform: scale(1.15) rotate(180deg); opacity: 1; filter: drop-shadow(0 0 4px var(--svb-accent)); }
   100% { transform: scale(1) rotate(360deg); opacity: 0.85; }
+}
+
+@keyframes svb-spinner-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 #svb-root .svb-icon-button[data-role="ai-group-tabs"] .svb-sparkles-icon {
@@ -1816,9 +1820,116 @@ body.svb-is-resizing {
   display: block;
 }
 
-#svb-root .svb-icon-button[data-role="ai-group-tabs"].is-loading svg {
-  animation: svb-sparkle-pulse 1.2s infinite ease-in-out;
+#svb-root .svb-icon-button[data-role="ai-group-tabs"] .svb-ai-spinner-icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+  animation: svb-spinner-rotate 0.75s linear infinite;
   color: var(--svb-accent);
+}
+
+#svb-root .svb-icon-button[data-role="ai-group-tabs"].is-loading {
+  cursor: wait;
+}
+
+/* Toast Notifications */
+#svb-root .svb-toast-host {
+  position: absolute;
+  top: 40px;
+  left: 8px;
+  right: 8px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+#svb-root .svb-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border-radius: var(--svb-radius);
+  font-size: 11.5px;
+  line-height: 1.35;
+  font-weight: 500;
+  color: var(--svb-text);
+  background: var(--svb-panel, #2d3136);
+  border: 1px solid var(--svb-border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(10px);
+  animation: svb-toast-in 0.22s var(--svb-ease-out) forwards;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#svb-root .svb-toast.is-hiding {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+#svb-root .svb-toast--success {
+  border-color: rgba(52, 199, 89, 0.4);
+  background: linear-gradient(135deg, rgba(52, 199, 89, 0.18), var(--svb-panel, #2d3136));
+}
+
+#svb-root .svb-toast--warning {
+  border-color: rgba(255, 159, 10, 0.4);
+  background: linear-gradient(135deg, rgba(255, 159, 10, 0.18), var(--svb-panel, #2d3136));
+}
+
+#svb-root .svb-toast--error {
+  border-color: rgba(255, 69, 58, 0.4);
+  background: linear-gradient(135deg, rgba(255, 69, 58, 0.18), var(--svb-panel, #2d3136));
+}
+
+#svb-root .svb-toast--info {
+  border-color: rgba(71, 207, 255, 0.4);
+  background: linear-gradient(135deg, rgba(71, 207, 255, 0.18), var(--svb-panel, #2d3136));
+}
+
+#svb-root .svb-toast__message {
+  flex: 1;
+  word-break: break-word;
+}
+
+#svb-root .svb-toast__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  margin-left: 4px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--svb-text-muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  transition: color var(--svb-d-fast) ease, background var(--svb-d-fast) ease;
+}
+
+#svb-root .svb-toast__close:hover {
+  color: var(--svb-text-strong);
+  background: var(--svb-panel-hover);
+}
+
+@keyframes svb-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 #svb-root .svb-settings-options {
@@ -4851,7 +4962,8 @@ async function groupTabsWithGemini(options) {
         {
           text: [
             `You are an expert browser tab organizer for Tree Style Tabs in Vivaldi.`,
-            `Your task is to group browser tabs into clean, concise thematic folders.`,
+            `Your task is to analyze ALL provided tabs and group them comprehensively into clean, concise thematic folders in a single pass.`,
+            `Do not stop after creating only one folder—find all distinct groups of 2+ related tabs across the entire tab set.`,
             ``,
             `CRITICAL FOLDER NAME RULES:`,
             `- Folder names MUST be extremely brief: strictly 1 to 3 words (maximum 30 characters).`,
@@ -4871,9 +4983,10 @@ async function groupTabsWithGemini(options) {
               ``,
               `IMPORTANT RULES:`,
               `1. Existing Folders: Check the existing folders first: ${JSON.stringify(existingFolders)}. If any tabs fit into an existing folder, return its "folderId" and add the tab IDs to it.`,
-              `2. New Folders: Create a new folder ONLY if there are AT LEAST 2 tabs that belong together. Do not create folders for single isolated tabs! Solo tabs that do not fit into existing folders must be left ungrouped.`,
-              `3. Naming: Name all new folders in ${langInstruction}. Each new folder name must be short (1-3 words) and begin with an appropriate emoji.`,
-              `4. Colors: Assign a suitable color for new folders from this list: ${JSON.stringify(FOLDER_COLORS)}.`,
+              `2. Exhaustive Multi-group Coverage: Analyze the full list of tabs and return ALL relevant thematic groups in one response. Do NOT stop after just 1 or 2 groups. Group as many tabs as possible into their respective 2+ tab themes.`,
+              `3. New Folders: Create a new folder whenever 2 or more tabs share a theme. Isolated tabs that have no topic overlap with other tabs or existing folders must remain ungrouped.`,
+              `4. Naming: Name all new folders in ${langInstruction}. Each new folder name must be short (1-3 words) and begin with an appropriate emoji.`,
+              `5. Colors: Assign a suitable color for new folders from this list: ${JSON.stringify(FOLDER_COLORS)}.`,
               ``,
               `Tabs to group:`,
               JSON.stringify(safeTabs, null, 2),
@@ -4884,13 +4997,14 @@ async function groupTabsWithGemini(options) {
     ],
     generationConfig: {
       temperature: 0.4,
-      maxOutputTokens: 2048,
+      maxOutputTokens: 8192,
       responseMimeType: 'application/json',
       responseSchema: {
         type: 'OBJECT',
         properties: {
           groups: {
             type: 'ARRAY',
+            description: 'Exhaustive array of all thematic folder groups organizing the tabs',
             items: {
               type: 'OBJECT',
               properties: {
@@ -6588,11 +6702,12 @@ function createTabStore(api) {
 
       const groups = Array.isArray(result?.groups) ? result.groups : []
       if (groups.length === 0) {
-        return { success: true, count: 0 }
+        return { success: true, count: 0, foldersCount: 0 }
       }
 
       const candidateIdSet = new Set(candidateTabs.map(t => t.id))
       let movedCount = 0
+      let foldersCount = 0
 
       for (const group of groups) {
         const targetTabIds = (group.tabIds || []).filter(id => candidateIdSet.has(id))
@@ -6604,6 +6719,7 @@ function createTabStore(api) {
             await treeController.moveTabs(targetTabIds, existingFolder.id, 'inside', state.tabs)
             for (const id of targetTabIds) candidateIdSet.delete(id)
             movedCount += targetTabIds.length
+            foldersCount++
           }
         } else if (group.newFolderName && targetTabIds.length >= 2) {
           const folderName = group.newFolderName
@@ -6632,6 +6748,7 @@ function createTabStore(api) {
             await treeController.moveTabs(targetTabIds, newFolderTab.id, 'inside', state.tabs)
             for (const id of targetTabIds) candidateIdSet.delete(id)
             movedCount += targetTabIds.length
+            foldersCount++
           }
         }
       }
@@ -6641,7 +6758,7 @@ function createTabStore(api) {
         await syncTabs({ preserveContext: true }, 'ai-group-tabs')
       }
 
-      return { success: true, count: movedCount }
+      return { success: true, count: movedCount, foldersCount }
     },
 
     createChildTab(parentTabId) {
@@ -10513,6 +10630,15 @@ function renderSparklesIcon() {
   `
 }
 
+function renderAiSpinnerIcon() {
+  return `
+    <svg class="svb-ai-spinner-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2" stroke-opacity="0.25" />
+      <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M8 2a6 6 0 0 1 6 6" />
+    </svg>
+  `
+}
+
 function createNodeFromHtml(html) {
   const template = document.createElement('template')
   template.innerHTML = html.trim()
@@ -10641,6 +10767,57 @@ function createSidebarRenderer(options) {
     renderCurrent()
   }
 
+  let activeToastTimer = null
+
+  function showToast(message, type = 'info', duration = 3500) {
+    if (!shell || !shell.toastHost) return
+    const host = shell.toastHost
+
+    if (activeToastTimer) {
+      clearTimeout(activeToastTimer)
+      activeToastTimer = null
+    }
+
+    host.innerHTML = ''
+
+    const toast = document.createElement('div')
+    toast.className = `svb-toast svb-toast--${type}`
+
+    const msgSpan = document.createElement('span')
+    msgSpan.className = 'svb-toast__message'
+    msgSpan.textContent = message
+    toast.appendChild(msgSpan)
+
+    const closeBtn = document.createElement('button')
+    closeBtn.className = 'svb-toast__close'
+    closeBtn.type = 'button'
+    closeBtn.setAttribute('aria-label', 'Close')
+    closeBtn.innerHTML = '&times;'
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      dismissToast(toast)
+    })
+    toast.appendChild(closeBtn)
+
+    host.appendChild(toast)
+
+    if (duration > 0) {
+      activeToastTimer = setTimeout(() => {
+        dismissToast(toast)
+      }, duration)
+    }
+  }
+
+  function dismissToast(toast) {
+    if (!toast || !toast.parentNode) return
+    toast.classList.add('is-hiding')
+    setTimeout(() => {
+      if (toast && toast.parentNode) {
+        toast.parentNode.removeChild(toast)
+      }
+    }, 200)
+  }
+
   function startEditing(tabId) {
     if (!Number.isFinite(tabId)) return
     const tab = findTab(tabId)
@@ -10666,6 +10843,7 @@ function createSidebarRenderer(options) {
             <button class="svb-icon-button" data-role="toggle-pinned" title="Pin panel"></button>
           </div>
         </div>
+        <div class="svb-toast-host" aria-live="polite"></div>
 
         <div class="svb-main-view">
           <div class="svb-workspaces" style="display:none"></div>
@@ -10848,6 +11026,7 @@ function createSidebarRenderer(options) {
       mainView: root.querySelector('.svb-main-view'),
       workspaceBar: root.querySelector('.svb-workspaces'),
       settingsView: root.querySelector('.svb-settings-view'),
+      toastHost: root.querySelector('.svb-toast-host'),
       count: root.querySelector('.svb-header__count'),
       settingsButton: root.querySelector('[data-role="toggle-settings"]'),
       collapseAllButton: root.querySelector('[data-role="collapse-all"]'),
@@ -11098,8 +11277,15 @@ function createSidebarRenderer(options) {
     currentShell.collapseAllButton.disabled = !canCollapseAll
     currentShell.collapseAllButton.innerHTML = renderCollapseAllIcon()
     if (currentShell.aiGroupButton) {
-      currentShell.aiGroupButton.innerHTML = renderSparklesIcon()
-      if (!isAiGroupingInProgress) {
+      if (isAiGroupingInProgress) {
+        currentShell.aiGroupButton.className = 'svb-icon-button is-loading'
+        currentShell.aiGroupButton.disabled = true
+        currentShell.aiGroupButton.innerHTML = renderAiSpinnerIcon()
+        currentShell.aiGroupButton.title = 'AI is grouping tabs...'
+      } else {
+        currentShell.aiGroupButton.className = 'svb-icon-button'
+        currentShell.aiGroupButton.disabled = false
+        currentShell.aiGroupButton.innerHTML = renderSparklesIcon()
         currentShell.aiGroupButton.title = 'AI: Group tabs into folders (Gemini)'
       }
     }
@@ -11890,6 +12076,7 @@ function createSidebarRenderer(options) {
       event.stopPropagation()
       const apiKey = settingsStore.get('geminiApiKey')
       if (!apiKey || !apiKey.trim()) {
+        showToast('⚠️ Please enter a Gemini API Key in Settings.', 'warning', 4000)
         isSettingsOpen = true
         renderCurrent()
         setTimeout(() => {
@@ -11904,22 +12091,44 @@ function createSidebarRenderer(options) {
 
       if (isAiGroupingInProgress) return
       isAiGroupingInProgress = true
-      if (shell && shell.aiGroupButton) {
-        shell.aiGroupButton.classList.add('is-loading')
-        shell.aiGroupButton.title = 'AI is grouping tabs...'
-      }
+      updateShellControls(shell, latestState, latestTreeTabs)
 
       Promise.resolve()
-        .then(() => onAiGroupTabs && onAiGroupTabs())
+        .then(async () => {
+          if (!onAiGroupTabs) return
+          const res = await onAiGroupTabs()
+          if (!res) return
+
+          if (res.success) {
+            if (res.count > 0) {
+              const fCount = res.foldersCount || 1
+              showToast(
+                `✨ Organized ${res.count} tab${res.count === 1 ? '' : 's'} into ${fCount} folder${fCount === 1 ? '' : 's'}!`,
+                'success',
+                4000
+              )
+            } else {
+              showToast('✨ All tabs are already organized in folders.', 'info', 3500)
+            }
+          } else {
+            if (res.reason === 'missing-key') {
+              showToast('⚠️ Please enter a Gemini API Key in Settings.', 'warning', 4000)
+              isSettingsOpen = true
+            } else if (res.reason === 'not-enough-tabs') {
+              showToast('⚠️ At least 2 tabs are required for AI grouping.', 'warning', 3500)
+            } else if (res.reason === 'api-error') {
+              showToast(`❌ AI grouping failed: ${res.error || 'API error'}`, 'error', 5000)
+            } else {
+              showToast('❌ Failed to group tabs.', 'error', 4000)
+            }
+          }
+        })
         .catch(err => {
           console.error('[svb-ui] AI grouping error', err)
+          showToast(`❌ Error: ${err.message || 'Something went wrong'}`, 'error', 5000)
         })
         .finally(() => {
           isAiGroupingInProgress = false
-          if (shell && shell.aiGroupButton) {
-            shell.aiGroupButton.classList.remove('is-loading')
-            shell.aiGroupButton.title = 'AI: Group tabs into folders'
-          }
           renderCurrent()
         })
       return
@@ -12652,6 +12861,10 @@ function createSidebarRenderer(options) {
     },
 
     dispose() {
+      if (activeToastTimer) {
+        clearTimeout(activeToastTimer)
+        activeToastTimer = null
+      }
       if (pinnedGridObserver) pinnedGridObserver.disconnect()
       if (workspaceBarObserver) workspaceBarObserver.disconnect()
       eventController.abort()

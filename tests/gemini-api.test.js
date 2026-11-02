@@ -148,11 +148,13 @@ describe('Gemini API Service', () => {
       assert.ok(capturedUrl.includes('gemini-2.5-flash'))
       assert.ok(capturedUrl.includes('test-key'))
 
-      // Verify prompt content mentions language and existing folders
+      // Verify prompt content mentions language, existing folders, and exhaustive grouping
       const promptText = JSON.stringify(capturedBody)
       assert.ok(promptText.includes('Ukrainian') || promptText.includes('uk'))
       assert.ok(promptText.includes('💻 Dev'))
       assert.ok(promptText.includes('github.com'))
+      assert.ok(promptText.toLowerCase().includes('exhaustive') || promptText.toLowerCase().includes('all relevant thematic groups'))
+      assert.strictEqual(capturedBody.generationConfig.maxOutputTokens, 8192)
 
       // Verify parsed output
       assert.strictEqual(result.groups.length, 2)

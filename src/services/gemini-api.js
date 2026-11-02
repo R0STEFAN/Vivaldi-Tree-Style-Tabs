@@ -141,7 +141,8 @@ async function groupTabsWithGemini(options) {
         {
           text: [
             `You are an expert browser tab organizer for Tree Style Tabs in Vivaldi.`,
-            `Your task is to group browser tabs into clean, concise thematic folders.`,
+            `Your task is to analyze ALL provided tabs and group them comprehensively into clean, concise thematic folders in a single pass.`,
+            `Do not stop after creating only one folder—find all distinct groups of 2+ related tabs across the entire tab set.`,
             ``,
             `CRITICAL FOLDER NAME RULES:`,
             `- Folder names MUST be extremely brief: strictly 1 to 3 words (maximum 30 characters).`,
@@ -161,9 +162,10 @@ async function groupTabsWithGemini(options) {
               ``,
               `IMPORTANT RULES:`,
               `1. Existing Folders: Check the existing folders first: ${JSON.stringify(existingFolders)}. If any tabs fit into an existing folder, return its "folderId" and add the tab IDs to it.`,
-              `2. New Folders: Create a new folder ONLY if there are AT LEAST 2 tabs that belong together. Do not create folders for single isolated tabs! Solo tabs that do not fit into existing folders must be left ungrouped.`,
-              `3. Naming: Name all new folders in ${langInstruction}. Each new folder name must be short (1-3 words) and begin with an appropriate emoji.`,
-              `4. Colors: Assign a suitable color for new folders from this list: ${JSON.stringify(FOLDER_COLORS)}.`,
+              `2. Exhaustive Multi-group Coverage: Analyze the full list of tabs and return ALL relevant thematic groups in one response. Do NOT stop after just 1 or 2 groups. Group as many tabs as possible into their respective 2+ tab themes.`,
+              `3. New Folders: Create a new folder whenever 2 or more tabs share a theme. Isolated tabs that have no topic overlap with other tabs or existing folders must remain ungrouped.`,
+              `4. Naming: Name all new folders in ${langInstruction}. Each new folder name must be short (1-3 words) and begin with an appropriate emoji.`,
+              `5. Colors: Assign a suitable color for new folders from this list: ${JSON.stringify(FOLDER_COLORS)}.`,
               ``,
               `Tabs to group:`,
               JSON.stringify(safeTabs, null, 2),
@@ -174,13 +176,14 @@ async function groupTabsWithGemini(options) {
     ],
     generationConfig: {
       temperature: 0.4,
-      maxOutputTokens: 2048,
+      maxOutputTokens: 8192,
       responseMimeType: 'application/json',
       responseSchema: {
         type: 'OBJECT',
         properties: {
           groups: {
             type: 'ARRAY',
+            description: 'Exhaustive array of all thematic folder groups organizing the tabs',
             items: {
               type: 'OBJECT',
               properties: {

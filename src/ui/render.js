@@ -766,6 +766,15 @@ function renderSparklesIcon() {
   `
 }
 
+function renderAiSpinnerIcon() {
+  return `
+    <svg class="svb-ai-spinner-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="2" stroke-opacity="0.25" />
+      <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M8 2a6 6 0 0 1 6 6" />
+    </svg>
+  `
+}
+
 function createNodeFromHtml(html) {
   const template = document.createElement('template')
   template.innerHTML = html.trim()
@@ -894,6 +903,57 @@ function createSidebarRenderer(options) {
     renderCurrent()
   }
 
+  let activeToastTimer = null
+
+  function showToast(message, type = 'info', duration = 3500) {
+    if (!shell || !shell.toastHost) return
+    const host = shell.toastHost
+
+    if (activeToastTimer) {
+      clearTimeout(activeToastTimer)
+      activeToastTimer = null
+    }
+
+    host.innerHTML = ''
+
+    const toast = document.createElement('div')
+    toast.className = `svb-toast svb-toast--${type}`
+
+    const msgSpan = document.createElement('span')
+    msgSpan.className = 'svb-toast__message'
+    msgSpan.textContent = message
+    toast.appendChild(msgSpan)
+
+    const closeBtn = document.createElement('button')
+    closeBtn.className = 'svb-toast__close'
+    closeBtn.type = 'button'
+    closeBtn.setAttribute('aria-label', 'Close')
+    closeBtn.innerHTML = '&times;'
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      dismissToast(toast)
+    })
+    toast.appendChild(closeBtn)
+
+    host.appendChild(toast)
+
+    if (duration > 0) {
+      activeToastTimer = setTimeout(() => {
+        dismissToast(toast)
+      }, duration)
+    }
+  }
+
+  function dismissToast(toast) {
+    if (!toast || !toast.parentNode) return
+    toast.classList.add('is-hiding')
+    setTimeout(() => {
+      if (toast && toast.parentNode) {
+        toast.parentNode.removeChild(toast)
+      }
+    }, 200)
+  }
+
   function startEditing(tabId) {
     if (!Number.isFinite(tabId)) return
     const tab = findTab(tabId)
@@ -919,6 +979,7 @@ function createSidebarRenderer(options) {
             <button class="svb-icon-button" data-role="toggle-pinned" title="Pin panel"></button>
           </div>
         </div>
+        <div class="svb-toast-host" aria-live="polite"></div>
 
         <div class="svb-main-view">
           <div class="svb-workspaces" style="display:none"></div>
@@ -1101,6 +1162,7 @@ function createSidebarRenderer(options) {
       mainView: root.querySelector('.svb-main-view'),
       workspaceBar: root.querySelector('.svb-workspaces'),
       settingsView: root.querySelector('.svb-settings-view'),
+      toastHost: root.querySelector('.svb-toast-host'),
       count: root.querySelector('.svb-header__count'),
       settingsButton: root.querySelector('[data-role="toggle-settings"]'),
       collapseAllButton: root.querySelector('[data-role="collapse-all"]'),
@@ -1351,8 +1413,15 @@ function createSidebarRenderer(options) {
     currentShell.collapseAllButton.disabled = !canCollapseAll
     currentShell.collapseAllButton.innerHTML = renderCollapseAllIcon()
     if (currentShell.aiGroupButton) {
-      currentShell.aiGroupButton.innerHTML = renderSparklesIcon()
-      if (!isAiGroupingInProgress) {
+      if (isAiGroupingInProgress) {
+        currentShell.aiGroupButton.className = 'svb-icon-button is-loading'
+        currentShell.aiGroupButton.disabled = true
+        currentShell.aiGroupButton.innerHTML = renderAiSpinnerIcon()
+        currentShell.aiGroupButton.title = 'AI is grouping tabs...'
+      } else {
+        currentShell.aiGroupButton.className = 'svb-icon-button'
+        currentShell.aiGroupButton.disabled = false
+        currentShell.aiGroupButton.innerHTML = renderSparklesIcon()
         currentShell.aiGroupButton.title = 'AI: Group tabs into folders (Gemini)'
       }
     }
@@ -2143,6 +2212,7 @@ function createSidebarRenderer(options) {
       event.stopPropagation()
       const apiKey = settingsStore.get('geminiApiKey')
       if (!apiKey || !apiKey.trim()) {
+        showToast('⚠️ Please enter a Gemini API Key in Settings.', 'warning', 4000)
         isSettingsOpen = true
         renderCurrent()
         setTimeout(() => {
@@ -2157,22 +2227,44 @@ function createSidebarRenderer(options) {
 
       if (isAiGroupingInProgress) return
       isAiGroupingInProgress = true
-      if (shell && shell.aiGroupButton) {
-        shell.aiGroupButton.classList.add('is-loading')
-        shell.aiGroupButton.title = 'AI is grouping tabs...'
-      }
+      updateShellControls(shell, latestState, latestTreeTabs)
 
       Promise.resolve()
-        .then(() => onAiGroupTabs && onAiGroupTabs())
+        .then(async () => {
+          if (!onAiGroupTabs) return
+          const res = await onAiGroupTabs()
+          if (!res) return
+
+          if (res.success) {
+            if (res.count > 0) {
+              const fCount = res.foldersCount || 1
+              showToast(
+                `✨ Organized ${res.count} tab${res.count === 1 ? '' : 's'} into ${fCount} folder${fCount === 1 ? '' : 's'}!`,
+                'success',
+                4000
+              )
+            } else {
+              showToast('✨ All tabs are already organized in folders.', 'info', 3500)
+            }
+          } else {
+            if (res.reason === 'missing-key') {
+              showToast('⚠️ Please enter a Gemini API Key in Settings.', 'warning', 4000)
+              isSettingsOpen = true
+            } else if (res.reason === 'not-enough-tabs') {
+              showToast('⚠️ At least 2 tabs are required for AI grouping.', 'warning', 3500)
+            } else if (res.reason === 'api-error') {
+              showToast(`❌ AI grouping failed: ${res.error || 'API error'}`, 'error', 5000)
+            } else {
+              showToast('❌ Failed to group tabs.', 'error', 4000)
+            }
+          }
+        })
         .catch(err => {
           console.error('[svb-ui] AI grouping error', err)
+          showToast(`❌ Error: ${err.message || 'Something went wrong'}`, 'error', 5000)
         })
         .finally(() => {
           isAiGroupingInProgress = false
-          if (shell && shell.aiGroupButton) {
-            shell.aiGroupButton.classList.remove('is-loading')
-            shell.aiGroupButton.title = 'AI: Group tabs into folders'
-          }
           renderCurrent()
         })
       return
@@ -2905,6 +2997,10 @@ function createSidebarRenderer(options) {
     },
 
     dispose() {
+      if (activeToastTimer) {
+        clearTimeout(activeToastTimer)
+        activeToastTimer = null
+      }
       if (pinnedGridObserver) pinnedGridObserver.disconnect()
       if (workspaceBarObserver) workspaceBarObserver.disconnect()
       eventController.abort()

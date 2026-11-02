@@ -1611,11 +1611,12 @@ function createTabStore(api) {
 
       const groups = Array.isArray(result?.groups) ? result.groups : []
       if (groups.length === 0) {
-        return { success: true, count: 0 }
+        return { success: true, count: 0, foldersCount: 0 }
       }
 
       const candidateIdSet = new Set(candidateTabs.map(t => t.id))
       let movedCount = 0
+      let foldersCount = 0
 
       for (const group of groups) {
         const targetTabIds = (group.tabIds || []).filter(id => candidateIdSet.has(id))
@@ -1627,6 +1628,7 @@ function createTabStore(api) {
             await treeController.moveTabs(targetTabIds, existingFolder.id, 'inside', state.tabs)
             for (const id of targetTabIds) candidateIdSet.delete(id)
             movedCount += targetTabIds.length
+            foldersCount++
           }
         } else if (group.newFolderName && targetTabIds.length >= 2) {
           const folderName = group.newFolderName
@@ -1655,6 +1657,7 @@ function createTabStore(api) {
             await treeController.moveTabs(targetTabIds, newFolderTab.id, 'inside', state.tabs)
             for (const id of targetTabIds) candidateIdSet.delete(id)
             movedCount += targetTabIds.length
+            foldersCount++
           }
         }
       }
@@ -1664,7 +1667,7 @@ function createTabStore(api) {
         await syncTabs({ preserveContext: true }, 'ai-group-tabs')
       }
 
-      return { success: true, count: movedCount }
+      return { success: true, count: movedCount, foldersCount }
     },
 
     createChildTab(parentTabId) {
