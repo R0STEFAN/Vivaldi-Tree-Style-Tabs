@@ -337,9 +337,11 @@ function createLayoutAdapter(options) {
         return
       }
 
-      if (!root.contains(targetElement) && !trigger.contains(targetElement) && targetElement !== dragShield) {
-        setRevealed(false)
+      if (targetElement === root || root.contains(targetElement) || targetElement === trigger || trigger.contains(targetElement) || targetElement === dragShield) {
+        return
       }
+
+      setRevealed(false)
     }
 
     document.addEventListener('mouseover', hideOnExternalHover)

@@ -177,12 +177,13 @@ body.svb-is-resizing {
 /* Icon strip auto-hide mode */
 #svb-root.svb-shell.svb-autohide-icons {
   opacity: 1 !important;
-  transform: translateX(0) !important;
+  transform: translateX(0) translateZ(0) !important;
   z-index: 20 !important;
+  will-change: width, box-shadow;
 }
 
 .svb-layout-host.svb-position-right #svb-root.svb-shell.svb-autohide-icons {
-  transform: translateX(0) !important;
+  transform: translateX(0) translateZ(0) !important;
 }
 
 #svb-root.svb-shell.svb-autohide-icons.is-revealed {
@@ -250,6 +251,7 @@ body.svb-is-resizing {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  contain: layout;
   border: 1px solid var(--svb-border);
   border-radius: var(--svb-radius);
   color: var(--svb-text);
@@ -614,6 +616,7 @@ body.svb-is-resizing {
   overflow-x: hidden;
   padding-right: 0;
   padding-bottom: 2px;
+  contain: layout;
 }
 
 #svb-root .svb-pinned-folder-group {
@@ -659,9 +662,7 @@ body.svb-is-resizing {
   display: block;
   width: calc(100% - (var(--svb-depth) * var(--svb-tree-indent)));
   margin-left: calc(var(--svb-depth) * var(--svb-tree-indent));
-  transition:
-    margin-left var(--svb-d-norm) var(--svb-ease-out),
-    width var(--svb-d-norm) var(--svb-ease-out);
+  transition: margin-left var(--svb-d-norm) var(--svb-ease-out);
 }
 
 #svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab__outer {
@@ -1019,6 +1020,8 @@ body.svb-is-resizing {
 
 #svb-root.svb-shell.svb-autohide-icons .svb-frame {
   box-sizing: border-box;
+  will-change: width;
+  transform: translateZ(0);
 }
 
 /* Keep the expanded wrapping and row heights throughout the width animation. */
@@ -1630,6 +1633,36 @@ body.svb-is-resizing {
   font-size: 12px;
   font-weight: 600;
   color: var(--svb-text-strong);
+}
+
+#svb-root .svb-settings-select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  min-height: 28px;
+  border: 1px solid var(--svb-border);
+  border-radius: var(--svb-radius);
+  background: var(--svb-panel);
+  color: var(--svb-text);
+  color-scheme: dark;
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color var(--svb-d-fast) ease, background var(--svb-d-fast) ease;
+}
+
+#svb-root .svb-settings-select:hover {
+  background: var(--svb-panel-hover);
+}
+
+#svb-root .svb-settings-select:focus {
+  border-color: var(--svb-accent);
+}
+
+#svb-root .svb-settings-select option {
+  background: var(--svb-bg);
+  color: var(--svb-text);
 }
 
 #svb-root .svb-settings-options {

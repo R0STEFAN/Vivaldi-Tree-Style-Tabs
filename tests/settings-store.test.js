@@ -45,3 +45,26 @@ describe('settingsStore - autoHideMode', () => {
     assert.strictEqual(settingsStore.get('autoHideMode'), 'full')
   })
 })
+
+describe('settingsStore - autoCloseTabsDays', () => {
+  beforeEach(() => {
+    settingsStore.set('autoCloseTabsDays', 0)
+  })
+
+  it('has autoCloseTabsDays 0 in DEFAULT_SETTINGS', () => {
+    assert.strictEqual(DEFAULT_SETTINGS.autoCloseTabsDays, 0)
+  })
+
+  it('defaults autoCloseTabsDays to 0 on fresh store', () => {
+    const store = createSettingsStore()
+    assert.strictEqual(store.get('autoCloseTabsDays'), 0)
+  })
+
+  it('allows updating autoCloseTabsDays to various day thresholds', () => {
+    const dayOptions = [0, 1, 2, 3, 4, 5, 7, 14, 21, 30]
+    for (const days of dayOptions) {
+      settingsStore.set('autoCloseTabsDays', days)
+      assert.strictEqual(settingsStore.get('autoCloseTabsDays'), days)
+    }
+  })
+})

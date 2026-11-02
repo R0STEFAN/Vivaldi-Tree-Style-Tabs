@@ -203,6 +203,10 @@ function renderContextMenu(tab, state, contextMenu) {
     <div class="svb-menu__separator"></div>
     ${renderContextMenuColorItem('', 'Clear Color', currentColorKey)}
   `
+  const hibernateSubmenu = `
+    ${renderContextMenuItem({ action: 'hibernate-active', icon: 'sleep', label: 'Active Tab' })}
+    ${renderContextMenuItem({ action: 'hibernate-other', icon: 'sleep', label: 'Other Tabs' })}
+  `
   const savedTrees = Array.isArray(state.savedBookmarkTrees) ? state.savedBookmarkTrees : []
   const savedTreeSubmenu = savedTrees.map(renderSavedTreeMenuItem).join('')
   const copyLabelSuffix = selectedCount > 1 ? ` (${selectedCount})` : ''
@@ -250,7 +254,7 @@ function renderContextMenu(tab, state, contextMenu) {
       <div class="svb-menu__separator"></div>
       ${renderContextMenuItem({ action: 'toggle-pin', icon: 'pin', label: pinLabel })}
       ${renderContextMenuItem({ action: 'toggle-mute', icon: 'mute', label: muteLabel })}
-      ${renderContextMenuItem({ action: 'hibernate', icon: 'sleep', label: 'Hibernate Tab' })}
+      ${renderContextMenuItem({ icon: 'sleep', label: 'Hibernate', submenu: hibernateSubmenu })}
       ${renderContextMenuItem({ icon: 'color', label: 'Set Color', submenu: colorSubmenu })}
       ${renderContextMenuItem({ action: 'duplicate', icon: 'duplicate', label: 'Duplicate' })}
       ${renderContextMenuItem({ action: 'rename', icon: 'rename', label: 'Rename', disabled: isPinned })}
@@ -883,32 +887,18 @@ function createSidebarRenderer(options) {
             </div>
             <div class="svb-settings-group">
               <label class="svb-settings-label">Auto-close old tabs & trees</label>
-              <div class="svb-settings-options">
-                <label class="svb-settings-option">
-                  <input type="radio" name="autoCloseTabsDays" value="0">
-                  <span>Never</span>
-                </label>
-                <label class="svb-settings-option">
-                  <input type="radio" name="autoCloseTabsDays" value="1">
-                  <span>1 day</span>
-                </label>
-                <label class="svb-settings-option">
-                  <input type="radio" name="autoCloseTabsDays" value="7">
-                  <span>1 week</span>
-                </label>
-                <label class="svb-settings-option">
-                  <input type="radio" name="autoCloseTabsDays" value="14">
-                  <span>2 weeks</span>
-                </label>
-                <label class="svb-settings-option">
-                  <input type="radio" name="autoCloseTabsDays" value="21">
-                  <span>3 weeks</span>
-                </label>
-                <label class="svb-settings-option">
-                  <input type="radio" name="autoCloseTabsDays" value="30">
-                  <span>1 month</span>
-                </label>
-              </div>
+              <select name="autoCloseTabsDays" class="svb-settings-select">
+                <option value="0">Never</option>
+                <option value="1">1 day</option>
+                <option value="2">2 days</option>
+                <option value="3">3 days</option>
+                <option value="4">4 days</option>
+                <option value="5">5 days</option>
+                <option value="7">1 week</option>
+                <option value="14">2 weeks</option>
+                <option value="21">3 weeks</option>
+                <option value="30">1 month</option>
+              </select>
             </div>
           </div>
         </div>
@@ -1127,13 +1117,15 @@ function createSidebarRenderer(options) {
 
     if (isSettingsOpen) {
       const settings = settingsStore.getAll()
-      const inputs = currentShell.settingsView.querySelectorAll('input')
-      for (const input of inputs) {
-        if (input.name in settings) {
-          if (input.type === 'checkbox') {
-            input.checked = !!settings[input.name]
+      const fields = currentShell.settingsView.querySelectorAll('input, select')
+      for (const field of fields) {
+        if (field.name in settings) {
+          if (field.tagName === 'SELECT') {
+            field.value = String(settings[field.name])
+          } else if (field.type === 'checkbox') {
+            field.checked = !!settings[field.name]
           } else {
-            input.checked = String(settings[input.name]) === input.value
+            field.checked = String(settings[field.name]) === field.value
           }
         }
       }
@@ -1851,12 +1843,12 @@ function createSidebarRenderer(options) {
   }, eventOptions)
 
   root.addEventListener('change', event => {
-    const input = event.target.closest('.svb-settings-view input')
-    if (!input || !input.name) return
+    const field = event.target.closest('.svb-settings-view input, .svb-settings-view select')
+    if (!field || !field.name) return
 
-    const rawValue = input.type === 'checkbox' ? input.checked : input.value
-    const value = input.name === 'autoCloseTabsDays' ? Number(rawValue) : rawValue
-    settingsStore.set(input.name, value)
+    const rawValue = field.type === 'checkbox' ? field.checked : field.value
+    const value = field.name === 'autoCloseTabsDays' ? Number(rawValue) : rawValue
+    settingsStore.set(field.name, value)
     renderCurrent()
   }, eventOptions)
 

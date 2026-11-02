@@ -644,8 +644,93 @@ function createTabStore(api) {
     return null
   }
 
-  async function activateBeforeCloseIfNeeded(targetIds) {
-    const activateTabId = getActivationTargetBeforeClose(targetIds)
+  function getActivationTargetForHibernate(targetId) {
+    const activeTabId = Number.isFinite(targetId) ? targetId : state.activeTabId
+    if (!Number.isFinite(activeTabId)) return null
+
+    // Collect all descendants of activeTabId so we never switch to them
+    const excludedIds = new Set([activeTabId])
+    if (treeController && typeof treeController.getSubtreeTargetIds === 'function') {
+      for (const id of treeController.getSubtreeTargetIds(activeTabId)) {
+        excludedIds.add(id)
+      }
+    }
+    for (const item of state.treeTabs) {
+      if (item.ancestorIds && item.ancestorIds.includes(activeTabId)) {
+        excludedIds.add(item.id)
+      }
+    }
+
+    const activateAfterClose = settingsStore.get('activateAfterClose') || 'above'
+    const activeTreeItem = state.treeTabs.find(item => item.id === activeTabId)
+
+    if (activeTreeItem) {
+      const parentId = activeTreeItem.parentId
+      const activeIndexInTree = state.treeTabs.indexOf(activeTreeItem)
+
+      // 1. Prioritize sibling tabs at the same hierarchy level
+      const siblings = state.treeTabs.filter(item => item.parentId === parentId && !excludedIds.has(item.id))
+
+      if (siblings.length > 0) {
+        if (activateAfterClose === 'below') {
+          const siblingBelow = siblings.find(s => state.treeTabs.indexOf(s) > activeIndexInTree)
+          if (siblingBelow) return siblingBelow.id
+          const siblingAbove = siblings.slice().reverse().find(s => state.treeTabs.indexOf(s) < activeIndexInTree)
+          if (siblingAbove) return siblingAbove.id
+        } else {
+          const siblingAbove = siblings.slice().reverse().find(s => state.treeTabs.indexOf(s) < activeIndexInTree)
+          if (siblingAbove) return siblingAbove.id
+          const siblingBelow = siblings.find(s => state.treeTabs.indexOf(s) > activeIndexInTree)
+          if (siblingBelow) return siblingBelow.id
+        }
+      }
+
+      // 2. If no siblings at this level, find nearest non-excluded ancestor higher in the hierarchy
+      let ancestorId = parentId
+      while (Number.isFinite(ancestorId)) {
+        if (!excludedIds.has(ancestorId)) {
+          const ancestorItem = state.treeTabs.find(item => item.id === ancestorId)
+          if (ancestorItem) return ancestorId
+        }
+        const ancestorItem = state.treeTabs.find(item => item.id === ancestorId)
+        ancestorId = ancestorItem ? ancestorItem.parentId : null
+      }
+    }
+
+    // 3. Fallback: Any other visible non-descendant tab in panel order (e.g. pinned tabs or other branches)
+    const orderIds = getPanelOrderIds()
+    const activeIndex = orderIds.indexOf(activeTabId)
+
+    if (activeIndex >= 0) {
+      if (activateAfterClose === 'below') {
+        for (let i = activeIndex + 1; i < orderIds.length; i++) {
+          if (!excludedIds.has(orderIds[i])) return orderIds[i]
+        }
+        for (let i = activeIndex - 1; i >= 0; i--) {
+          if (!excludedIds.has(orderIds[i])) return orderIds[i]
+        }
+      } else {
+        for (let i = activeIndex - 1; i >= 0; i--) {
+          if (!excludedIds.has(orderIds[i])) return orderIds[i]
+        }
+        for (let i = activeIndex + 1; i < orderIds.length; i++) {
+          if (!excludedIds.has(orderIds[i])) return orderIds[i]
+        }
+      }
+    }
+
+    // 4. Ultimate fallback: if no other non-descendant tabs exist in the window
+    for (const id of orderIds) {
+      if (id !== activeTabId) return id
+    }
+
+    return null
+  }
+
+  async function activateBeforeCloseIfNeeded(targetIds, options = {}) {
+    const activateTabId = options.forHibernate
+      ? getActivationTargetForHibernate(targetIds[0])
+      : getActivationTargetBeforeClose(targetIds)
     if (!Number.isFinite(activateTabId)) return
     pendingActiveRepairTabId = null
 
@@ -1757,70 +1842,108 @@ function createTabStore(api) {
       for (const id of targetIds) api.reloadTab(id)
     },
 
-    // Hibernate (discard) tabs to free memory. The active tab can't be
-    // discarded by Chromium, so skip it.
+    async discardTabSafely(id) {
+      if (!api.discardTab) return
+      const tab = getTabById(id)
+      if (!tab) return
+
+      const oldIndex = tab.index
+      let oldSiblingAnchorId = null
+      let isBefore = false
+      let oldParentId = null
+
+      const nodeIndex = state.treeTabs.findIndex(t => t.id === id)
+      if (nodeIndex !== -1) {
+        const node = state.treeTabs[nodeIndex]
+        oldParentId = node.parentId
+        const siblings = state.treeTabs.filter(t => t.parentId === node.parentId)
+        const siblingIndex = siblings.findIndex(t => t.id === id)
+
+        if (siblingIndex > 0) {
+          oldSiblingAnchorId = siblings[siblingIndex - 1].id
+          isBefore = false
+        } else if (siblingIndex === 0 && siblings.length > 1) {
+          oldSiblingAnchorId = siblings[1].id
+          isBefore = true
+        }
+      }
+
+      if (oldSiblingAnchorId != null) {
+        treeController.registerExpectedCreation({
+          kind: 'sibling',
+          parentTabId: oldSiblingAnchorId,
+          position: isBefore ? 'before' : 'after'
+        })
+      } else if (oldParentId != null) {
+        treeController.registerExpectedCreation({
+          kind: 'child',
+          parentTabId: oldParentId
+        })
+      }
+
+      const newTabId = await api.discardTab(id)
+      const targetTabId = newTabId || id
+
+      if (targetTabId) {
+        if (api.moveTab && oldIndex != null) {
+          await api.moveTab(targetTabId, oldIndex).catch(() => {})
+        }
+
+        const tryAttach = () => {
+          if (oldSiblingAnchorId != null) {
+            treeController.moveTab(targetTabId, oldSiblingAnchorId, isBefore ? 'before' : 'after', state.tabs).catch(() => {})
+          } else if (oldParentId != null) {
+            treeController.moveTab(targetTabId, oldParentId, 'inside', state.tabs).catch(() => {})
+          }
+        }
+
+        tryAttach()
+        setTimeout(tryAttach, 50)
+        setTimeout(tryAttach, 200)
+      }
+    },
+
+    // Hibernate the active tab (switches to an adjacent tab first since Chromium cannot discard the active tab)
+    async hibernateActiveTab(tabId) {
+      if (!api.discardTab) return
+      const targetId = Number.isFinite(state.activeTabId) ? state.activeTabId : tabId
+      if (!Number.isFinite(targetId)) return
+      const tab = getTabById(targetId)
+      if (!tab) return
+
+      if (tab.active) {
+        await activateBeforeCloseIfNeeded([targetId], { forHibernate: true })
+        await syncTabs({ preserveContext: true }, 'hibernate-active')
+      }
+
+      const updatedTab = getTabById(targetId)
+      if (updatedTab && !updatedTab.active && !updatedTab.discarded) {
+        await this.discardTabSafely(targetId)
+      }
+    },
+
+    // Hibernate all other non-active tabs in the panel
+    async hibernateOtherTabs(tabId) {
+      if (!api.discardTab) return
+      const keepId = Number.isFinite(tabId) ? tabId : state.activeTabId
+      const orderIds = getPanelOrderIds()
+      for (const id of orderIds) {
+        if (id === keepId || id === state.activeTabId) continue
+        const tab = getTabById(id)
+        if (tab && !tab.discarded && !tab.active) {
+          await this.discardTabSafely(id)
+        }
+      }
+    },
+
+    // Hibernate (discard) tabs to free memory.
     async hibernateSelection(tabId, selectedIds) {
       if (!api.discardTab) return
       const targetIds = getActionTargetIds(tabId, selectedIds)
       for (const id of targetIds) {
         const tab = getTabById(id)
         if (tab && !tab.active) {
-          const oldIndex = tab.index
-          let oldSiblingAnchorId = null
-          let isBefore = false
-          let oldParentId = null
-
-          const nodeIndex = state.treeTabs.findIndex(t => t.id === id)
-          if (nodeIndex !== -1) {
-            const node = state.treeTabs[nodeIndex]
-            oldParentId = node.parentId
-            const siblings = state.treeTabs.filter(t => t.parentId === node.parentId)
-            const siblingIndex = siblings.findIndex(t => t.id === id)
-            
-            if (siblingIndex > 0) {
-              oldSiblingAnchorId = siblings[siblingIndex - 1].id
-              isBefore = false
-            } else if (siblingIndex === 0 && siblings.length > 1) {
-              oldSiblingAnchorId = siblings[1].id
-              isBefore = true
-            }
-          }
-
-          if (oldSiblingAnchorId != null) {
-            treeController.registerExpectedCreation({
-              kind: 'sibling',
-              parentTabId: oldSiblingAnchorId,
-              position: isBefore ? 'before' : 'after'
-            })
-          } else if (oldParentId != null) {
-            treeController.registerExpectedCreation({
-              kind: 'child',
-              parentTabId: oldParentId
-            })
-          } else {
-             // Let it fall back for root tabs
-          }
-
-          const newTabId = await api.discardTab(id)
-          const targetTabId = newTabId || id
-          
-          if (targetTabId) {
-            if (api.moveTab && oldIndex != null) {
-              await api.moveTab(targetTabId, oldIndex).catch(() => {})
-            }
-            
-            const tryAttach = () => {
-              if (oldSiblingAnchorId != null) {
-                treeController.moveTab(targetTabId, oldSiblingAnchorId, isBefore ? 'before' : 'after', state.tabs).catch(() => {})
-              } else if (oldParentId != null) {
-                treeController.moveTab(targetTabId, oldParentId, 'inside', state.tabs).catch(() => {})
-              }
-            }
-            
-            tryAttach()
-            setTimeout(tryAttach, 50)
-            setTimeout(tryAttach, 200)
-          }
+          await this.discardTabSafely(id)
         }
       }
     },

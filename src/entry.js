@@ -144,6 +144,10 @@ async function main() {
         void store.togglePinnedForSelection(tabId, selectedIds)
       } else if (action === 'toggle-mute') {
         void store.toggleMutedForSelection(tabId, selectedIds)
+      } else if (action === 'hibernate-active') {
+        void store.hibernateActiveTab(tabId)
+      } else if (action === 'hibernate-other') {
+        void store.hibernateOtherTabs(tabId)
       } else if (action === 'hibernate') {
         void store.hibernateSelection(tabId, selectedIds)
       } else if (action === 'reload') {
