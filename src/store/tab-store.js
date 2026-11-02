@@ -2,6 +2,7 @@ const { settingsStore } = require('../store/settings-store.js')
 const { createTreeController } = require('../controllers/tree-controller.js')
 const { createNativeReconcile } = require('../controllers/native-reconcile.js')
 const { generateFolderPageUrl } = require('../ui/folder-page.js')
+const { groupTabsWithGemini } = require('../services/gemini-api.js')
 
 const TREE_NAMESPACE_KEY = 'svbTree'
 
@@ -1556,6 +1557,114 @@ function createTabStore(api) {
           ...vivExtData
         }
       })
+    },
+
+    async aiGroupTabs(options = {}) {
+      const apiKey = settingsStore.get('geminiApiKey')
+      if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) {
+        return { success: false, reason: 'missing-key' }
+      }
+
+      if (state.windowId == null) {
+        return { success: false, reason: 'no-window' }
+      }
+
+      const existingFolders = []
+      const candidateTabs = []
+      const tabById = new Map(state.tabs.map(t => [t.id, t]))
+
+      for (const item of state.treeTabs) {
+        const tab = tabById.get(item.id) || item.tab
+        if (!tab || tab.pinned) continue
+
+        const isFolder = !!(tab.vivExtData && tab.vivExtData.isFolder) || (typeof tab.url === 'string' && tab.url.includes('svb-folder.html'))
+        if (isFolder) {
+          const title = (tab.vivExtData && tab.vivExtData.fixedTitle) || tab.title || 'Folder'
+          existingFolders.push({ id: item.id, title })
+        } else if (item.depth === 0) {
+          candidateTabs.push(tab)
+        }
+      }
+
+      if (candidateTabs.length < 2) {
+        return { success: false, reason: 'not-enough-tabs', count: candidateTabs.length }
+      }
+
+      const model = settingsStore.get('geminiModel') || 'gemini-2.5-flash'
+      const language = settingsStore.get('geminiFolderLanguage') || 'uk'
+      const fetchFn = options.fetchFn || globalThis.fetch
+
+      let result
+      try {
+        result = await groupTabsWithGemini({
+          apiKey,
+          model,
+          language,
+          ungroupedTabs: candidateTabs,
+          existingFolders,
+          fetchFn,
+        })
+      } catch (error) {
+        console.error('[svb-ai] gemini grouping failed', error)
+        return { success: false, reason: 'api-error', error: error.message }
+      }
+
+      const groups = Array.isArray(result?.groups) ? result.groups : []
+      if (groups.length === 0) {
+        return { success: true, count: 0 }
+      }
+
+      const candidateIdSet = new Set(candidateTabs.map(t => t.id))
+      let movedCount = 0
+
+      for (const group of groups) {
+        const targetTabIds = (group.tabIds || []).filter(id => candidateIdSet.has(id))
+        if (targetTabIds.length === 0) continue
+
+        if (group.folderId != null) {
+          const existingFolder = existingFolders.find(f => f.id === group.folderId)
+          if (existingFolder) {
+            await treeController.moveTabs(targetTabIds, existingFolder.id, 'inside', state.tabs)
+            for (const id of targetTabIds) candidateIdSet.delete(id)
+            movedCount += targetTabIds.length
+          }
+        } else if (group.newFolderName && targetTabIds.length >= 2) {
+          const folderName = group.newFolderName
+          const folderColor = group.color || 'blue'
+          const folderBase = typeof location !== 'undefined' ? location.href : 'http://localhost/'
+          const folderUrl = new URL('svb-folder.html', folderBase).href + '#svb-folder:color=' + folderColor
+
+          const vivExtData = {
+            ...getCreateVivExtDataForState(state),
+            isFolder: true,
+            folderColor,
+            fixedTitle: folderName,
+          }
+
+          let newFolderTab = null
+          if (api.createRestoredTab) {
+            newFolderTab = await api.createRestoredTab(state.windowId, {
+              url: folderUrl,
+              active: false,
+              vivExtData,
+            })
+          }
+
+          if (newFolderTab && Number.isFinite(newFolderTab.id)) {
+            await syncTabs({ preserveContext: true }, 'create-folder')
+            await treeController.moveTabs(targetTabIds, newFolderTab.id, 'inside', state.tabs)
+            for (const id of targetTabIds) candidateIdSet.delete(id)
+            movedCount += targetTabIds.length
+          }
+        }
+      }
+
+      if (movedCount > 0) {
+        pendingNativeReconcileReason = 'ai-group-tabs'
+        await syncTabs({ preserveContext: true }, 'ai-group-tabs')
+      }
+
+      return { success: true, count: movedCount }
     },
 
     createChildTab(parentTabId) {
