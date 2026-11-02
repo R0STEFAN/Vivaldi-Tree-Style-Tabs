@@ -11,8 +11,8 @@ const { STYLE_TEXT } = require(process.cwd() + '/src/ui/styles.js')
  page.on('pageerror',e=>errors.push(e.message))
  await page.setContent('<div class="svb-layout-host svb-mode-docked" style="--svb-rendered-width:170px"><div id="svb-root" class="svb-shell svb-autohide-icons is-revealed" style="width:170px;height:600px"></div></div>')
  await page.addStyleTag({content:STYLE_TEXT})
- for (const [name,file] of [['settings','src/store/settings-store.js'],['pinned','src/ui/pinned-grid.js'],['renderer','src/ui/render.js']]) {
-  await page.addScriptTag({content:`{const module={exports:{}}; const require = name => name.includes('settings-store') ? window.settings : window.pinned; ${fs.readFileSync(file,'utf8')}\nwindow.${name}=module.exports;}`})
+ for (const [name,file] of [['settings','src/store/settings-store.js'],['pinned','src/ui/pinned-grid.js'],['workspace','src/ui/workspace-strip.js'],['renderer','src/ui/render.js']]) {
+  await page.addScriptTag({content:`{const module={exports:{}}; const require = name => name.includes('settings-store') ? window.settings : name.includes('workspace-strip') ? window.workspace : window.pinned; ${fs.readFileSync(file,'utf8')}\nwindow.${name}=module.exports;}`})
  }
  await page.evaluate(()=>{
   window.root=document.querySelector('#svb-root')

@@ -593,19 +593,18 @@ body.svb-is-resizing {
   flex-wrap: wrap;
   gap: var(--svb-gap);
   /* Align compact favicons with regular tabs without changing wrap width. */
-  padding: 4px 0 8px 4px;
+  padding: 2px 0 6px 4px;
   position: relative;
 }
 
 #svb-root .svb-pinned-grid::after {
   content: '';
   position: absolute;
-  left: 8px;
-  right: 8px;
+  left: -2px;
+  right: -2px;
   bottom: 0;
   height: 1px;
-  opacity: 0.22;
-  background-image: linear-gradient(90deg, transparent, color-mix(in srgb, var(--svb-text) 70%, transparent) 10%, color-mix(in srgb, var(--svb-text) 70%, transparent) 90%, transparent);
+  background: var(--svb-border);
 }
 
 #svb-root .svb-tab-list {
@@ -617,6 +616,14 @@ body.svb-is-resizing {
   padding-right: 0;
   padding-bottom: 2px;
   contain: layout;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--svb-text) 18%, transparent) transparent;
+  transition: scrollbar-color var(--svb-d-fast) ease 60ms;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab-list {
+  scrollbar-color: transparent transparent !important;
+  transition: scrollbar-color var(--svb-d-swift) ease 0ms;
 }
 
 #svb-root .svb-pinned-folder-group {
@@ -1351,14 +1358,13 @@ body.svb-is-resizing {
   width: 6px;
 }
 
-#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab-list::-webkit-scrollbar {
-  width: 0px !important;
-  display: none !important;
-}
-
 #svb-root .svb-tab-list::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: color-mix(in srgb, var(--svb-text) 18%, transparent);
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-tab-list::-webkit-scrollbar-thumb {
+  background: transparent !important;
 }
 
 #svb-root .svb-tab-list::-webkit-scrollbar-track {
@@ -1702,7 +1708,7 @@ body.svb-is-resizing {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 0 6px 6px;
+  padding: 0 6px 2px;
 }
 
 #svb-root.svb-shell.svb-autohide-icons .svb-workspaces {
