@@ -1705,8 +1705,66 @@ body.svb-is-resizing {
   padding: 0 6px 6px;
 }
 
-#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-workspaces {
-  display: none !important;
+#svb-root.svb-shell.svb-autohide-icons .svb-workspaces {
+  box-sizing: border-box;
+  width: calc(var(--svb-rendered-width, 300px) - 1px);
+  flex-shrink: 0;
+}
+
+#svb-root.svb-shell.svb-autohide-icons.is-unified .svb-workspaces {
+  width: calc(var(--svb-rendered-width, 300px) - 2px);
+}
+
+#svb-root.svb-shell.svb-autohide-icons .svb-workspace {
+  translate: 0 0;
+  opacity: 1;
+  visibility: visible;
+  transition:
+    translate var(--svb-d-norm) var(--svb-ease-out),
+    opacity var(--svb-d-fast) ease,
+    visibility 0s linear 0s,
+    color var(--svb-d-fast) ease,
+    background var(--svb-d-fast) ease;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-workspace:not(.is-active),
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-workspace--add {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+  transition:
+    translate var(--svb-d-norm) var(--svb-ease-out),
+    opacity var(--svb-d-fast) ease,
+    visibility 0s linear var(--svb-d-fast);
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-workspace.is-active {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  translate: var(--svb-strip-offset, 0px) 0;
+  transition:
+    translate var(--svb-d-norm) var(--svb-ease-out),
+    opacity var(--svb-d-fast) ease,
+    visibility 0s linear 0s;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-workspaces__icons {
+  --svb-ws-fade-start: 0px !important;
+  --svb-ws-fade-end: 0px !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-workspaces__title {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity var(--svb-d-swift) ease 0ms;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-workspace__input {
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 #svb-root .svb-workspaces__row {
@@ -1804,6 +1862,8 @@ body.svb-is-resizing {
   line-height: 18px;
   white-space: nowrap;
   text-overflow: ellipsis;
+  opacity: 1;
+  transition: opacity var(--svb-d-fast) ease 40ms;
 }
 
 #svb-root .svb-workspaces__title.is-preview {

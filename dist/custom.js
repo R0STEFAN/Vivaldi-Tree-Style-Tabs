@@ -1739,8 +1739,66 @@ body.svb-is-resizing {
   padding: 0 6px 6px;
 }
 
-#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-workspaces {
-  display: none !important;
+#svb-root.svb-shell.svb-autohide-icons .svb-workspaces {
+  box-sizing: border-box;
+  width: calc(var(--svb-rendered-width, 300px) - 1px);
+  flex-shrink: 0;
+}
+
+#svb-root.svb-shell.svb-autohide-icons.is-unified .svb-workspaces {
+  width: calc(var(--svb-rendered-width, 300px) - 2px);
+}
+
+#svb-root.svb-shell.svb-autohide-icons .svb-workspace {
+  translate: 0 0;
+  opacity: 1;
+  visibility: visible;
+  transition:
+    translate var(--svb-d-norm) var(--svb-ease-out),
+    opacity var(--svb-d-fast) ease,
+    visibility 0s linear 0s,
+    color var(--svb-d-fast) ease,
+    background var(--svb-d-fast) ease;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-workspace:not(.is-active),
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-workspace--add {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+  transition:
+    translate var(--svb-d-norm) var(--svb-ease-out),
+    opacity var(--svb-d-fast) ease,
+    visibility 0s linear var(--svb-d-fast);
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-workspace.is-active {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  translate: var(--svb-strip-offset, 0px) 0;
+  transition:
+    translate var(--svb-d-norm) var(--svb-ease-out),
+    opacity var(--svb-d-fast) ease,
+    visibility 0s linear 0s;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-workspaces__icons {
+  --svb-ws-fade-start: 0px !important;
+  --svb-ws-fade-end: 0px !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-workspaces__title {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity var(--svb-d-swift) ease 0ms;
+}
+
+#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-workspace__input {
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 #svb-root .svb-workspaces__row {
@@ -1838,6 +1896,8 @@ body.svb-is-resizing {
   line-height: 18px;
   white-space: nowrap;
   text-overflow: ellipsis;
+  opacity: 1;
+  transition: opacity var(--svb-d-fast) ease 40ms;
 }
 
 #svb-root .svb-workspaces__title.is-preview {
@@ -9085,9 +9145,38 @@ function syncPinnedGrid(grid) {
 module.exports = { syncPinnedGrid }
 
     },
+    "ui/workspace-strip.js": function(require, module, exports) {
+// Calculates the translate offset for the active workspace icon in icon-strip mode
+// so that it aligns seamlessly with the collapsed icon strip.
+function syncWorkspaceStrip(bar) {
+  if (!bar) return
+  const scroller = bar.querySelector('.svb-workspaces__icons')
+  if (!scroller) return
+  const buttons = Array.from(scroller.querySelectorAll('.svb-workspace'))
+  if (buttons.length === 0) return
+  const first = buttons[0]
+  const active = buttons.find(btn => btn.classList.contains('is-active')) || first
+  const firstLeft = first.offsetLeft || 0
+  const activeLeft = active.offsetLeft || 0
+  const scrollLeft = scroller.scrollLeft || 0
+  const offset = firstLeft - (activeLeft - scrollLeft)
+
+  for (const btn of buttons) {
+    if (btn === active) {
+      btn.style.setProperty('--svb-strip-offset', `${offset}px`)
+    } else {
+      btn.style.removeProperty('--svb-strip-offset')
+    }
+  }
+}
+
+module.exports = { syncWorkspaceStrip }
+
+    },
     "ui/render.js": function(require, module, exports) {
 const { settingsStore } = require('../store/settings-store.js')
 const { syncPinnedGrid } = require('./pinned-grid.js')
+const { syncWorkspaceStrip } = require('./workspace-strip.js')
 
 function getTabHoverTitle(tab, isActive) {
   let title = tab.title || ''
@@ -10153,6 +10242,7 @@ function createSidebarRenderer(options) {
     workspaceBarObserver = new ResizeObserver(() => {
       const scroller = shell.workspaceBar.querySelector('.svb-workspaces__icons')
       if (scroller) syncWorkspaceScrollEdges(scroller)
+      syncWorkspaceStrip(shell.workspaceBar)
     })
     workspaceBarObserver.observe(shell.workspaceBar)
     shell.workspaceBar.addEventListener('wheel', event => {
@@ -10165,10 +10255,12 @@ function createSidebarRenderer(options) {
       // Mouse-wheel notches glide; trackpad deltas are already fine-grained.
       const isNotch = event.deltaMode !== 0 || Math.abs(delta) >= 50
       scroller.scrollBy({ left: delta * unit, behavior: isNotch ? 'smooth' : 'auto' })
+      syncWorkspaceStrip(shell.workspaceBar)
     }, { ...eventOptions, passive: false })
     shell.workspaceBar.addEventListener('scroll', event => {
       if (event.target instanceof Element && event.target.classList.contains('svb-workspaces__icons')) {
         syncWorkspaceScrollEdges(event.target)
+        syncWorkspaceStrip(shell.workspaceBar)
       }
     }, { ...eventOptions, capture: true })
 
@@ -10362,6 +10454,7 @@ function createSidebarRenderer(options) {
         if (input) { input.focus({ preventScroll: true }); input.select() }
       }
     }
+    syncWorkspaceStrip(currentShell.workspaceBar)
   }
 
   function updateShellControls(currentShell, state, treeTabs) {
@@ -11785,6 +11878,7 @@ function createSidebarRenderer(options) {
         }
 
         syncPinnedGrid(currentShell.pinnedGrid)
+        syncWorkspaceStrip(currentShell.workspaceBar)
         updateContextMenu(currentShell, state)
 
         syncOverflowState()

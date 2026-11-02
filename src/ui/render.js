@@ -1,5 +1,6 @@
 const { settingsStore } = require('../store/settings-store.js')
 const { syncPinnedGrid } = require('./pinned-grid.js')
+const { syncWorkspaceStrip } = require('./workspace-strip.js')
 
 function getTabHoverTitle(tab, isActive) {
   let title = tab.title || ''
@@ -1065,6 +1066,7 @@ function createSidebarRenderer(options) {
     workspaceBarObserver = new ResizeObserver(() => {
       const scroller = shell.workspaceBar.querySelector('.svb-workspaces__icons')
       if (scroller) syncWorkspaceScrollEdges(scroller)
+      syncWorkspaceStrip(shell.workspaceBar)
     })
     workspaceBarObserver.observe(shell.workspaceBar)
     shell.workspaceBar.addEventListener('wheel', event => {
@@ -1077,10 +1079,12 @@ function createSidebarRenderer(options) {
       // Mouse-wheel notches glide; trackpad deltas are already fine-grained.
       const isNotch = event.deltaMode !== 0 || Math.abs(delta) >= 50
       scroller.scrollBy({ left: delta * unit, behavior: isNotch ? 'smooth' : 'auto' })
+      syncWorkspaceStrip(shell.workspaceBar)
     }, { ...eventOptions, passive: false })
     shell.workspaceBar.addEventListener('scroll', event => {
       if (event.target instanceof Element && event.target.classList.contains('svb-workspaces__icons')) {
         syncWorkspaceScrollEdges(event.target)
+        syncWorkspaceStrip(shell.workspaceBar)
       }
     }, { ...eventOptions, capture: true })
 
@@ -1274,6 +1278,7 @@ function createSidebarRenderer(options) {
         if (input) { input.focus({ preventScroll: true }); input.select() }
       }
     }
+    syncWorkspaceStrip(currentShell.workspaceBar)
   }
 
   function updateShellControls(currentShell, state, treeTabs) {
@@ -2697,6 +2702,7 @@ function createSidebarRenderer(options) {
         }
 
         syncPinnedGrid(currentShell.pinnedGrid)
+        syncWorkspaceStrip(currentShell.workspaceBar)
         updateContextMenu(currentShell, state)
 
         syncOverflowState()
