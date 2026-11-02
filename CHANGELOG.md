@@ -1,3 +1,38 @@
+# Release Notes (v2.3.0)
+
+## 🚀 What's New
+
+### 🤖 Gemini AI Tab Grouping
+* **Intelligent Thematic Folders**: One-click clustering of loose tabs into clean, colored folders powered by Google Gemini.
+* **Preserve Tree Hierarchies**: Entire tab subtrees and child branches move together under their parent tab without breaking hierarchy.
+* **Topic-Based Search Query Grouping**: Search queries (Google, DuckDuckGo, Bing, Brave, Ecosia, Yandex) are categorized by their specific search subject rather than grouped into a generic "Search" folder.
+* **Exhaustive Multi-Grouping**: Analyzes all tabs across multiple distinct topics in a single request with an expanded token limit (up to 8,192 output tokens).
+* **Privacy-First Sanitization**: URL queries, fragments, auth tokens, and internal browser pages are completely stripped before sending to the model.
+* **Configurable Language & Models**: Choose folder naming language (Ukrainian, English, German, Polish, etc.) and model (`gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-flash`, `gemini-2.5-pro`) with real-time model list fetching.
+* **Interactive UI Feedback**: Added header AI action button with tactile active state, rotating SVG spinner animation during requests, and floating toast notifications in English reporting organized counts or errors.
+
+---
+
+# Release Notes (v2.2.0)
+
+## 🚀 What's New
+
+### 🔹 Native Workspaces Integration & In-Panel Switcher
+* **In-Panel Workspace Switcher**: Switch between native Vivaldi workspaces directly from the sidebar header.
+* **Native Icons & Emojis**: Displays custom SVG icons, emoji icons, and standard icons exactly as configured in Vivaldi.
+* **Inline Creation & Renaming**: Easily create and rename workspaces directly in the panel with native synchronization.
+* **Unified "Move To" Context Menu**: Move tabs to specific workspaces or back to default window context with native icons and ordering.
+* **Active-Tab-First Workspace Reconciliation**: Prevents context-sticking or visual flickering when navigating tabs across workspaces.
+
+### 🔹 Tab Hibernation & Memory Management
+* **Hierarchy-Aware Tab Hibernation**: Discard active tabs while automatically switching focus to an adjacent sibling or parent, preventing accidental activation of children.
+* **Auto-Close Inactive Tabs & Trees**: Configurable automatic cleanup of inactive tabs older than 1–30 days while protecting pinned tabs and folders.
+
+### 🔹 Performance & Tree Responsiveness
+* **Zero-Latency Tree Collapse**: Synchronous DOM collapsing and expanding without waiting for browser roundtrips.
+
+---
+
 # Release Notes (v2.1.0)
 
 ## 🚀 What's New
