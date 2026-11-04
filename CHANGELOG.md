@@ -1,10 +1,33 @@
+# Release Notes (v2.3.2)
+
+## 🛠️ Fixes & Stability Improvements
+
+### 🎯 Clean Tab Close Without "Fly-Down" Jump
+* **Eliminated Bottom-Jump Animation**: Closing an active or background tab previously caused it to visually fly down to the very bottom of the sidebar before disappearing due to an IPC race condition with Chromium and fallback tree sorting.
+* **Optimistic Instant Removal**: Closing tabs (via the `×` button, middle-click, or `Ctrl+W`) are now immediately removed from active tree state and hidden in-place (`.is-closing`, `opacity: 0`, `pointer-events: none`).
+* **Closing Tab Tracking Registry**: Added `markClosingTab` and `isClosing` in `treeController` with TTL protection to ensure subsequent syncs during browser IPC delays never resurrect or reposition closed tabs at the bottom.
+* **Smooth Upward FLIP Transition**: Remaining tabs below the closed tab slide smoothly upward into place without visual jarring.
+
+### 🛡️ Unified Side Panel Hover Zone in Full Auto-Hide Mode
+* **Eliminated Rapid Open/Close Flickering**: In full auto-hide mode, moving the mouse across Vivaldi's native side panel previously caused the tab panel to continuously flicker open and closed with every micro-movement.
+* **Unified Same-Side Dock**: When Vivaldi's native side panel and the custom vertical tabs panel are on the same side, hovering over the side panel (including `#switch` icon strip and expanded panel content like Bookmarks, History, Notes, Web Panels) now displays and steadily maintains the vertical tab panel open as a single cohesive unit.
+* **Smooth Cross-Panel Navigation**: Moving the cursor between the native side panel and the tab panel never triggers auto-collapse. The panel closes only when the cursor completely leaves both panels (e.g., into the web page).
+* **Opposite-Side Isolation**: When the native side panel is on the opposite side of the browser, side panel hover has zero effect on the vertical tab panel.
+
+---
+
 # Release Notes (v2.3.1)
 
 ## 🛠️ Fixes & Stability Improvements
 
-### 🌐 Prevent UI Date Format & Locale Corruption
-* **Safe Webpack Discovery**: Switched `findModuleByExports` in the Vivaldi bridge to inspect only already-cached modules in `require.c` instead of scanning `require.m` and executing `require(moduleId)`.
-* **Preserve Native Locale**: Prevents unintended execution of uninitialized locale modules (such as Chinese or French date formatters in `date-fns`/`moment`), keeping Vivaldi UI areas like History, Downloads, and Bookmarks in the user's configured language.
+### 🧩 Native Side Panel Coexistence & Dynamic Layout Offset
+* **`--svb-panels-offset` CSS Variable**: Dynamically calculates and applies the native side panel width in real time via `ResizeObserver`, pushing the vertical tabs panel and auto-hide edge trigger cleanly beside the side panel when both are on the same side.
+* **DOM Placement Order**: Corrected DOM insertion in `mountRoot` so that `#panels-container` precedes `#svb-root`, ensuring the native side panel renders first and the tab panel follows in natural visual order.
+* **Floating Panel Support**: Correctly detects floating/overlay panels (`.overlay`) to ensure layout margins only push when the side panel is docked.
+
+### 🌐 Prevent UI Date Format & Locale Corruption & Restored Workspaces
+* **Safe Webpack Discovery**: Switched `findModuleByExports` in the Vivaldi bridge to inspect only already-cached modules in `require.c` instead of scanning `require.m` and executing `require(moduleId)`, keeping native Vivaldi UI (History, Downloads, Bookmarks) in the configured language.
+* **Restored Workspaces in Header**: Reconnected native workspace discovery via known module ID fallback, restoring full functionality to the in-panel workspace switcher and "Move To" menu.
 * **Faster Startup**: Eliminates eager evaluation of hundreds of Webpack module factories on browser startup.
 
 ### 🧭 Address Bar Dropdown & Popup Stacking Fix
