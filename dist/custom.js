@@ -49,6 +49,13 @@ const STYLE_TEXT = `
   position: relative;
 }
 
+/* Ensure Vivaldi address bar dropdown & popups render above vertical tab panel */
+#browser .toolbar.toolbar-addressbar,
+#browser #addressbar {
+  position: relative;
+  z-index: 1000002 !important;
+}
+
 /* Webbview pushing logic */
 .svb-layout-host.svb-mode-docked:not(.svb-is-fullscreen) #webview-container,
 .svb-layout-host.svb-mode-docked:not(.svb-is-fullscreen) .StatusInfo,

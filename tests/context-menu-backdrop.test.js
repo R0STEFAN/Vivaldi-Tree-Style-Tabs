@@ -26,3 +26,8 @@ test('pinned tabs in icon strip define smooth transitions for translate and opac
   assert.ok(STYLE_TEXT.includes('#svb-root.svb-shell.svb-autohide-icons:not(.is-revealed) .svb-pinned-tab[data-strip-visible="true"]'))
   assert.ok(STYLE_TEXT.includes('translate: var(--svb-strip-offset, 0px) 0;'))
 })
+
+test('address bar toolbar has high z-index to ensure dropdowns render above panel', () => {
+  assert.ok(STYLE_TEXT.includes('#browser .toolbar.toolbar-addressbar'))
+  assert.ok(STYLE_TEXT.includes('z-index: 1000002 !important;'))
+})
