@@ -52,7 +52,7 @@ const STYLE_TEXT = `
 
 .svb-layout-host.svb-position-right #svb-root.svb-shell {
   left: auto !important;
-  right: 0 !important;
+  right: var(--svb-panels-offset, 0px) !important;
   transform: translateX(100%) !important;
 }
 
@@ -63,7 +63,7 @@ const STYLE_TEXT = `
 
 #svb-root-trigger.svb-edge-trigger.svb-position-right {
   left: auto !important;
-  right: 0 !important;
+  right: var(--svb-panels-offset, 0px) !important;
 }
 
 .svb-layout-host.svb-position-right #svb-root .svb-resize-handle {
@@ -135,7 +135,7 @@ const STYLE_TEXT = `
   --svb-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   position: absolute !important;
   top: 0 !important;
-  left: 0 !important;
+  left: var(--svb-panels-offset, 0px) !important;
   bottom: 0 !important;
   margin: 0 !important;
   width: var(--svb-sidebar-width, 300px);
@@ -216,7 +216,7 @@ body.svb-is-resizing {
 #svb-root-trigger.svb-edge-trigger {
   position: fixed !important;
   top: 0 !important;
-  left: 0 !important;
+  left: var(--svb-panels-offset, 0px) !important;
   bottom: 0 !important;
   width: 4px;
   z-index: 999999;
