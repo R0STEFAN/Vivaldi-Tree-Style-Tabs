@@ -30,7 +30,16 @@ function mountRoot(id) {
     root = document.createElement('aside')
     root.id = id
     root.className = 'svb-shell'
-    host.prepend(root)
+    const panels = typeof host.querySelector === 'function' ? host.querySelector('#panels-container') : null
+    if (panels && panels.nextSibling && typeof host.insertBefore === 'function') {
+      host.insertBefore(root, panels.nextSibling)
+    } else if (panels && typeof host.appendChild === 'function') {
+      host.appendChild(root)
+    } else if (typeof host.prepend === 'function') {
+      host.prepend(root)
+    } else {
+      host.appendChild(root)
+    }
   }
 
   let trigger = document.getElementById(`${id}-trigger`)

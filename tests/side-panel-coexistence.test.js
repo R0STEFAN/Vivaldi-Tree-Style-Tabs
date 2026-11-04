@@ -150,3 +150,54 @@ describe('Side Panel Coexistence - Dynamic Layout Offset', () => {
     assert.equal(host.style.getPropertyValue('--svb-panels-offset'), '340px', 'Right side panel should offset right tab panel')
   })
 })
+
+
+const { mountRoot } = require('../src/bootstrap/mount-root.js')
+
+describe('Side Panel Coexistence - mountRoot DOM Placement', () => {
+  it('places svb-root after panels-container when panels-container is inside host', () => {
+    const children = []
+    const panelsNode = { id: 'panels-container', nextSibling: null }
+    const webviewNode = { id: 'webview-container', nextSibling: null }
+    panelsNode.nextSibling = webviewNode
+
+    children.push(panelsNode)
+    children.push(webviewNode)
+
+    const host = {
+      classList: { add: () => {} },
+      querySelector: sel => {
+        if (sel === '#panels-container') return panelsNode
+        return null
+      },
+      prepend: node => children.unshift(node),
+      appendChild: node => children.push(node),
+      insertBefore: (node, refNode) => {
+        const idx = children.indexOf(refNode)
+        if (idx !== -1) children.splice(idx, 0, node)
+        else children.push(node)
+      }
+    }
+
+    global.document = {
+      head: { appendChild: () => {} },
+      body: { appendChild: () => {} },
+      getElementById: () => null,
+      querySelector: sel => {
+        if (sel.includes('.inner')) return host
+        return null
+      },
+      createElement: tag => ({ id: '', className: '', tag })
+    }
+
+    const { root } = mountRoot('svb-root')
+    const panelsIdx = children.indexOf(panelsNode)
+    const rootIdx = children.indexOf(root)
+    const webviewIdx = children.indexOf(webviewNode)
+
+    assert.ok(panelsIdx !== -1, 'panels should be in children')
+    assert.ok(rootIdx !== -1, 'root should be in children')
+    assert.ok(panelsIdx < rootIdx, 'panels-container must precede svb-root in DOM')
+    assert.ok(rootIdx < webviewIdx, 'svb-root must precede webview-container in DOM')
+  })
+})
