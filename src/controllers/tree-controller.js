@@ -11,6 +11,24 @@ function createTreeController(api) {
   const pendingCreatedTabs = new Map()
   const expectedCreations = []
   const recentlyClosedTabs = []
+  const closingTabIds = new Set()
+
+  function markClosingTab(tabIdOrIds) {
+    const ids = Array.isArray(tabIdOrIds) ? tabIdOrIds : [tabIdOrIds]
+    for (const id of ids) {
+      const numId = Number(id)
+      if (Number.isFinite(numId)) {
+        closingTabIds.add(numId)
+        setTimeout(() => {
+          closingTabIds.delete(numId)
+        }, 3000)
+      }
+    }
+  }
+
+  function isClosing(tabId) {
+    return closingTabIds.has(Number(tabId))
+  }
   let pendingRemovalDirty = false
   let cachedDerivedView = null
   let persistQueue = Promise.resolve()
@@ -473,7 +491,8 @@ function createTreeController(api) {
         unpinnedTabIds = [],
       } = options
 
-      const contextChanged = await ensureContext(contextKey, tabs, currentContextKey)
+      const liveTabs = (Array.isArray(tabs) ? tabs : []).filter(tab => !closingTabIds.has(tab.id))
+      const contextChanged = await ensureContext(contextKey, liveTabs, currentContextKey)
       let persistenceDirty = false
       let structuralDirty = false
 
@@ -492,12 +511,12 @@ function createTreeController(api) {
         }
       }
 
-      if (treeStore.repair(tabs.map(tab => tab.id))) {
+      if (treeStore.repair(liveTabs.map(tab => tab.id))) {
         persistenceDirty = true
         structuralDirty = true
       }
 
-      const tabsById = new Map(tabs.map(tab => [tab.id, tab]))
+      const tabsById = new Map(liveTabs.map(tab => [tab.id, tab]))
 
       function getFirstUnpinnedRootIndex() {
         const currentTreeState = treeStore.exportState()
@@ -514,7 +533,7 @@ function createTreeController(api) {
         return index
       }
 
-      for (const tab of tabs) {
+      for (const tab of liveTabs) {
         if (treeStore.hasTab(tab.id)) continue
 
         treeStore.ensureTab(tab.id)
@@ -638,7 +657,7 @@ function createTreeController(api) {
       }
 
       if (!contextChanged && !persistenceDirty && !structuralDirty && cachedDerivedView && cachedDerivedView.contextKey === contextKey) {
-        const restored = restoreDerivedViewFromCache(tabs)
+        const restored = restoreDerivedViewFromCache(liveTabs)
         if (restored) {
           return {
             treeTabs: restored.treeTabs,
@@ -651,13 +670,13 @@ function createTreeController(api) {
       }
 
       const treeState = treeStore.exportState()
-      const { treeTabs, fullTreeOrderIds, parentById } = buildDerivedSnapshot(tabs, treeState)
+      const { treeTabs, fullTreeOrderIds, parentById } = buildDerivedSnapshot(liveTabs, treeState)
 
       if (contextChanged || persistenceDirty) {
-        persistCurrentTree(tabs)
+        persistCurrentTree(liveTabs)
       }
 
-      cachedDerivedView = createDerivedViewCache(contextKey, tabs, treeTabs, fullTreeOrderIds, parentById)
+      cachedDerivedView = createDerivedViewCache(contextKey, liveTabs, treeTabs, fullTreeOrderIds, parentById)
 
       return {
         treeTabs,
@@ -866,6 +885,9 @@ function createTreeController(api) {
       persistCurrentTree(tabs)
       return { movedIds: moveIds }
     },
+
+    markClosingTab,
+    isClosing,
 
     getParentId(tabId) {
       return treeStore.getParentId(tabId)

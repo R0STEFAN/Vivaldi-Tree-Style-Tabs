@@ -1783,7 +1783,7 @@ function createSidebarRenderer(options) {
     // This completely eliminates layout thrashing (forced synchronous reflow).
     for (const [key, node] of motionNodes) {
       const previousRect = previousRects.get(key)
-      if (!previousRect || !node.isConnected || enteringNodes.has(node) || (enteringNodeSet && enteringNodeSet.has(node))) continue
+      if (!previousRect || !node.isConnected || enteringNodes.has(node) || (enteringNodeSet && enteringNodeSet.has(node)) || (node.classList && node.classList.contains('is-closing'))) continue
 
       const rect = node.getBoundingClientRect()
       if (rect.top > viewportHeight + 250 || rect.bottom < -250) continue
@@ -2172,6 +2172,11 @@ function createSidebarRenderer(options) {
 
     if (role === 'close-tab' && Number.isFinite(tabId)) {
       event.stopPropagation()
+      const tabButton = event.target.closest('.svb-tab')
+      if (tabButton) {
+        tabButton.style.pointerEvents = 'none'
+        tabButton.classList.add('is-closing')
+      }
       onCloseTab(tabId)
       return
     }
@@ -2391,6 +2396,8 @@ function createSidebarRenderer(options) {
 
       event.preventDefault()
       event.stopPropagation()
+      tabButton.style.pointerEvents = 'none'
+      tabButton.classList.add('is-closing')
       onCloseTab(tabId)
       return
     }

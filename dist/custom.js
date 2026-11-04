@@ -711,6 +711,12 @@ body.svb-is-resizing {
   box-shadow: none;
 }
 
+#svb-root .svb-tab.is-closing {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity var(--svb-d-fast) ease-out !important;
+}
+
 #svb-root .svb-tab__outer {
   --svb-depth: 0;
   position: relative;
@@ -3608,6 +3614,24 @@ function createTreeController(api) {
   const pendingCreatedTabs = new Map()
   const expectedCreations = []
   const recentlyClosedTabs = []
+  const closingTabIds = new Set()
+
+  function markClosingTab(tabIdOrIds) {
+    const ids = Array.isArray(tabIdOrIds) ? tabIdOrIds : [tabIdOrIds]
+    for (const id of ids) {
+      const numId = Number(id)
+      if (Number.isFinite(numId)) {
+        closingTabIds.add(numId)
+        setTimeout(() => {
+          closingTabIds.delete(numId)
+        }, 3000)
+      }
+    }
+  }
+
+  function isClosing(tabId) {
+    return closingTabIds.has(Number(tabId))
+  }
   let pendingRemovalDirty = false
   let cachedDerivedView = null
   let persistQueue = Promise.resolve()
@@ -4070,7 +4094,8 @@ function createTreeController(api) {
         unpinnedTabIds = [],
       } = options
 
-      const contextChanged = await ensureContext(contextKey, tabs, currentContextKey)
+      const liveTabs = (Array.isArray(tabs) ? tabs : []).filter(tab => !closingTabIds.has(tab.id))
+      const contextChanged = await ensureContext(contextKey, liveTabs, currentContextKey)
       let persistenceDirty = false
       let structuralDirty = false
 
@@ -4089,12 +4114,12 @@ function createTreeController(api) {
         }
       }
 
-      if (treeStore.repair(tabs.map(tab => tab.id))) {
+      if (treeStore.repair(liveTabs.map(tab => tab.id))) {
         persistenceDirty = true
         structuralDirty = true
       }
 
-      const tabsById = new Map(tabs.map(tab => [tab.id, tab]))
+      const tabsById = new Map(liveTabs.map(tab => [tab.id, tab]))
 
       function getFirstUnpinnedRootIndex() {
         const currentTreeState = treeStore.exportState()
@@ -4111,7 +4136,7 @@ function createTreeController(api) {
         return index
       }
 
-      for (const tab of tabs) {
+      for (const tab of liveTabs) {
         if (treeStore.hasTab(tab.id)) continue
 
         treeStore.ensureTab(tab.id)
@@ -4235,7 +4260,7 @@ function createTreeController(api) {
       }
 
       if (!contextChanged && !persistenceDirty && !structuralDirty && cachedDerivedView && cachedDerivedView.contextKey === contextKey) {
-        const restored = restoreDerivedViewFromCache(tabs)
+        const restored = restoreDerivedViewFromCache(liveTabs)
         if (restored) {
           return {
             treeTabs: restored.treeTabs,
@@ -4248,13 +4273,13 @@ function createTreeController(api) {
       }
 
       const treeState = treeStore.exportState()
-      const { treeTabs, fullTreeOrderIds, parentById } = buildDerivedSnapshot(tabs, treeState)
+      const { treeTabs, fullTreeOrderIds, parentById } = buildDerivedSnapshot(liveTabs, treeState)
 
       if (contextChanged || persistenceDirty) {
-        persistCurrentTree(tabs)
+        persistCurrentTree(liveTabs)
       }
 
-      cachedDerivedView = createDerivedViewCache(contextKey, tabs, treeTabs, fullTreeOrderIds, parentById)
+      cachedDerivedView = createDerivedViewCache(contextKey, liveTabs, treeTabs, fullTreeOrderIds, parentById)
 
       return {
         treeTabs,
@@ -4463,6 +4488,9 @@ function createTreeController(api) {
       persistCurrentTree(tabs)
       return { movedIds: moveIds }
     },
+
+    markClosingTab,
+    isClosing,
 
     getParentId(tabId) {
       return treeStore.getParentId(tabId)
@@ -5941,6 +5969,14 @@ function createTabStore(api) {
     lockCurrentContext()
     await activateBeforeCloseIfNeeded(validTargetIds)
     markTabsPreactivatedBeforeClose(validTargetIds)
+    if (typeof treeController.markClosingTab === 'function') {
+      treeController.markClosingTab(validTargetIds)
+    }
+    const closingSet = new Set(validTargetIds)
+    const nextTabs = state.tabs.filter(t => !closingSet.has(t.id))
+    const nextPinnedTabs = state.pinnedTabs.filter(t => !closingSet.has(t.id))
+    const nextTreeTabs = state.treeTabs.filter(item => !closingSet.has(item.id))
+    setState({ tabs: nextTabs, pinnedTabs: nextPinnedTabs, treeTabs: nextTreeTabs })
     try {
       if (validTargetIds.length === 1 && typeof api.closeTab === 'function') {
         await api.closeTab(validTargetIds[0])
@@ -6080,7 +6116,8 @@ function createTabStore(api) {
     if (state.windowId == null) return
 
     const { preserveContext = false, activeRegularTabIdOverride = undefined } = options
-    const allTabs = sortTabs(await api.getTabs(state.windowId))
+    const rawTabs = await api.getTabs(state.windowId)
+    const allTabs = sortTabs(typeof treeController.isClosing === 'function' ? rawTabs.filter(tab => !treeController.isClosing(tab.id)) : rawTabs)
     let workspaces = state.workspaces
     let savedBookmarkTrees = state.savedBookmarkTrees
 
@@ -6390,6 +6427,9 @@ function createTabStore(api) {
     }
 
     const handleRemoved = tabId => {
+      if (typeof treeController.markClosingTab === 'function') {
+        treeController.markClosingTab(tabId)
+      }
       lastFolderUrlUpdates.delete(tabId)
       const closedTab = state.tabs.find(t => t.id === tabId) || state.pinnedTabs.find(t => t.id === tabId)
       if (closedTab && treeController.recordClosedTab) {
@@ -6401,6 +6441,13 @@ function createTabStore(api) {
       const wasPreactivatedForClose = consumePreactivatedClose(tabId)
 
       treeController.handleRemovedTab(tabId)
+
+      const nextTabs = state.tabs.filter(t => t.id !== tabId)
+      const nextPinnedTabs = state.pinnedTabs.filter(t => t.id !== tabId)
+      const nextTreeTabs = state.treeTabs.filter(item => item.id !== tabId)
+      if (nextTabs.length !== state.tabs.length || nextTreeTabs.length !== state.treeTabs.length || nextPinnedTabs.length !== state.pinnedTabs.length) {
+        setState({ tabs: nextTabs, pinnedTabs: nextPinnedTabs, treeTabs: nextTreeTabs })
+      }
 
       if (!wasPreactivatedForClose && Number.isFinite(targetActiveId)) {
         api.activateTab(targetActiveId)
@@ -6608,6 +6655,14 @@ function createTabStore(api) {
       lockCurrentContext()
       await activateBeforeCloseIfNeeded(closeTargetIds)
       markTabsPreactivatedBeforeClose(closeTargetIds)
+      if (typeof treeController.markClosingTab === 'function') {
+        treeController.markClosingTab(closeTargetIds)
+      }
+      const closingSet = new Set(closeTargetIds)
+      const nextTabs = state.tabs.filter(t => !closingSet.has(t.id))
+      const nextPinnedTabs = state.pinnedTabs.filter(t => !closingSet.has(t.id))
+      const nextTreeTabs = state.treeTabs.filter(item => !closingSet.has(item.id))
+      setState({ tabs: nextTabs, pinnedTabs: nextPinnedTabs, treeTabs: nextTreeTabs })
       try {
         if (closeTargetIds.length === 1) {
           await api.closeTab(closeTargetIds[0])
@@ -11854,7 +11909,7 @@ function createSidebarRenderer(options) {
     // This completely eliminates layout thrashing (forced synchronous reflow).
     for (const [key, node] of motionNodes) {
       const previousRect = previousRects.get(key)
-      if (!previousRect || !node.isConnected || enteringNodes.has(node) || (enteringNodeSet && enteringNodeSet.has(node))) continue
+      if (!previousRect || !node.isConnected || enteringNodes.has(node) || (enteringNodeSet && enteringNodeSet.has(node)) || (node.classList && node.classList.contains('is-closing'))) continue
 
       const rect = node.getBoundingClientRect()
       if (rect.top > viewportHeight + 250 || rect.bottom < -250) continue
@@ -12243,6 +12298,11 @@ function createSidebarRenderer(options) {
 
     if (role === 'close-tab' && Number.isFinite(tabId)) {
       event.stopPropagation()
+      const tabButton = event.target.closest('.svb-tab')
+      if (tabButton) {
+        tabButton.style.pointerEvents = 'none'
+        tabButton.classList.add('is-closing')
+      }
       onCloseTab(tabId)
       return
     }
@@ -12462,6 +12522,8 @@ function createSidebarRenderer(options) {
 
       event.preventDefault()
       event.stopPropagation()
+      tabButton.style.pointerEvents = 'none'
+      tabButton.classList.add('is-closing')
       onCloseTab(tabId)
       return
     }

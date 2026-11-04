@@ -677,6 +677,12 @@ body.svb-is-resizing {
   box-shadow: none;
 }
 
+#svb-root .svb-tab.is-closing {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity var(--svb-d-fast) ease-out !important;
+}
+
 #svb-root .svb-tab__outer {
   --svb-depth: 0;
   position: relative;

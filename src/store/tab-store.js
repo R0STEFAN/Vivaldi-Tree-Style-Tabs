@@ -783,6 +783,14 @@ function createTabStore(api) {
     lockCurrentContext()
     await activateBeforeCloseIfNeeded(validTargetIds)
     markTabsPreactivatedBeforeClose(validTargetIds)
+    if (typeof treeController.markClosingTab === 'function') {
+      treeController.markClosingTab(validTargetIds)
+    }
+    const closingSet = new Set(validTargetIds)
+    const nextTabs = state.tabs.filter(t => !closingSet.has(t.id))
+    const nextPinnedTabs = state.pinnedTabs.filter(t => !closingSet.has(t.id))
+    const nextTreeTabs = state.treeTabs.filter(item => !closingSet.has(item.id))
+    setState({ tabs: nextTabs, pinnedTabs: nextPinnedTabs, treeTabs: nextTreeTabs })
     try {
       if (validTargetIds.length === 1 && typeof api.closeTab === 'function') {
         await api.closeTab(validTargetIds[0])
@@ -922,7 +930,8 @@ function createTabStore(api) {
     if (state.windowId == null) return
 
     const { preserveContext = false, activeRegularTabIdOverride = undefined } = options
-    const allTabs = sortTabs(await api.getTabs(state.windowId))
+    const rawTabs = await api.getTabs(state.windowId)
+    const allTabs = sortTabs(typeof treeController.isClosing === 'function' ? rawTabs.filter(tab => !treeController.isClosing(tab.id)) : rawTabs)
     let workspaces = state.workspaces
     let savedBookmarkTrees = state.savedBookmarkTrees
 
@@ -1232,6 +1241,9 @@ function createTabStore(api) {
     }
 
     const handleRemoved = tabId => {
+      if (typeof treeController.markClosingTab === 'function') {
+        treeController.markClosingTab(tabId)
+      }
       lastFolderUrlUpdates.delete(tabId)
       const closedTab = state.tabs.find(t => t.id === tabId) || state.pinnedTabs.find(t => t.id === tabId)
       if (closedTab && treeController.recordClosedTab) {
@@ -1243,6 +1255,13 @@ function createTabStore(api) {
       const wasPreactivatedForClose = consumePreactivatedClose(tabId)
 
       treeController.handleRemovedTab(tabId)
+
+      const nextTabs = state.tabs.filter(t => t.id !== tabId)
+      const nextPinnedTabs = state.pinnedTabs.filter(t => t.id !== tabId)
+      const nextTreeTabs = state.treeTabs.filter(item => item.id !== tabId)
+      if (nextTabs.length !== state.tabs.length || nextTreeTabs.length !== state.treeTabs.length || nextPinnedTabs.length !== state.pinnedTabs.length) {
+        setState({ tabs: nextTabs, pinnedTabs: nextPinnedTabs, treeTabs: nextTreeTabs })
+      }
 
       if (!wasPreactivatedForClose && Number.isFinite(targetActiveId)) {
         api.activateTab(targetActiveId)
@@ -1450,6 +1469,14 @@ function createTabStore(api) {
       lockCurrentContext()
       await activateBeforeCloseIfNeeded(closeTargetIds)
       markTabsPreactivatedBeforeClose(closeTargetIds)
+      if (typeof treeController.markClosingTab === 'function') {
+        treeController.markClosingTab(closeTargetIds)
+      }
+      const closingSet = new Set(closeTargetIds)
+      const nextTabs = state.tabs.filter(t => !closingSet.has(t.id))
+      const nextPinnedTabs = state.pinnedTabs.filter(t => !closingSet.has(t.id))
+      const nextTreeTabs = state.treeTabs.filter(item => !closingSet.has(item.id))
+      setState({ tabs: nextTabs, pinnedTabs: nextPinnedTabs, treeTabs: nextTreeTabs })
       try {
         if (closeTargetIds.length === 1) {
           await api.closeTab(closeTargetIds[0])
