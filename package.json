@@ -7,6 +7,8 @@
     "build": "node build/build.mjs",
     "watch": "node build/build.mjs --watch",
     "install:macos": "bash install-macos.sh",
-    "uninstall:macos": "bash uninstall-macos.sh"
+    "uninstall:macos": "bash uninstall-macos.sh",
+    "patch:windows": "patch-windows.bat",
+    "uninstall:windows": "uninstall-windows.bat"
   }
 }

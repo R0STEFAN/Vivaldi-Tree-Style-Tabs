@@ -7855,6 +7855,8 @@ const VIVALDI_TILING_MODULE_ID = 69787
 const VIVALDI_PAGE_STORE_MODULE_ID = 96951
 const VIVALDI_COLLECTION_MODULE_ID = 35369
 const VIVALDI_PAGE_ACTIONS_MODULE_ID = 59322
+const VIVALDI_WORKSPACE_STORE_MODULE_ID = 53454
+const VIVALDI_WORKSPACE_MANAGER_MODULE_ID = 29104
 
 function createVivaldiBridge(options) {
   const {
@@ -7916,53 +7918,118 @@ function getVivaldiMainView() {
     if (!require || typeof require !== 'function') return null
 
     try {
-      return require(moduleId)
+      const num = Number(moduleId)
+      return require(Number.isFinite(num) ? num : moduleId)
     } catch (error) {
-      return null
+      try {
+        return require(moduleId)
+      } catch {
+        return null
+      }
     }
   }
 
-  function findModuleByExports(predicate) {
-    const require = getMainViewWebpackRequire()
-    if (!require || !require.c) return null
+  function extractExport(mod, predicate) {
+    if (!mod) return null
+    try {
+      if (predicate(mod)) return mod
+      if (mod.default && predicate(mod.default)) return mod.default
+      if (mod.Z && predicate(mod.Z)) return mod.Z
+      if (mod.ZP && predicate(mod.ZP)) return mod.ZP
+    } catch {
+      // Ignore inspection failures on individual exports
+    }
+    return null
+  }
 
-    for (const cachedModule of Object.values(require.c)) {
-      try {
-        const mod = cachedModule?.exports
-        if (!mod) continue
-        
-        // Check main export and Z/ZP wrappers
-        if (predicate(mod)) return mod
-        if (mod.default && predicate(mod.default)) return mod.default
-        if (mod.Z && predicate(mod.Z)) return mod.Z
-        if (mod.ZP && predicate(mod.ZP)) return mod.ZP
-      } catch (e) {
-        continue
+  function findModuleByExports(predicate, options = {}) {
+    const require = getMainViewWebpackRequire()
+    if (!require) return null
+
+    const { knownModuleId, sourceKeywords } = options
+
+    // 1. Inspect already cached modules in require.c (safe, fast, zero side effects)
+    if (require.c) {
+      for (const cachedModule of Object.values(require.c)) {
+        try {
+          const found = extractExport(cachedModule?.exports, predicate)
+          if (found) return found
+        } catch {
+          continue
+        }
       }
     }
+
+    // 2. If knownModuleId is specified and not yet in require.c, try loading it directly
+    if (knownModuleId != null) {
+      try {
+        const mod = getVivaldiWebpackModule(knownModuleId)
+        const found = extractExport(mod, predicate)
+        if (found) return found
+      } catch {
+        // Fall through to keyword scan
+      }
+    }
+
+    // 3. If sourceKeywords are provided, safely scan require.m function source code without executing them
+    if (Array.isArray(sourceKeywords) && sourceKeywords.length > 0 && require.m) {
+      for (const moduleId of Object.keys(require.m)) {
+        if (require.c && require.c[moduleId]) continue
+        try {
+          const fn = require.m[moduleId]
+          const src = typeof fn === 'function' ? fn.toString() : ''
+          if (!src) continue
+          const matches = sourceKeywords.every(kw => src.includes(kw))
+          if (matches) {
+            const mod = getVivaldiWebpackModule(moduleId)
+            const found = extractExport(mod, predicate)
+            if (found) return found
+          }
+        } catch {
+          continue
+        }
+      }
+    }
+
     return null
   }
 
   function getWorkspaceManager() {
     if (workspaceManager) return workspaceManager
-    workspaceManager = findModuleByExports(m =>
-      typeof m.addWorkspace === 'function'
-      && typeof m.removeWorkspace === 'function'
-      && typeof m.activateWorkspaceByIndex === 'function'
-      && typeof m.setName === 'function'
+    workspaceManager = findModuleByExports(
+      m =>
+        typeof m.addWorkspace === 'function'
+        && typeof m.removeWorkspace === 'function'
+        && typeof m.activateWorkspaceByIndex === 'function'
+        && typeof m.setName === 'function',
+      {
+        knownModuleId: VIVALDI_WORKSPACE_MANAGER_MODULE_ID,
+        sourceKeywords: ['addWorkspace', 'removeWorkspace'],
+      }
     )
     return workspaceManager
   }
 
   function getPageStore() {
     if (pageStore) return pageStore
-    pageStore = findModuleByExports(m => typeof m.getPageById === 'function' && typeof m.getPages === 'function')
+    pageStore = findModuleByExports(
+      m => typeof m.getPageById === 'function' && typeof m.getPages === 'function',
+      {
+        knownModuleId: VIVALDI_PAGE_STORE_MODULE_ID,
+        sourceKeywords: ['getPageById', 'getPages'],
+      }
+    )
     return pageStore
   }
 
   function getTilingModule() {
     if (tilingModule) return tilingModule
-    tilingModule = findModuleByExports(m => typeof m.Yb === 'function' && m.Yb.length >= 2)
+    tilingModule = findModuleByExports(
+      m => typeof m.Yb === 'function' && m.Yb.length >= 2,
+      {
+        knownModuleId: VIVALDI_TILING_MODULE_ID,
+      }
+    )
     return tilingModule
   }
 
@@ -7970,29 +8037,50 @@ function getVivaldiMainView() {
     if (pageActions) return pageActions
     // Vivaldi 8: movePage might be gone or renamed, using detachPage + detachWorkspace as signature
     // Also ensuring setSelection is present
-    pageActions = findModuleByExports(m => typeof m.detachPage === 'function' && (typeof m.setSelection === 'function' || typeof m.detachWorkspace === 'function'))
+    pageActions = findModuleByExports(
+      m => typeof m.detachPage === 'function' && (typeof m.setSelection === 'function' || typeof m.detachWorkspace === 'function'),
+      {
+        knownModuleId: VIVALDI_PAGE_ACTIONS_MODULE_ID,
+        sourceKeywords: ['detachPage'],
+      }
+    )
     return pageActions
   }
 
   function getCollectionModule() {
     if (collectionModule) return collectionModule
     // Vivaldi 8: The collection module often has an 'aV' property which is the collection class/object
-    const mod = findModuleByExports(m => m && m.aV && typeof m.aV.of === 'function')
+    const mod = findModuleByExports(
+      m => m && m.aV && typeof m.aV.of === 'function',
+      {
+        knownModuleId: VIVALDI_COLLECTION_MODULE_ID,
+      }
+    )
     if (mod && mod.aV) {
       collectionModule = mod.aV
       return collectionModule
     }
     // Fallback for older versions
-    collectionModule = findModuleByExports(m => typeof m.aV === 'function' && (typeof m.V_ === 'function' || typeof m.of === 'function'))
+    collectionModule = findModuleByExports(
+      m => typeof m.aV === 'function' && (typeof m.V_ === 'function' || typeof m.of === 'function'),
+      {
+        knownModuleId: VIVALDI_COLLECTION_MODULE_ID,
+      }
+    )
     return collectionModule
   }
 
   function getWorkspaceStore() {
     if (workspaceStore) return workspaceStore
-    workspaceStore = findModuleByExports(m => 
-      typeof m.getWorkspaces === 'function' && 
-      typeof m.getActiveWorkspaceId === 'function' &&
-      typeof m.addListener === 'function'
+    workspaceStore = findModuleByExports(
+      m => 
+        typeof m.getWorkspaces === 'function' && 
+        typeof m.getActiveWorkspaceId === 'function' &&
+        typeof m.addListener === 'function',
+      {
+        knownModuleId: VIVALDI_WORKSPACE_STORE_MODULE_ID,
+        sourceKeywords: ['getWorkspaces', 'getActiveWorkspaceId'],
+      }
     )
     return workspaceStore
   }

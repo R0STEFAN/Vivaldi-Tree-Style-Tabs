@@ -60,6 +60,15 @@ If you are building from source or prefer not to use the background updater:
 - Double-click `patch-windows.bat` or run it from CMD/PowerShell. It will automatically detect your Vivaldi path, copy `custom.js`, and inject the script.
 - *Note: You will need to run `patch-windows.bat` manually after every browser update.*
 
+**Uninstallation (Windows)**
+To cleanly remove the mod from Vivaldi:
+- Double-click `uninstall-windows.bat` (or `unpatch-windows.bat`), or run `npm run uninstall:windows`.
+- The script automatically locates your Vivaldi installation (including user or system-wide installs and Snapshot), restores `window.html` by safely removing the injected `<script>` tag, and deletes `custom.js` and `svb-folder.html`.
+- If you have Vivaldi installed in a custom directory:
+  ```cmd
+  uninstall-windows.bat "D:\CustomPath\Vivaldi\Application"
+  ```
+
 ### Linux (Arch-based)
 
 The project includes an automatic installer that sets up a Pacman Hook to keep the mod active after system updates.

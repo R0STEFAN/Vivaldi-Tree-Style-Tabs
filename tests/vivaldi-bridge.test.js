@@ -126,4 +126,125 @@ describe('vivaldi-bridge - Webpack module discovery', () => {
     const result = bridge.activateWorkspace(1, null)
     assert.equal(result, true, 'Should find workspace manager wrapped in .Z')
   })
+  it('loads module via knownModuleId when not in require.c', () => {
+    let moduleCalled = false
+
+    const mockWorkspaceStore = {
+      getWorkspaces: () => [{ id: 42, name: 'Work' }],
+      getActiveWorkspaceId: () => 42,
+      addListener: () => {},
+    }
+
+    const mockRequire = function (id) {
+      if (id === 53454) {
+        moduleCalled = true
+        return { Z: mockWorkspaceStore }
+      }
+      return null
+    }
+
+    mockRequire.m = {
+      53454: function () {},
+      999: function () {
+        throw new Error('Should not execute unrelated module from require.m!')
+      },
+    }
+
+    mockRequire.c = {}
+
+    const mockMainView = {
+      document: {},
+      location: { href: 'chrome-extension://mpognobbkildjkofajifpdfhcoklimli/main.html' },
+      webpackChunkgapp_browser_react: {
+        push: ([_ids, _modules, callback]) => {
+          callback(mockRequire)
+        },
+      },
+    }
+
+    global.chrome = {
+      extension: {
+        getViews: () => [mockMainView],
+      },
+    }
+
+    const bridge = createVivaldiBridge({
+      getPrefsApi: () => null,
+      setPref: () => {},
+      promisifyChromeApi: fn => fn(),
+      workspacesPrefPath: 'vivaldi.workspaces.list',
+      defaultWorkspaceIcon: '<svg></svg>',
+    })
+
+    const activeId = bridge.getActiveWorkspaceId(1)
+    assert.equal(activeId, 42, 'Should load workspace store via knownModuleId')
+    assert.equal(moduleCalled, true, 'knownModuleId should be executed directly')
+  })
+
+  it('scans require.m source without executing unrelated modules when knownModuleId does not match', () => {
+    let unrelatedExecuted = false
+    let targetExecuted = false
+
+    const mockManager = {
+      addWorkspace: () => 123,
+      removeWorkspace: () => {},
+      activateWorkspaceByIndex: () => {},
+      setName: () => {},
+    }
+
+    const mockRequire = function (id) {
+      if (id === 77777) {
+        targetExecuted = true
+        return { Z: mockManager }
+      }
+      if (id === 999) {
+        unrelatedExecuted = true
+        throw new Error('Should not execute unrelated module!')
+      }
+      return null
+    }
+
+    function managerFactory() {
+      // source contains keywords: addWorkspace, removeWorkspace
+    }
+    function unrelatedFactory() {
+      // source contains: locale, moment, format
+    }
+
+    mockRequire.m = {
+      77777: managerFactory,
+      999: unrelatedFactory,
+    }
+
+    mockRequire.c = {}
+
+    const mockMainView = {
+      document: {},
+      location: { href: 'chrome-extension://mpognobbkildjkofajifpdfhcoklimli/main.html' },
+      webpackChunkgapp_browser_react: {
+        push: ([_ids, _modules, callback]) => {
+          callback(mockRequire)
+        },
+      },
+    }
+
+    global.chrome = {
+      extension: {
+        getViews: () => [mockMainView],
+      },
+    }
+
+    const bridge = createVivaldiBridge({
+      getPrefsApi: () => null,
+      setPref: () => {},
+      promisifyChromeApi: fn => fn(),
+      workspacesPrefPath: 'vivaldi.workspaces.list',
+      defaultWorkspaceIcon: '<svg></svg>',
+    })
+
+    const result = bridge.activateWorkspace(1, null)
+    assert.equal(result, true, 'Should find workspace manager via sourceKeywords scan')
+    assert.equal(targetExecuted, true, 'Target module should be executed')
+    assert.equal(unrelatedExecuted, false, 'Unrelated module must NOT be executed')
+  })
 })
