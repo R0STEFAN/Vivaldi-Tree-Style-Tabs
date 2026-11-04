@@ -27,7 +27,7 @@ function getVivaldiMainView() {
   if (!extensionApi || typeof extensionApi.getViews !== 'function') return null
 
   mainView = extensionApi.getViews().find(view => {
-    if (!view || view === window) return false
+    if (!view || (typeof window !== 'undefined' && view === window)) return false
     if (!view.document || !view.location) return false
     if (!String(view.location.href || '').endsWith('/main.html')) return false
     return !!view.webpackChunkgapp_browser_react
@@ -71,15 +71,16 @@ function getVivaldiMainView() {
 
   function findModuleByExports(predicate) {
     const require = getMainViewWebpackRequire()
-    if (!require || !require.m) return null
+    if (!require || !require.c) return null
 
-    for (const moduleId of Object.keys(require.m)) {
+    for (const cachedModule of Object.values(require.c)) {
       try {
-        const mod = require(moduleId)
+        const mod = cachedModule?.exports
         if (!mod) continue
         
         // Check main export and Z/ZP wrappers
         if (predicate(mod)) return mod
+        if (mod.default && predicate(mod.default)) return mod.default
         if (mod.Z && predicate(mod.Z)) return mod.Z
         if (mod.ZP && predicate(mod.ZP)) return mod.ZP
       } catch (e) {
