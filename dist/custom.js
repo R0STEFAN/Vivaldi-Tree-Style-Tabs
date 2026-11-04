@@ -86,7 +86,7 @@ const STYLE_TEXT = `
 
 .svb-layout-host.svb-position-right #svb-root.svb-shell {
   left: auto !important;
-  right: 0 !important;
+  right: var(--svb-panels-offset, 0px) !important;
   transform: translateX(100%) !important;
 }
 
@@ -97,7 +97,7 @@ const STYLE_TEXT = `
 
 #svb-root-trigger.svb-edge-trigger.svb-position-right {
   left: auto !important;
-  right: 0 !important;
+  right: var(--svb-panels-offset, 0px) !important;
 }
 
 .svb-layout-host.svb-position-right #svb-root .svb-resize-handle {
@@ -169,7 +169,7 @@ const STYLE_TEXT = `
   --svb-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   position: absolute !important;
   top: 0 !important;
-  left: 0 !important;
+  left: var(--svb-panels-offset, 0px) !important;
   bottom: 0 !important;
   margin: 0 !important;
   width: var(--svb-sidebar-width, 300px);
@@ -250,7 +250,7 @@ body.svb-is-resizing {
 #svb-root-trigger.svb-edge-trigger {
   position: fixed !important;
   top: 0 !important;
-  left: 0 !important;
+  left: var(--svb-panels-offset, 0px) !important;
   bottom: 0 !important;
   width: 4px;
   z-index: 999999;
@@ -2202,7 +2202,16 @@ function mountRoot(id) {
     root = document.createElement('aside')
     root.id = id
     root.className = 'svb-shell'
-    host.prepend(root)
+    const panels = typeof host.querySelector === 'function' ? host.querySelector('#panels-container') : null
+    if (panels && panels.nextSibling && typeof host.insertBefore === 'function') {
+      host.insertBefore(root, panels.nextSibling)
+    } else if (panels && typeof host.appendChild === 'function') {
+      host.appendChild(root)
+    } else if (typeof host.prepend === 'function') {
+      host.prepend(root)
+    } else {
+      host.appendChild(root)
+    }
   }
 
   let trigger = document.getElementById(`${id}-trigger`)
@@ -9436,6 +9445,7 @@ function createLayoutAdapter(options) {
   let dragState = null
   let fullscreen = false
   let windowFullscreen = false
+  let panelsObserver = null
 
   function hasFullscreenClass(element) {
     if (!element || !element.classList) return false
@@ -9466,6 +9476,29 @@ function createLayoutAdapter(options) {
     return !!(root && (root.classList.contains('is-menu-open') || (root.querySelector && root.querySelector('.svb-menu'))))
   }
 
+  function getNativePanelsOffset() {
+    if (fullscreen) return 0
+
+    const panels = typeof document.getElementById === "function" ? document.getElementById("panels-container") : (typeof document.querySelector === "function" ? document.querySelector("#panels-container") : null)
+    if (!panels || (panels.classList && panels.classList.contains("overlay"))) return 0
+
+    const panelPosition = settingsStore.get("panelPosition")
+    const isRight = panelPosition === "right"
+
+    const main = typeof document.getElementById === "function" ? document.getElementById("main") : (typeof document.querySelector === "function" ? document.querySelector("#main") : null)
+    const panelsRight = (panels.classList && panels.classList.contains("right"))
+      || (main && main.classList && main.classList.contains("right"))
+      || (panels.parentElement && panels.parentElement.classList && panels.parentElement.classList.contains("right"))
+
+    const sameSide = isRight ? Boolean(panelsRight) : !panelsRight
+    if (!sameSide) return 0
+
+    if (typeof panels.getBoundingClientRect === "function") {
+      const rect = panels.getBoundingClientRect()
+      return Math.round(rect.width) || 0
+    }
+    return 0
+  }
   function apply() {
     if (!root || !trigger || !dragShield) return
 
@@ -9489,6 +9522,11 @@ function createLayoutAdapter(options) {
     const effectiveRevealed = revealed || isMenuOpen()
 
     currentHost.style.setProperty('--svb-rendered-width', `${renderedWidth}px`)
+    const nativePanelsOffset = getNativePanelsOffset()
+    currentHost.style.setProperty('--svb-panels-offset', `${nativePanelsOffset}px`)
+    if (trigger && trigger.style) {
+      trigger.style.setProperty('--svb-panels-offset', `${nativePanelsOffset}px`)
+    }
 
     if (isIconsMode) {
       // In icons mode when unpinned:
@@ -9592,9 +9630,10 @@ function createLayoutAdapter(options) {
     const onPointerMove = moveEvent => {
       if (!dragState || frameRequested) return
       
+      const offset = getNativePanelsOffset()
       const nextWidth = isRight
-        ? Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(hostRect.right - moveEvent.clientX)))
-        : Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(moveEvent.clientX - hostRect.left)))
+        ? Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(hostRect.right - offset - moveEvent.clientX)))
+        : Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(moveEvent.clientX - (hostRect.left + offset))))
       
       if (dragState.previewWidth !== nextWidth) {
         frameRequested = true
@@ -9661,7 +9700,18 @@ function createLayoutAdapter(options) {
     resizeHandler = () => apply()
     window.addEventListener('resize', resizeHandler)
 
+    function observePanels() {
+      const panels = typeof document.getElementById === "function" ? document.getElementById("panels-container") : (typeof document.querySelector === "function" ? document.querySelector("#panels-container") : null)
+      if (!panels || typeof ResizeObserver === "undefined") return
+      if (panelsObserver) panelsObserver.disconnect()
+      panelsObserver = new ResizeObserver(() => {
+        apply()
+      })
+      panelsObserver.observe(panels)
+    }
+    observePanels()
     observer = new MutationObserver(() => {
+      observePanels()
       refreshFullscreen()
       apply()
     })
@@ -9715,7 +9765,10 @@ function createLayoutAdapter(options) {
     const isCursorAtScreenEdge = (e) => {
       if (!e) return false;
       const isRight = settingsStore.get('panelPosition') === 'right';
-      return !isRight ? (e.clientX <= 15) : (e.clientX >= window.innerWidth - 15);
+      const offset = getNativePanelsOffset();
+      return !isRight
+        ? (e.clientX >= offset && e.clientX <= offset + 15)
+        : (e.clientX <= window.innerWidth - offset && e.clientX >= window.innerWidth - offset - 15);
     }
 
     rootMouseLeave = (e) => {
@@ -9786,7 +9839,10 @@ function createLayoutAdapter(options) {
       const isRight = panelPosition === 'right'
       const threshold = isIconsMode ? ICON_STRIP_WIDTH : 15 // Check icon strip width in icons mode
       
-      const inZone = !isRight ? (latestMouseX <= threshold) : (latestMouseX >= window.innerWidth - threshold)
+      const offset = getNativePanelsOffset()
+      const inZone = !isRight
+        ? (latestMouseX >= offset && latestMouseX <= offset + threshold)
+        : (latestMouseX <= window.innerWidth - offset && latestMouseX >= window.innerWidth - offset - threshold)
       
       if (inZone) {
         triggerRevealWithDelay()
@@ -9830,6 +9886,10 @@ function createLayoutAdapter(options) {
     }
     window.removeEventListener('resize', resizeHandler)
     if (observer) observer.disconnect()
+    if (panelsObserver) {
+      panelsObserver.disconnect()
+      panelsObserver = null
+    }
     document.removeEventListener('fullscreenchange', refreshFullscreen)
     document.removeEventListener('webkitfullscreenchange', refreshFullscreen)
     document.removeEventListener('mozfullscreenchange', refreshFullscreen)
