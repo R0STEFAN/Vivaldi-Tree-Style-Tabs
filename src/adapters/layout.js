@@ -16,6 +16,7 @@ function createLayoutAdapter(options) {
   let fullscreen = false
   let windowFullscreen = false
   let panelsObserver = null
+  let attachPanelsListeners = null
 
   function hasFullscreenClass(element) {
     if (!element || !element.classList) return false
@@ -46,11 +47,16 @@ function createLayoutAdapter(options) {
     return !!(root && (root.classList.contains('is-menu-open') || (root.querySelector && root.querySelector('.svb-menu'))))
   }
 
-  function getNativePanelsOffset() {
-    if (fullscreen) return 0
+  function getNativePanelsElement() {
+    return typeof document.getElementById === "function"
+      ? document.getElementById("panels-container")
+      : (typeof document.querySelector === "function" ? document.querySelector("#panels-container") : null)
+  }
 
-    const panels = typeof document.getElementById === "function" ? document.getElementById("panels-container") : (typeof document.querySelector === "function" ? document.querySelector("#panels-container") : null)
-    if (!panels || (panels.classList && panels.classList.contains("overlay"))) return 0
+  function isNativePanelsOnSameSide() {
+    if (fullscreen) return false
+    const panels = getNativePanelsElement()
+    if (!panels) return false
 
     const panelPosition = settingsStore.get("panelPosition")
     const isRight = panelPosition === "right"
@@ -60,8 +66,35 @@ function createLayoutAdapter(options) {
       || (main && main.classList && main.classList.contains("right"))
       || (panels.parentElement && panels.parentElement.classList && panels.parentElement.classList.contains("right"))
 
-    const sameSide = isRight ? Boolean(panelsRight) : !panelsRight
-    if (!sameSide) return 0
+    return isRight ? Boolean(panelsRight) : !panelsRight
+  }
+
+  function isSameSidePanelsTarget(element) {
+    if (!element) return false
+    if (!isNativePanelsOnSameSide()) return false
+    const panels = getNativePanelsElement()
+    if (!panels) return false
+    return element === panels || (typeof panels.contains === "function" && panels.contains(element))
+  }
+
+  function isCursorOverSameSidePanels(e) {
+    if (!e || !Number.isFinite(e.clientX) || !Number.isFinite(e.clientY)) return false
+    if (!isNativePanelsOnSameSide()) return false
+    const panels = getNativePanelsElement()
+    if (!panels || typeof panels.getBoundingClientRect !== "function") return false
+    const rect = panels.getBoundingClientRect()
+    if (!rect || rect.width <= 0) return false
+    return e.clientX >= rect.left && e.clientX <= rect.right
+      && e.clientY >= rect.top && e.clientY <= rect.bottom
+  }
+
+  function getNativePanelsOffset() {
+    if (fullscreen) return 0
+
+    const panels = getNativePanelsElement()
+    if (!panels || (panels.classList && panels.classList.contains("overlay"))) return 0
+
+    if (!isNativePanelsOnSameSide()) return 0
 
     if (typeof panels.getBoundingClientRect === "function") {
       const rect = panels.getBoundingClientRect()
@@ -270,8 +303,46 @@ function createLayoutAdapter(options) {
     resizeHandler = () => apply()
     window.addEventListener('resize', resizeHandler)
 
+    let panelsMouseEnter = null
+    let panelsMouseLeave = null
+    let observedPanelsElement = null
+
+    panelsMouseEnter = () => {
+      if (!isNativePanelsOnSameSide() || currentPinned || fullscreen || dragState) return
+      const autoHideMode = settingsStore.get('autoHideMode') || 'full'
+      if (autoHideMode === 'icons') {
+        triggerRevealWithDelay()
+      } else {
+        clearRevealDelay()
+        setRevealed(true)
+      }
+    }
+
+    panelsMouseLeave = (e) => {
+      clearRevealDelay()
+      if (isMenuOpen()) return
+      if (e && e.relatedTarget && (root.contains(e.relatedTarget) || trigger.contains(e.relatedTarget))) return
+      if (isCursorAtScreenEdge(e)) return
+      if (isCursorOverSameSidePanels(e)) return
+      setRevealed(false)
+    }
+
+    attachPanelsListeners = function(panels) {
+      if (observedPanelsElement === panels) return
+      if (observedPanelsElement && typeof observedPanelsElement.removeEventListener === "function") {
+        observedPanelsElement.removeEventListener('mouseenter', panelsMouseEnter)
+        observedPanelsElement.removeEventListener('mouseleave', panelsMouseLeave)
+      }
+      observedPanelsElement = panels
+      if (observedPanelsElement && typeof observedPanelsElement.addEventListener === "function") {
+        observedPanelsElement.addEventListener('mouseenter', panelsMouseEnter)
+        observedPanelsElement.addEventListener('mouseleave', panelsMouseLeave)
+      }
+    }
+
     function observePanels() {
-      const panels = typeof document.getElementById === "function" ? document.getElementById("panels-container") : (typeof document.querySelector === "function" ? document.querySelector("#panels-container") : null)
+      const panels = getNativePanelsElement()
+      attachPanelsListeners(panels)
       if (!panels || typeof ResizeObserver === "undefined") return
       if (panelsObserver) panelsObserver.disconnect()
       panelsObserver = new ResizeObserver(() => {
@@ -336,23 +407,26 @@ function createLayoutAdapter(options) {
       if (!e) return false;
       const isRight = settingsStore.get('panelPosition') === 'right';
       const offset = getNativePanelsOffset();
+      const sameSide = isNativePanelsOnSameSide();
       return !isRight
-        ? (e.clientX >= offset && e.clientX <= offset + 15)
-        : (e.clientX <= window.innerWidth - offset && e.clientX >= window.innerWidth - offset - 15);
+        ? (e.clientX >= (sameSide ? 0 : offset) && e.clientX <= offset + 15)
+        : (e.clientX <= (sameSide ? window.innerWidth : window.innerWidth - offset) && e.clientX >= window.innerWidth - offset - 15);
     }
 
     rootMouseLeave = (e) => {
       clearRevealDelay()
       if (isMenuOpen()) return
-      if (e && e.relatedTarget && trigger.contains(e.relatedTarget)) return
+      if (e && e.relatedTarget && (trigger.contains(e.relatedTarget) || isSameSidePanelsTarget(e.relatedTarget))) return
       if (isCursorAtScreenEdge(e)) return
+      if (isCursorOverSameSidePanels(e)) return
       setRevealed(false)
     }
     rootPointerLeave = (e) => {
       clearRevealDelay()
       if (isMenuOpen()) return
-      if (e && e.relatedTarget && trigger.contains(e.relatedTarget)) return
+      if (e && e.relatedTarget && (trigger.contains(e.relatedTarget) || isSameSidePanelsTarget(e.relatedTarget))) return
       if (isCursorAtScreenEdge(e)) return
+      if (isCursorOverSameSidePanels(e)) return
       setRevealed(false)
     }
 
@@ -368,6 +442,7 @@ function createLayoutAdapter(options) {
       if (isMenuOpen()) return
 
       if (isCursorAtScreenEdge(event)) return
+      if (isCursorOverSameSidePanels(event)) return
 
       let targetElement = null;
       if (event.type === 'mouseover' || event.type === 'pointerover') {
@@ -381,7 +456,14 @@ function createLayoutAdapter(options) {
         return
       }
 
-      if (targetElement === root || root.contains(targetElement) || targetElement === trigger || trigger.contains(targetElement) || targetElement === dragShield) {
+      if (
+        targetElement === root ||
+        (root.contains && root.contains(targetElement)) ||
+        targetElement === trigger ||
+        (trigger.contains && trigger.contains(targetElement)) ||
+        targetElement === dragShield ||
+        isSameSidePanelsTarget(targetElement)
+      ) {
         return
       }
 
@@ -394,6 +476,7 @@ function createLayoutAdapter(options) {
     document.addEventListener('pointerout', hideOnExternalHover)
 
     let latestMouseX = 0
+    let latestMouseY = 0
     let mouseMovePending = false
 
     const performMouseMoveCheck = () => {
@@ -410,12 +493,20 @@ function createLayoutAdapter(options) {
       const threshold = isIconsMode ? ICON_STRIP_WIDTH : 15 // Check icon strip width in icons mode
       
       const offset = getNativePanelsOffset()
+      const sameSide = isNativePanelsOnSameSide()
+
       const inZone = !isRight
-        ? (latestMouseX >= offset && latestMouseX <= offset + threshold)
-        : (latestMouseX <= window.innerWidth - offset && latestMouseX >= window.innerWidth - offset - threshold)
+        ? (latestMouseX >= (sameSide ? 0 : offset) && latestMouseX <= offset + threshold)
+        : (latestMouseX <= (sameSide ? window.innerWidth : window.innerWidth - offset) && latestMouseX >= window.innerWidth - offset - threshold)
       
       if (inZone) {
-        triggerRevealWithDelay()
+        if (sameSide && (isRight ? latestMouseX >= window.innerWidth - offset : latestMouseX <= offset)) {
+          // Direct hover over side panel: reveal immediately
+          clearRevealDelay()
+          setRevealed(true)
+        } else {
+          triggerRevealWithDelay()
+        }
       } else {
         clearRevealDelay()
       }
@@ -423,6 +514,7 @@ function createLayoutAdapter(options) {
 
     globalMouseMove = event => {
       latestMouseX = event.clientX
+      latestMouseY = event.clientY
       if (!mouseMovePending) {
         mouseMovePending = true
         mouseMoveRaf = window.requestAnimationFrame(performMouseMoveCheck)
@@ -460,6 +552,7 @@ function createLayoutAdapter(options) {
       panelsObserver.disconnect()
       panelsObserver = null
     }
+    if (attachPanelsListeners) attachPanelsListeners(null)
     document.removeEventListener('fullscreenchange', refreshFullscreen)
     document.removeEventListener('webkitfullscreenchange', refreshFullscreen)
     document.removeEventListener('mozfullscreenchange', refreshFullscreen)

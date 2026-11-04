@@ -68,6 +68,7 @@ describe('Side Panel Coexistence - Dynamic Layout Offset', () => {
     mockPanels = createMockElement('div', ['left'])
     mockPanels.getBoundingClientRect = () => ({ width: 280, height: 1000, top: 0, bottom: 1000, left: 0, right: 280 })
 
+    const docListeners = {}
     global.document = {
       body,
       documentElement: createMockElement('html'),
@@ -79,8 +80,20 @@ describe('Side Panel Coexistence - Dynamic Layout Offset', () => {
         if (id === 'panels-container') return mockPanels
         return null
       },
-      addEventListener: () => {},
-      removeEventListener: () => {}
+      addEventListener: (evt, fn) => {
+        docListeners[evt] = docListeners[evt] || []
+        docListeners[evt].push(fn)
+      },
+      removeEventListener: (evt, fn) => {
+        if (docListeners[evt]) {
+          docListeners[evt] = docListeners[evt].filter(f => f !== fn)
+        }
+      },
+      _trigger: (evt, data) => {
+        if (docListeners[evt]) {
+          docListeners[evt].forEach(fn => fn(data))
+        }
+      }
     }
     global.window = {
       addEventListener: () => {},
@@ -148,6 +161,50 @@ describe('Side Panel Coexistence - Dynamic Layout Offset', () => {
     mockPanels.getBoundingClientRect = () => ({ width: 340, height: 1000, top: 0, bottom: 1000, left: 1580, right: 1920 })
     layout.start()
     assert.equal(host.style.getPropertyValue('--svb-panels-offset'), '340px', 'Right side panel should offset right tab panel')
+  })
+
+  it('reveals and keeps tab panel open when hovering same-side panels-container in full auto-hide mode', () => {
+    panelStore.togglePinned() // unpin to activate overlay auto-hide
+    settingsStore.set('autoHideMode', 'full')
+    layout.start()
+
+    // Initially unpinned and hidden
+    assert.equal(root.classList.contains('is-revealed'), false, 'Tab panel should be initially hidden')
+
+    // Mouse enters same-side panels-container
+    mockPanels.trigger('mouseenter')
+    assert.equal(root.classList.contains('is-revealed'), true, 'Tab panel should reveal on same-side panels mouseenter')
+
+    // Mouse moves around inside panels-container (crossing buttons/elements)
+    const panelButton = createMockElement('button')
+    panelButton.contains = () => false
+    mockPanels.contains = el => el === panelButton || el === mockPanels
+
+    document._trigger('mouseover', { type: 'mouseover', target: panelButton })
+    assert.equal(root.classList.contains('is-revealed'), true, 'Tab panel should remain revealed when hovering within panels-container')
+
+    // Mouse leaves to external webpage
+    const externalWebview = createMockElement('div')
+    externalWebview.contains = () => false
+    mockPanels.contains = () => false
+    root.contains = () => false
+    trigger.contains = () => false
+    dragShield.contains = () => false
+
+    document._trigger('mouseover', { type: 'mouseover', target: externalWebview, clientX: 500, clientY: 500 })
+    assert.equal(root.classList.contains('is-revealed'), false, 'Tab panel should hide when mouse leaves to external content')
+  })
+
+  it('does NOT reveal tab panel when hovering opposite-side panels-container', () => {
+    panelStore.togglePinned() // unpin
+    settingsStore.set('autoHideMode', 'full')
+    settingsStore.set('panelPosition', 'right') // tab panel is on right, mockPanels has 'left' class
+    layout.start()
+
+    assert.equal(root.classList.contains('is-revealed'), false, 'Tab panel should be initially hidden')
+
+    mockPanels.trigger('mouseenter')
+    assert.equal(root.classList.contains('is-revealed'), false, 'Opposite side panel hover must not reveal tab panel')
   })
 })
 
