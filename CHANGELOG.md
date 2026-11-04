@@ -1,3 +1,18 @@
+# Release Notes (v2.3.1)
+
+## 🛠️ Fixes & Stability Improvements
+
+### 🌐 Prevent UI Date Format & Locale Corruption
+* **Safe Webpack Discovery**: Switched `findModuleByExports` in the Vivaldi bridge to inspect only already-cached modules in `require.c` instead of scanning `require.m` and executing `require(moduleId)`.
+* **Preserve Native Locale**: Prevents unintended execution of uninitialized locale modules (such as Chinese or French date formatters in `date-fns`/`moment`), keeping Vivaldi UI areas like History, Downloads, and Bookmarks in the user's configured language.
+* **Faster Startup**: Eliminates eager evaluation of hundreds of Webpack module factories on browser startup.
+
+### 🧭 Address Bar Dropdown & Popup Stacking Fix
+* **Dropdown Layering**: Elevated `#browser .toolbar.toolbar-addressbar` and `#addressbar` `z-index` to `1000002 !important`.
+* **Unobstructed Omnibox**: Ensures native Vivaldi address bar suggestions, autocomplete dropdowns, and extension popups always render cleanly above the vertical tab panel (including when context menus are open).
+
+---
+
 # Release Notes (v2.3.0)
 
 ## 🚀 What's New
