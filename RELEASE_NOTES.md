@@ -1,40 +1,23 @@
-# Release Notes (v2.3.2)
+# Release Notes (v2.3.3)
 
-This release includes critical visual polish, stability fixes for tab closing, native Vivaldi side panel coexistence improvements, and fixes carried over from the recent v2.3.1 update.
-
----
-
-## 🚀 What's New & Fixed in v2.3.2
-
-### 🎯 Clean Tab Close Without "Fly-Down" Jump
-* **Eliminated Bottom-Jump Animation**: Previously, closing an active or background tab caused it to visually fly down to the very bottom of the sidebar before disappearing. This was caused by an IPC race condition where Chromium continues returning the tab for ~50ms while tearing down its WebContents, and the tree selector sorted unrecognized tabs to the bottom of the list.
-* **Optimistic Instant Removal**: Closing tabs (via the `×` button, middle-click, or `Ctrl+W`) are now immediately removed from the active tree state and marked `.is-closing` with zero opacity and disabled pointer events.
-* **Closing Tab Tracking Registry**: Added `markClosingTab` and `isClosing` in `treeController` with TTL protection to ensure subsequent syncs during browser IPC delays never resurrect or reposition closed tabs at the bottom.
-* **Smooth Upward FLIP Transition**: Remaining tabs below the closed tab slide smoothly upward into place without visual jarring.
-
-### 🛡️ Unified Side Panel Hover Zone in Full Auto-Hide Mode
-* **Eliminated Rapid Open/Close Flickering**: In full auto-hide mode, moving the mouse across Vivaldi's native side panel previously caused the tab panel to continuously flicker open and closed with every micro-movement.
-* **Unified Same-Side Dock**: When Vivaldi's native side panel and the custom vertical tabs panel are on the same side, hovering over the side panel (including `#switch` icon strip and expanded panel content like Bookmarks, History, Notes, Web Panels) now displays and steadily maintains the vertical tab panel open as a single cohesive unit.
-* **Smooth Cross-Panel Navigation**: Moving the cursor between the native side panel and the tab panel never triggers auto-collapse. The panel closes only when the cursor completely leaves both panels (e.g., into the web page).
-* **Opposite-Side Isolation**: When the native side panel is on the opposite side of the browser, side panel hover has zero effect on the vertical tab panel.
+This release fixes an issue where the vertical tabs panel ignored native Vivaldi New Tab Page settings and always opened the Start Page.
 
 ---
 
-## 🛠️ Fixes Carried Over from v2.3.1
+## 🚀 What's New & Fixed in v2.3.3
 
-### 🧩 Native Side Panel Coexistence & Dynamic Layout Offset
-* **`--svb-panels-offset` CSS Variable**: Dynamically calculates and applies the native side panel width in real time via `ResizeObserver`, pushing the vertical tabs panel and auto-hide edge trigger cleanly beside the side panel when both are on the same side.
-* **DOM Placement Order**: Corrected DOM insertion in `mountRoot` so that `#panels-container` precedes `#svb-root`, ensuring the native side panel renders first and the tab panel follows in natural visual order.
-* **Floating Panel Support**: Correctly detects floating/overlay panels (`.overlay`) to ensure layout margins only push when the side panel is docked.
-
-### 🌐 Workspaces Discovery & Native Locale Protection
-* **Safe Webpack Discovery**: Switched module discovery in `vivaldi-bridge.js` to inspect only cached modules in `require.c` rather than triggering uninitialized module factories in `require.m`, preventing date format and UI language corruption in native Vivaldi menus (History, Downloads, Bookmarks).
-* **Restored Workspaces in Header**: Reconnected native workspace discovery via known module ID fallback, restoring full functionality to the in-panel workspace switcher and "Move To" menu.
-
-### 🧭 Address Bar Dropdown & Popup Stacking Fix
-* **Dropdown Layering**: Elevated `#browser .toolbar.toolbar-addressbar` and `#addressbar` `z-index` to `1000002 !important` to ensure Omnibox autocomplete suggestions and extension popups render above vertical tabs.
+### ⚙️ Respect Native Vivaldi "New Tab Page" Preference
+* **Unwrap Vivaldi Preference Objects**: Fixed an issue where `vivaldi.prefs.get()` returns a wrapped object `{ path, value }` instead of a primitive value. Previously, this caused `String(value)` to evaluate to `"[object Object]"`, failing preference matches and forcing new tabs to fall back to the Start Page (Speed Dials).
+* **Support All New Tab Page Configurations**: The mod panel's New Tab (`+`) button and "New Child Tab" action now strictly respect the settings configured in `Settings > Tabs > New Tab Page`:
+  * **Start Page / Speed Dial**
+  * **Homepage** (resolves configured `vivaldi.homepage`)
+  * **Blank Page** (`about:blank`)
+  * **Specific Page** (resolves configured `vivaldi.tabs.new_page.custom_url`)
+  * **Controlled by Extension** (delegates new tab opening to active new tab override extensions)
+* **Custom URL Normalization**: Automatically prepends `http://` if the user configured a custom URL without an explicit protocol scheme (e.g. `google.com` or `intranet.local`), preventing relative URI resolution errors, and safely defaults to `about:blank` if the custom URL field is empty.
+* **Dual API Compatibility**: Handles both Promise-based and callback-based `vivaldi.prefs.get` invocations across Vivaldi versions.
 
 ---
 
 ## 📦 Automated Tests
-* Full test suite passing with **108 automated unit and integration tests** covering layout adaptation, tab closing, tree persistence, side panel coexistence, and AI grouping.
+* Full test suite passing with **122 automated unit and integration tests** (including 14 new tests covering all New Tab Page settings, URL normalization, and API unwrapping).
