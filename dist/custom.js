@@ -8645,14 +8645,44 @@ function normalizeTab(tab) {
   }
 }
 
+function unwrapPrefValue(result) {
+  if (result && typeof result === 'object' && !Array.isArray(result) && 'value' in result) {
+    return result.value
+  }
+  return result
+}
+
+function normalizeCustomUrl(url) {
+  const trimmed = typeof url === 'string' ? url.trim() : ''
+  if (!trimmed) {
+    return VIVALDI_BLANK_PAGE_URL
+  }
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)) {
+    return trimmed
+  }
+  return `http://${trimmed}`
+}
+
 function getVivaldiPrefsApi() {
   return typeof vivaldi !== 'undefined' && vivaldi && vivaldi.prefs ? vivaldi.prefs : null
+}
+
+async function fetchPrefRaw(prefsApi, path) {
+  let maybePromise
+  try {
+    maybePromise = prefsApi.get(path)
+  } catch (_error) {
+    maybePromise = undefined
+  }
+  return maybePromise && typeof maybePromise.then === 'function'
+    ? await maybePromise
+    : await promisifyChromeApi(prefsApi.get, path)
 }
 
 async function getVivaldiPref(path) {
   const prefsApi = getVivaldiPrefsApi()
   if (!prefsApi || typeof prefsApi.get !== 'function') return undefined
-  return promisifyChromeApi(prefsApi.get, path)
+  return unwrapPrefValue(await fetchPrefRaw(prefsApi, path))
 }
 
 async function setVivaldiPref(path, value) {
@@ -8672,7 +8702,7 @@ async function getConfiguredNewTabUrl() {
 
   try {
     const value = await getVivaldiPref(VIVALDI_NEW_PAGE_LINK_PREF)
-    linkType = typeof value === 'string' ? value : String(value || 'startpage')
+    linkType = typeof value === 'string' ? value : String(value ?? 'startpage')
   } catch (_error) {
     linkType = 'startpage'
   }
@@ -8697,9 +8727,9 @@ async function getConfiguredNewTabUrl() {
   if (linkType === 'custom' || linkType === '4') {
     try {
       const customUrl = await getVivaldiPref(VIVALDI_NEW_PAGE_CUSTOM_URL_PREF)
-      return typeof customUrl === 'string' && customUrl ? customUrl : VIVALDI_START_PAGE_URL
+      return normalizeCustomUrl(customUrl)
     } catch (_error) {
-      return VIVALDI_START_PAGE_URL
+      return VIVALDI_BLANK_PAGE_URL
     }
   }
 
@@ -9267,7 +9297,13 @@ function createTabsApi() {
   }
 }
 
-module.exports = { createTabsApi }
+module.exports = {
+  createTabsApi,
+  getConfiguredNewTabUrl,
+  getVivaldiPref,
+  unwrapPrefValue,
+  normalizeCustomUrl,
+}
 
     },
     "adapters/theme.js": function(require, module, exports) {
