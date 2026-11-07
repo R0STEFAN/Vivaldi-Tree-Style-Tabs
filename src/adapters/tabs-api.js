@@ -691,6 +691,29 @@ function createTabsApi() {
         await vivaldiBridge.notifyActiveWorkspace(windowId, Number(targetWorkspaceId))
       }
 
+      const vivExtData = serializeVivExtData(options.vivExtData)
+
+      if (vivaldiBridge && typeof vivaldiBridge.newTab === 'function') {
+        try {
+          const tabId = await vivaldiBridge.newTab(windowId, options.url || null, {
+            index: Number.isFinite(options.index) ? options.index : undefined,
+            active: !!options.active,
+            workspaceId: targetWorkspaceId != null ? Number(targetWorkspaceId) : undefined,
+            vivExtData: vivExtData ? parseVivExtData(vivExtData) : options.vivExtData,
+          })
+          if (tabId) {
+            if (vivExtData && typeof tabsApi.update === 'function') {
+              await promisifyChromeApi(tabsApi.update, tabId, { vivExtData }).catch(() => {})
+            }
+            const tabObj = await promisifyChromeApi(tabsApi.get, tabId).catch(() => null)
+            if (tabObj) return normalizeTab(tabObj)
+            return { id: tabId, windowId, workspaceId: targetWorkspaceId, vivExtData: parseVivExtData(vivExtData) }
+          }
+        } catch (nativeError) {
+          console.warn('[svb] native newTab failed in createRestoredTab, falling back to chrome.tabs.create', nativeError)
+        }
+      }
+
       const createProperties = {
         windowId,
         active: !!options.active,
@@ -710,7 +733,6 @@ function createTabsApi() {
         createProperties.index = options.index
       }
 
-      const vivExtData = serializeVivExtData(options.vivExtData)
       if (vivExtData) {
         createProperties.vivExtData = vivExtData
       }
@@ -828,14 +850,41 @@ function createTabsApi() {
               ? options.vivExtData.workspaceId
               : undefined)
 
+        const url = typeof options.url === 'string' && options.url
+          ? options.url
+          : await getConfiguredNewTabUrl()
+
+        const vivExtData = serializeVivExtData(options.vivExtData)
+
+        // Ensure Vivaldi knows about the active workspace before creating the tab
         if (targetWorkspaceId != null && vivaldiBridge.notifyActiveWorkspace) {
           await vivaldiBridge.notifyActiveWorkspace(windowId, Number(targetWorkspaceId))
         }
 
+        if (vivaldiBridge && typeof vivaldiBridge.newTab === 'function') {
+          try {
+            const tabId = await vivaldiBridge.newTab(windowId, url, {
+              index: Number.isFinite(options.index) ? options.index : undefined,
+              active: options.active !== undefined ? !!options.active : true,
+              workspaceId: targetWorkspaceId != null ? Number(targetWorkspaceId) : undefined,
+              vivExtData: vivExtData ? parseVivExtData(vivExtData) : options.vivExtData,
+              openerTabId: Number.isFinite(openerTabId) ? openerTabId : undefined,
+            })
+            if (tabId) {
+              if (vivExtData && typeof tabsApi.update === 'function') {
+                promisifyChromeApi(tabsApi.update, tabId, { vivExtData }).catch(() => {})
+              }
+              return
+            }
+          } catch (nativeError) {
+            console.warn('[svb] native newTab failed in createChildTab, falling back to chrome.tabs.create', nativeError)
+          }
+        }
+
         const createProperties = {
           windowId,
-          active: true,
-          openerTabId,
+          active: options.active !== undefined ? !!options.active : true,
+          openerTabId: Number.isFinite(openerTabId) ? openerTabId : undefined,
           transition: 'link',
           ignoreLinkRouting: true,
         }
@@ -844,9 +893,6 @@ function createTabsApi() {
           createProperties.workspaceId = Number(targetWorkspaceId)
         }
 
-        const url = typeof options.url === 'string' && options.url
-          ? options.url
-          : await getConfiguredNewTabUrl()
         if (url) {
           createProperties.url = url
         }
@@ -855,7 +901,6 @@ function createTabsApi() {
           createProperties.index = options.index
         }
 
-        const vivExtData = serializeVivExtData(options.vivExtData)
         if (vivExtData) {
           createProperties.vivExtData = vivExtData
         }

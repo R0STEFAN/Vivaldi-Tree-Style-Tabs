@@ -347,5 +347,116 @@ describe('Workspace Tab Creation - Respects Active Workspace', () => {
       assert.strictEqual(createTabOptions.workspaceId, 77, 'Must fall back to active tab workspace 77')
       store.dispose()
     })
+
+    it('store.createTabAt forwards active workspaceId and url to api.createChildTab', async () => {
+      let createdChildArgs = null
+      const mockTabs = [
+        {
+          id: 10,
+          index: 0,
+          windowId: 1,
+          active: true,
+          pinned: false,
+          workspaceId: 15,
+          vivExtData: { workspaceId: 15, svbTree: { contextKey: 'workspace:15', nodeId: 'node_10', order: 0 } },
+        },
+      ]
+
+      const noopUnsub = () => () => {}
+      const mockApi = {
+        getCurrentWindowId: async () => 1,
+        getTabs: async () => mockTabs,
+        getActiveWorkspaceId: () => 15,
+        getWorkspaces: async () => [{ id: 15, name: 'Research' }],
+        createTab: () => {},
+        createChildTab: (windowId, parentTabId, options) => {
+          createdChildArgs = { windowId, parentTabId, options }
+        },
+        updateTab: async () => {},
+        updateVivExtData: async () => {},
+        onCreated: noopUnsub,
+        onUpdated: noopUnsub,
+        onRemoved: noopUnsub,
+        onMoved: noopUnsub,
+        onAttached: noopUnsub,
+        onDetached: noopUnsub,
+        onActivated: noopUnsub,
+        onWindowFocusChanged: noopUnsub,
+        isVivaldi: () => true,
+      }
+
+      const store = createTabStore(mockApi)
+      await store.init()
+
+      // Dropping a link after tab 10
+      store.createTabAt('https://example.com/dropped', 10, 'after')
+      assert.ok(createdChildArgs, 'createChildTab must be called')
+      assert.strictEqual(createdChildArgs.parentTabId, 10)
+      assert.strictEqual(createdChildArgs.options.url, 'https://example.com/dropped')
+      assert.strictEqual(createdChildArgs.options.workspaceId, 15, 'Workspace ID 15 must be forwarded')
+
+      store.dispose()
+    })
+
+    it('handleCreated calls api.moveTabsToWorkspace if tab.workspaceId was null on creation', async () => {
+      let moveCalls = []
+      let onCreatedHandler = null
+
+      const mockTabs = [
+        {
+          id: 10,
+          index: 0,
+          windowId: 1,
+          active: true,
+          pinned: false,
+          workspaceId: 25,
+          vivExtData: { workspaceId: 25, svbTree: { contextKey: 'workspace:25', nodeId: 'node_10', order: 0 } },
+        },
+      ]
+
+      const noopUnsub = () => () => {}
+      const mockApi = {
+        getCurrentWindowId: async () => 1,
+        getTabs: async () => mockTabs,
+        getActiveWorkspaceId: () => 25,
+        getWorkspaces: async () => [{ id: 25, name: 'Work' }],
+        createTab: () => {},
+        updateTab: async () => {},
+        updateVivExtData: async () => {},
+        moveTabsToWorkspace: async (tabIds, wsId, winId) => {
+          moveCalls.push({ tabIds, wsId, winId })
+        },
+        onCreated: (handler) => { onCreatedHandler = handler; return () => {} },
+        onUpdated: noopUnsub,
+        onRemoved: noopUnsub,
+        onMoved: noopUnsub,
+        onAttached: noopUnsub,
+        onDetached: noopUnsub,
+        onActivated: noopUnsub,
+        onWindowFocusChanged: noopUnsub,
+        isVivaldi: () => true,
+      }
+
+      const store = createTabStore(mockApi)
+      await store.init()
+
+      const droppedTab = {
+        id: 777,
+        index: 1,
+        windowId: 1,
+        active: true,
+        pinned: false,
+        workspaceId: null, // Created without workspace by browser
+        vivExtData: null,
+      }
+
+      onCreatedHandler(droppedTab)
+
+      assert.strictEqual(moveCalls.length, 1, 'moveTabsToWorkspace must be called to move orphaned tab')
+      assert.deepStrictEqual(moveCalls[0].tabIds, [777])
+      assert.strictEqual(moveCalls[0].wsId, 25)
+
+      store.dispose()
+    })
   })
 })

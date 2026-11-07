@@ -236,8 +236,20 @@ async function main() {
     onCommitExternalContentDrop: ({ url, text, targetId, position }) => {
       if (!url && !text) return
 
-      const finalUrl = url ? url.split('\n')[0].trim() : `https://www.google.com/search?q=${encodeURIComponent(text.trim())}`
-      
+      let finalUrl = null
+      if (typeof url === "string" && url) {
+        finalUrl = url.split("\n").map(s => s.trim()).filter(s => s && !s.startsWith("#"))[0] || null
+      }
+      if (!finalUrl && typeof text === "string" && text) {
+        const trimmed = text.trim()
+        if (/^(https?|chrome|vivaldi|file|data):/i.test(trimmed)) {
+          finalUrl = trimmed
+        } else {
+          finalUrl = `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`
+        }
+      }
+      if (!finalUrl) return
+
       if (Number.isFinite(targetId) && position) {
         store.createTabAt(finalUrl, targetId, position)
       } else {

@@ -1242,12 +1242,19 @@ function createTabStore(api) {
         fromPinnedTab: pinnedIds.has(state.activeTabId) || pinnedIds.has(tab.openerTabId),
       })
       if (!tab.pinned && state.activeWorkspaceId != null && !state.outsideWorkspace) {
-        if (tab.workspaceId == null || (pendingRecord && pendingRecord.expectedCreation)) {
-          tab.workspaceId = state.activeWorkspaceId
-          const nextVivExt = { ...(tab.vivExtData || {}), workspaceId: state.activeWorkspaceId }
+        const isMissingWorkspace = (tab.workspaceId == null)
+        if (isMissingWorkspace || (pendingRecord && pendingRecord.expectedCreation)) {
+          const targetWs = state.activeWorkspaceId
+          tab.workspaceId = targetWs
+          const nextVivExt = { ...(tab.vivExtData || {}), workspaceId: targetWs }
           tab.vivExtData = nextVivExt
           if (api.updateVivExtData) {
             api.updateVivExtData(tab.id, nextVivExt).catch(() => {})
+          }
+          if (isMissingWorkspace && api.moveTabsToWorkspace) {
+            api.moveTabsToWorkspace([tab.id], targetWs, state.windowId).catch(err => {
+              console.warn('[svb] moveTabsToWorkspace in handleCreated failed', err)
+            })
           }
         }
       }
@@ -1549,18 +1556,23 @@ function createTabStore(api) {
         position,
       })
 
+      const targetTab = getTabById(targetId)
       const index = position === 'inside' 
         ? treeController.getCreateChildIndex(targetId, state.tabs)
         : position === 'before'
-          ? getTabById(targetId).index
+          ? (targetTab ? targetTab.index : undefined)
           : treeController.getCreateSiblingIndex(targetId, state.tabs)
 
       pendingNativeReconcileReason = `create-${kind}-at`
       let targetWorkspaceId = state.outsideWorkspace ? null : (state.activeWorkspaceId ?? null)
       if (targetWorkspaceId == null && !state.outsideWorkspace) {
-        const targetTab = getTabById(targetId)
         if (targetTab && targetTab.workspaceId != null) {
           targetWorkspaceId = Number(targetTab.workspaceId)
+        } else {
+          const activeTab = (state.tabs || []).find(t => t.active) || (state.pinnedTabs || []).find(t => t.active)
+          if (activeTab && activeTab.workspaceId != null) {
+            targetWorkspaceId = Number(activeTab.workspaceId)
+          }
         }
       }
 
@@ -1638,18 +1650,23 @@ function createTabStore(api) {
         position,
       })
 
+      const targetTab = getTabById(targetId)
       const index = position === 'inside' 
         ? treeController.getCreateChildIndex(targetId, state.tabs)
         : position === 'before'
-          ? getTabById(targetId).index
+          ? (targetTab ? targetTab.index : undefined)
           : treeController.getCreateSiblingIndex(targetId, state.tabs)
 
       pendingNativeReconcileReason = `create-${kind}-at`
       let targetWorkspaceId = state.outsideWorkspace ? null : (state.activeWorkspaceId ?? null)
       if (targetWorkspaceId == null && !state.outsideWorkspace) {
-        const targetTab = getTabById(targetId)
         if (targetTab && targetTab.workspaceId != null) {
           targetWorkspaceId = Number(targetTab.workspaceId)
+        } else {
+          const activeTab = (state.tabs || []).find(t => t.active) || (state.pinnedTabs || []).find(t => t.active)
+          if (activeTab && activeTab.workspaceId != null) {
+            targetWorkspaceId = Number(activeTab.workspaceId)
+          }
         }
       }
 
