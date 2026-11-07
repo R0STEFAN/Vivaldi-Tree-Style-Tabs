@@ -1,18 +1,12 @@
-# Release Notes (v2.3.4)
+# Release Notes (v2.3.5)
 
-## 🚀 Що виправлено в v2.3.4 / What's Fixed in v2.3.4
+## 🚀 What's Fixed in v2.3.5
 
-* **Створення нової вкладки**: нова вкладка створюється в поточному просторі замість Default.
-* **Переміщення вкладок (Move to)**: виправлено переміщення вкладок у будь-який простір та Default.
-* **Створення простору з вкладками**: виправлено створення нового простору з виділеними вкладками.
-
----
-
-* **New Tab in Active Workspace**: New tabs now open in the active workspace instead of Default.
-* **Move Tabs to Workspace**: Fixed moving tabs to any existing workspace and Default window.
-* **Create Workspace with Tabs**: Fixed creating a new workspace with selected tabs.
+* **Dropped Links**: Dropped links now open directly in the active workspace.
+* **Child and Sibling Tabs**: New child and sibling tabs now stay in the active workspace.
+* **Workspace Auto-Adoption**: Automatically moves newly opened tabs into the current workspace.
 
 ---
 
 ## 📦 Automated Tests
-* Full test suite passing with **131 automated unit and integration tests**.
+* Full test suite passing with **133 automated unit and integration tests**.
