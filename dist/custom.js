@@ -6173,8 +6173,45 @@ function createTabStore(api) {
     }
     treeController.clearStalePendingCreations(allTabs)
 
+    let effectiveNativeWorkspaceId = nativeWorkspaceId
+    const currentActiveTab = allTabs.find(tab => tab.active) || null
+    const activeTabWs = currentActiveTab && currentActiveTab.workspaceId != null
+      ? Number(currentActiveTab.workspaceId)
+      : (currentActiveTab ? null : undefined)
+
+    if (useNativeWorkspace && currentActiveTab && !currentActiveTab.hidden) {
+      const nativeWs = nativeWorkspaceId == null ? null : Number(nativeWorkspaceId)
+      const hasTabsInNativeWs = allTabs.some(tab => {
+        const ws = tab.workspaceId != null ? Number(tab.workspaceId) : null
+        return ws === nativeWs
+      })
+
+      // Active-Tab-First Resolution (GEMINI.md #2):
+      // When a tab in another workspace is newly activated (e.g. settings singleton tab,
+      // quick commands, external link, or tab activation event), follow the active tab
+      // to its workspace and notify native workspace manager.
+      const isActiveTabInDifferentWorkspace = activeTabWs !== undefined && activeTabWs !== nativeWs
+      const isActiveTabNewlyActivated = reason === 'event-active' || (Number.isFinite(state.activeTabId) && currentActiveTab.id !== state.activeTabId)
+
+      if (hasTabsInNativeWs && isActiveTabInDifferentWorkspace && isActiveTabNewlyActivated) {
+        effectiveNativeWorkspaceId = activeTabWs
+        releaseContextLock()
+        pendingActiveRepairTabId = null
+        if (api.activateWorkspace && state.windowId != null) {
+          try {
+            api.activateWorkspace(state.windowId, activeTabWs)
+          } catch (e) {
+            console.warn('[svb] sync native activateWorkspace failed', e)
+          }
+        }
+        if (api.notifyActiveWorkspace && state.windowId != null) {
+          api.notifyActiveWorkspace(state.windowId, activeTabWs).catch(() => {})
+        }
+      }
+    }
+
     const derivedContext = useNativeWorkspace
-      ? deriveContextFromNativeWorkspace(allTabs, nativeWorkspaceId)
+      ? deriveContextFromNativeWorkspace(allTabs, effectiveNativeWorkspaceId)
       : deriveContextFromActiveTab(allTabs)
     let nextContext = derivedContext
 
