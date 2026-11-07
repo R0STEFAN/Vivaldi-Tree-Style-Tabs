@@ -6278,8 +6278,9 @@ function createTabStore(api) {
       if (activeTab && activeTab.workspaceId != null && nextContext.outsideWorkspace) {
         for (const tab of allTabs) {
           tab.workspaceId = null
-          if (tab.vivExtData && typeof tab.vivExtData === 'object') {
-            const nextVivExt = { ...tab.vivExtData }
+          const existing = parseVivExtData(tab.vivExtData)
+          if (existing) {
+            const nextVivExt = { ...existing }
             delete nextVivExt.workspaceId
             tab.vivExtData = nextVivExt
             api.updateVivExtData(tab.id, nextVivExt).catch(() => {})
@@ -6501,17 +6502,24 @@ function createTabStore(api) {
       const pendingRecord = treeController.capturePendingCreation(tab, state.activeTabId, {
         fromPinnedTab: pinnedIds.has(state.activeTabId) || pinnedIds.has(tab.openerTabId),
       })
+
+      const isExpected = !!(pendingRecord && pendingRecord.expectedCreation)
+      const existingVivExt = parseVivExtData(tab.vivExtData) || {}
+
       if (!tab.pinned && state.activeWorkspaceId != null && !state.outsideWorkspace) {
-        const isMissingWorkspace = (tab.workspaceId == null)
-        if (isMissingWorkspace || (pendingRecord && pendingRecord.expectedCreation)) {
-          const targetWs = state.activeWorkspaceId
+        const targetWs = state.activeWorkspaceId
+        const hasWorkspace = tab.workspaceId != null || existingVivExt.workspaceId != null
+
+        if (!hasWorkspace || isExpected) {
           tab.workspaceId = targetWs
-          const nextVivExt = { ...(tab.vivExtData || {}), workspaceId: targetWs }
+          const nextVivExt = { ...existingVivExt, workspaceId: targetWs }
           tab.vivExtData = nextVivExt
-          if (api.updateVivExtData) {
+
+          if (existingVivExt.workspaceId !== targetWs && api.updateVivExtData) {
             api.updateVivExtData(tab.id, nextVivExt).catch(() => {})
           }
-          if (isMissingWorkspace && api.moveTabsToWorkspace) {
+
+          if (!hasWorkspace && !isExpected && api.moveTabsToWorkspace) {
             api.moveTabsToWorkspace([tab.id], targetWs, state.windowId).catch(err => {
               console.warn('[svb] moveTabsToWorkspace in handleCreated failed', err)
             })
@@ -6575,7 +6583,7 @@ function createTabStore(api) {
             const targetWorkspaceId = state.activeWorkspaceId
             if (attachedTab.workspaceId !== targetWorkspaceId) {
               attachedTab.workspaceId = targetWorkspaceId
-              const nextVivExt = { ...(attachedTab.vivExtData || {}) }
+              const nextVivExt = { ...(parseVivExtData(attachedTab.vivExtData) || {}) }
               if (targetWorkspaceId == null) {
                 delete nextVivExt.workspaceId
               } else {

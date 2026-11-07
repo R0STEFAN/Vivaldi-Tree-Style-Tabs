@@ -243,6 +243,8 @@ describe('Tree Persistence & Session Restore Reliability', () => {
 
     const store = createTabStore(mockApi)
     await store.init()
+    updateCalls.length = 0
+    moveCalls.length = 0
 
     // Session restore emits onCreated for an existing tab in workspace 4
     const restoredTab = {
