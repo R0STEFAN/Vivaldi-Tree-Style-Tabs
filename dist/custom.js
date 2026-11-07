@@ -2982,10 +2982,21 @@ function cloneTreeState(treeState) {
   return next
 }
 
+function safeParseVivExtData(value) {
+  if (!value) return null
+  if (typeof value === 'object') return value
+  if (typeof value !== 'string') return null
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch (_) {
+    return null
+  }
+}
+
 function cloneVivExtData(value) {
-  return value && typeof value === 'object'
-    ? JSON.parse(JSON.stringify(value))
-    : {}
+  const parsed = safeParseVivExtData(value)
+  return parsed ? JSON.parse(JSON.stringify(parsed)) : {}
 }
 
 function normalizeOrder(value) {
@@ -2994,9 +3005,7 @@ function normalizeOrder(value) {
 }
 
 function getTreeRecord(tab, contextKey) {
-  const vivExtData = tab && tab.vivExtData && typeof tab.vivExtData === 'object'
-    ? tab.vivExtData
-    : null
+  const vivExtData = safeParseVivExtData(tab && tab.vivExtData)
   const record = vivExtData && vivExtData[TREE_NAMESPACE_KEY] && typeof vivExtData[TREE_NAMESPACE_KEY] === 'object'
     ? vivExtData[TREE_NAMESPACE_KEY]
     : null
@@ -5251,6 +5260,18 @@ function getTabColorKey(tab) {
     : ''
 }
 
+function parseVivExtData(value) {
+  if (!value) return null
+  if (typeof value === 'object') return value
+  if (typeof value !== 'string') return null
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch (_) {
+    return null
+  }
+}
+
 function stableSerialize(value) {
   if (Array.isArray(value)) {
     return `[${value.map(item => stableSerialize(item)).join(',')}]`
@@ -5267,9 +5288,7 @@ function stableSerialize(value) {
 }
 
 function getVivExtDataSignature(tab) {
-  const vivExtData = tab && tab.vivExtData && typeof tab.vivExtData === 'object'
-    ? tab.vivExtData
-    : null
+  const vivExtData = parseVivExtData(tab && tab.vivExtData)
   return vivExtData ? stableSerialize(vivExtData) : ''
 }
 
@@ -9785,6 +9804,8 @@ module.exports = {
   getVivaldiPref,
   unwrapPrefValue,
   normalizeCustomUrl,
+  parseVivExtData,
+  serializeVivExtData,
 }
 
     },

@@ -1,3 +1,11 @@
+# Release Notes (v2.3.7)
+
+## 🛠️ Fixes & Improvements
+
+* **Child Tab Order**: Promotes child tabs in place upon parent closure to prevent them from jumping to the bottom of the tab strip.
+
+---
+
 # Release Notes (v2.3.6)
 
 ## 🛠️ Fixes & Improvements

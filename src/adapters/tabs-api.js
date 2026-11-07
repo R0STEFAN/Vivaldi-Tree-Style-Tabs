@@ -984,4 +984,6 @@ module.exports = {
   getVivaldiPref,
   unwrapPrefValue,
   normalizeCustomUrl,
+  parseVivExtData,
+  serializeVivExtData,
 }
