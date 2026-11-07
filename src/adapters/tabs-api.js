@@ -10,7 +10,10 @@ const { settingsStore } = require('../store/settings-store.js')
 function promisifyChromeApi(fn, ...args) {
   return new Promise((resolve, reject) => {
     try {
-      fn(...args, result => {
+      let resolved = false
+      const maybePromise = fn(...args, result => {
+        if (resolved) return
+        resolved = true
         const runtimeError = chrome.runtime && chrome.runtime.lastError
         if (runtimeError) {
           reject(new Error(runtimeError.message))
@@ -18,6 +21,22 @@ function promisifyChromeApi(fn, ...args) {
         }
         resolve(result)
       })
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        maybePromise.then(
+          res => {
+            if (!resolved) {
+              resolved = true
+              resolve(res)
+            }
+          },
+          err => {
+            if (!resolved) {
+              resolved = true
+              reject(err)
+            }
+          }
+        )
+      }
     } catch (error) {
       reject(error)
     }
@@ -287,8 +306,19 @@ function createTabsApi() {
 
   return {
     async getCurrentWindowId() {
+      if (typeof window !== 'undefined' && Number.isFinite(window.vivaldiWindowId)) {
+        return window.vivaldiWindowId
+      }
       const win = await promisifyChromeApi(windowsApi.getCurrent, { populate: false })
       return win.id
+    },
+
+    async newTab(windowId, url, options = {}) {
+      return vivaldiBridge.newTab(windowId, url, options)
+    },
+
+    async notifyActiveWorkspace(windowId, workspaceId) {
+      return vivaldiBridge.notifyActiveWorkspace(windowId, workspaceId)
     },
 
     async getTabs(windowId) {
@@ -326,6 +356,10 @@ function createTabsApi() {
 
     onWorkspacesChanged(listener) {
       return vivaldiBridge.onWorkspacesChanged(listener)
+    },
+
+    async moveTabsToWorkspace(tabIds, workspaceId, windowId) {
+      return vivaldiBridge.moveTabsToWorkspace(tabIds, workspaceId, windowId)
     },
 
     async activateTab(tabId) {
@@ -647,11 +681,25 @@ function createTabsApi() {
 
     async createRestoredTab(windowId, options = {}) {
       if (windowId == null) return null
+      const targetWorkspaceId = options.workspaceId !== undefined
+        ? options.workspaceId
+        : (options.vivExtData && typeof options.vivExtData === 'object' && options.vivExtData.workspaceId !== undefined
+            ? options.vivExtData.workspaceId
+            : undefined)
+
+      if (targetWorkspaceId != null && vivaldiBridge.notifyActiveWorkspace) {
+        await vivaldiBridge.notifyActiveWorkspace(windowId, Number(targetWorkspaceId))
+      }
+
       const createProperties = {
         windowId,
         active: !!options.active,
         transition: 'auto_bookmark',
         ignoreLinkRouting: true,
+      }
+
+      if (targetWorkspaceId != null) {
+        createProperties.workspaceId = Number(targetWorkspaceId)
       }
 
       if (typeof options.url === 'string' && options.url) {
@@ -684,40 +732,116 @@ function createTabsApi() {
     createTab(windowId, options = {}) {
       tabsApi.query({ windowId }, async tabs => {
         const isTopMode = settingsStore.get('newTabPlacement') === 'top'
-        const pinnedCount = Array.isArray(tabs) ? tabs.filter(t => t.pinned).length : 0
-        const index = isTopMode ? pinnedCount : (Array.isArray(tabs) ? tabs.length : undefined)
-        const createProperties = {
-          windowId,
-          active: true,
-          index,
-          transition: 'auto_bookmark',
-          ignoreLinkRouting: true,
+        const targetWorkspaceId = options.workspaceId !== undefined
+          ? options.workspaceId
+          : (options.vivExtData && typeof options.vivExtData === 'object' && options.vivExtData.workspaceId !== undefined
+              ? options.vivExtData.workspaceId
+              : undefined)
+
+        let index
+        if (Number.isFinite(options.index)) {
+          index = options.index
+        } else if (targetWorkspaceId != null) {
+          const workspaceTabs = Array.isArray(tabs)
+            ? tabs.filter(t => {
+                const ws = t.workspaceId != null
+                  ? t.workspaceId
+                  : (parseVivExtData(t.vivExtData)?.workspaceId)
+                return ws != null && Number(ws) === Number(targetWorkspaceId)
+              })
+            : []
+          if (isTopMode) {
+            index = workspaceTabs.length > 0 ? workspaceTabs[0].index : undefined
+          } else {
+            index = workspaceTabs.length > 0 ? workspaceTabs[workspaceTabs.length - 1].index + 1 : undefined
+          }
+        } else {
+          const pinnedCount = Array.isArray(tabs) ? tabs.filter(t => t.pinned).length : 0
+          index = isTopMode ? pinnedCount : (Array.isArray(tabs) ? tabs.length : undefined)
         }
 
         const url = typeof options.url === 'string' && options.url
           ? options.url
           : await getConfiguredNewTabUrl()
+
+        const vivExtData = serializeVivExtData(options.vivExtData)
+
+        // Ensure Vivaldi knows about the active workspace before creating the tab
+        if (targetWorkspaceId != null && vivaldiBridge.notifyActiveWorkspace) {
+          await vivaldiBridge.notifyActiveWorkspace(windowId, Number(targetWorkspaceId))
+        }
+
+        // Try native PageActions.newTab first if available
+        if (vivaldiBridge.newTab) {
+          try {
+            const tabId = await vivaldiBridge.newTab(windowId, url || null, {
+              index: Number.isFinite(index) ? index : undefined,
+              workspaceId: targetWorkspaceId != null ? Number(targetWorkspaceId) : undefined,
+            })
+            if (tabId) {
+              if (vivExtData && typeof tabsApi.update === 'function') {
+                promisifyChromeApi(tabsApi.update, tabId, { vivExtData }).catch(() => {})
+              }
+              return
+            }
+          } catch (nativeError) {
+            console.warn('[svb] native newTab failed, falling back to chrome.tabs.create', nativeError)
+          }
+        }
+
+        const createProperties = {
+          windowId,
+          active: true,
+          transition: 'auto_bookmark',
+          ignoreLinkRouting: true,
+        }
+
+        if (Number.isFinite(index)) {
+          createProperties.index = index
+        }
+
+        if (targetWorkspaceId != null) {
+          createProperties.workspaceId = Number(targetWorkspaceId)
+        }
+
         if (url) {
           createProperties.url = url
         }
 
-        const vivExtData = serializeVivExtData(options.vivExtData)
         if (vivExtData) {
           createProperties.vivExtData = vivExtData
         }
 
-        tabsApi.create(createProperties)
+        tabsApi.create(createProperties, createdTab => {
+          if (createdTab && createdTab.id && vivExtData && typeof tabsApi.update === 'function') {
+            promisifyChromeApi(tabsApi.update, createdTab.id, { vivExtData }).catch(() => {})
+          }
+        })
       })
     },
 
     createChildTab(windowId, openerTabId, options = {}) {
       void (async () => {
+        const targetWorkspaceId = options.workspaceId !== undefined
+          ? options.workspaceId
+          : (options.vivExtData && typeof options.vivExtData === 'object' && options.vivExtData.workspaceId !== undefined
+              ? options.vivExtData.workspaceId
+              : undefined)
+
+        if (targetWorkspaceId != null && vivaldiBridge.notifyActiveWorkspace) {
+          await vivaldiBridge.notifyActiveWorkspace(windowId, Number(targetWorkspaceId))
+        }
+
         const createProperties = {
           windowId,
           active: true,
           openerTabId,
           transition: 'link',
           ignoreLinkRouting: true,
+        }
+
+        if (targetWorkspaceId != null) {
+          createProperties.workspaceId = Number(targetWorkspaceId)
         }
 
         const url = typeof options.url === 'string' && options.url
@@ -736,7 +860,11 @@ function createTabsApi() {
           createProperties.vivExtData = vivExtData
         }
 
-        tabsApi.create(createProperties)
+        tabsApi.create(createProperties, createdTab => {
+          if (createdTab && createdTab.id && vivExtData && typeof tabsApi.update === 'function') {
+            promisifyChromeApi(tabsApi.update, createdTab.id, { vivExtData }).catch(() => {})
+          }
+        })
       })()
     },
 

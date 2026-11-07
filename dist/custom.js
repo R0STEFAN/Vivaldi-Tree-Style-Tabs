@@ -3831,13 +3831,19 @@ function createTreeController(api) {
         ? expectedCreations.shift()
         : null
 
-      pendingCreatedTabs.set(tab.id, {
+      const record = {
         openerTabId: tab.openerTabId,
         sourceActiveTabId,
         expectedCreation,
         fromPinnedTab: !(expectedCreation && expectedCreation.kind === 'root') && !!(meta && meta.fromPinnedTab),
         nativeIndex: tab.index,
-      })
+      }
+      pendingCreatedTabs.set(tab.id, record)
+      return record
+    },
+
+    hasExpectedCreations() {
+      return expectedCreations.length > 0
     },
 
     recordClosedTab(tab) {
@@ -6110,6 +6116,10 @@ function createTabStore(api) {
       }
       return nextData
     })
+
+    if (api.moveTabsToWorkspace) {
+      await api.moveTabsToWorkspace(targetIds, targetWorkspaceId, state.windowId)
+    }
   }
 
   async function syncTabs(options = {}, reason = 'direct') {
@@ -6420,9 +6430,19 @@ function createTabStore(api) {
 
     const handleCreated = tab => {
       const pinnedIds = new Set(state.pinnedTabs.map(pinnedTab => pinnedTab.id))
-      treeController.capturePendingCreation(tab, state.activeTabId, {
+      const pendingRecord = treeController.capturePendingCreation(tab, state.activeTabId, {
         fromPinnedTab: pinnedIds.has(state.activeTabId) || pinnedIds.has(tab.openerTabId),
       })
+      if (!tab.pinned && state.activeWorkspaceId != null && !state.outsideWorkspace) {
+        if (tab.workspaceId == null || (pendingRecord && pendingRecord.expectedCreation)) {
+          tab.workspaceId = state.activeWorkspaceId
+          const nextVivExt = { ...(tab.vivExtData || {}), workspaceId: state.activeWorkspaceId }
+          tab.vivExtData = nextVivExt
+          if (api.updateVivExtData) {
+            api.updateVivExtData(tab.id, nextVivExt).catch(() => {})
+          }
+        }
+      }
       refreshPreservingContext(tab)
     }
 
@@ -6677,12 +6697,37 @@ function createTabStore(api) {
 
     closeTabIds,
 
-    createTab() {
+    createTab(arg1, arg2) {
       if (state.windowId == null) return
+      const options = (arg2 && typeof arg2 === 'object')
+        ? arg2
+        : (arg1 && typeof arg1 === 'object')
+          ? arg1
+          : (typeof arg1 === 'string' ? { url: arg1 } : {})
+
       treeController.registerExpectedCreation({ kind: 'root' })
       pendingNativeReconcileReason = 'create-root'
+      let targetWorkspaceId = state.outsideWorkspace ? null : (state.activeWorkspaceId ?? null)
+      if (targetWorkspaceId == null && !state.outsideWorkspace) {
+        const activeTab = (state.tabs || []).find(t => t.active) || (state.pinnedTabs || []).find(t => t.active)
+        if (activeTab && activeTab.workspaceId != null) {
+          targetWorkspaceId = Number(activeTab.workspaceId)
+        }
+      }
+
+      const effectiveState = {
+        ...state,
+        activeWorkspaceId: targetWorkspaceId,
+        outsideWorkspace: targetWorkspaceId == null && state.outsideWorkspace,
+      }
+
       api.createTab(state.windowId, {
-        vivExtData: getCreateVivExtDataForState(state),
+        url: options.url,
+        workspaceId: targetWorkspaceId,
+        vivExtData: {
+          ...getCreateVivExtDataForState(effectiveState),
+          ...(options.vivExtData || {}),
+        },
       })
     },
 
@@ -6703,12 +6748,27 @@ function createTabStore(api) {
           : treeController.getCreateSiblingIndex(targetId, state.tabs)
 
       pendingNativeReconcileReason = `create-${kind}-at`
+      let targetWorkspaceId = state.outsideWorkspace ? null : (state.activeWorkspaceId ?? null)
+      if (targetWorkspaceId == null && !state.outsideWorkspace) {
+        const targetTab = getTabById(targetId)
+        if (targetTab && targetTab.workspaceId != null) {
+          targetWorkspaceId = Number(targetTab.workspaceId)
+        }
+      }
+
+      const effectiveState = {
+        ...state,
+        activeWorkspaceId: targetWorkspaceId,
+        outsideWorkspace: targetWorkspaceId == null && state.outsideWorkspace,
+      }
+
       api.createChildTab(state.windowId, targetId, {
         url,
         index,
+        workspaceId: targetWorkspaceId,
         vivExtData: kind === 'child' 
-          ? getCreateVivExtDataForChild(state, targetId)
-          : getCreateVivExtDataForState(state),
+          ? getCreateVivExtDataForChild(effectiveState, targetId)
+          : getCreateVivExtDataForState(effectiveState),
       })
     },
 
@@ -6726,10 +6786,25 @@ function createTabStore(api) {
       
       treeController.registerExpectedCreation({ kind: 'root' })
       pendingNativeReconcileReason = 'create-root'
+      let targetWorkspaceId = state.outsideWorkspace ? null : (state.activeWorkspaceId ?? null)
+      if (targetWorkspaceId == null && !state.outsideWorkspace) {
+        const activeTab = (state.tabs || []).find(t => t.active) || (state.pinnedTabs || []).find(t => t.active)
+        if (activeTab && activeTab.workspaceId != null) {
+          targetWorkspaceId = Number(activeTab.workspaceId)
+        }
+      }
+
+      const effectiveState = {
+        ...state,
+        activeWorkspaceId: targetWorkspaceId,
+        outsideWorkspace: targetWorkspaceId == null && state.outsideWorkspace,
+      }
+
       api.createTab(state.windowId, {
         url,
+        workspaceId: targetWorkspaceId,
         vivExtData: {
-          ...getCreateVivExtDataForState(state),
+          ...getCreateVivExtDataForState(effectiveState),
           ...vivExtData
         }
       })
@@ -6762,11 +6837,26 @@ function createTabStore(api) {
           : treeController.getCreateSiblingIndex(targetId, state.tabs)
 
       pendingNativeReconcileReason = `create-${kind}-at`
+      let targetWorkspaceId = state.outsideWorkspace ? null : (state.activeWorkspaceId ?? null)
+      if (targetWorkspaceId == null && !state.outsideWorkspace) {
+        const targetTab = getTabById(targetId)
+        if (targetTab && targetTab.workspaceId != null) {
+          targetWorkspaceId = Number(targetTab.workspaceId)
+        }
+      }
+
+      const effectiveState = {
+        ...state,
+        activeWorkspaceId: targetWorkspaceId,
+        outsideWorkspace: targetWorkspaceId == null && state.outsideWorkspace,
+      }
+
       api.createChildTab(state.windowId, targetId, {
         url,
         index,
+        workspaceId: targetWorkspaceId,
         vivExtData: {
-          ...(kind === 'child' ? getCreateVivExtDataForChild(state, targetId) : getCreateVivExtDataForState(state)),
+          ...(kind === 'child' ? getCreateVivExtDataForChild(effectiveState, targetId) : getCreateVivExtDataForState(effectiveState)),
           ...vivExtData
         }
       })
@@ -6892,9 +6982,24 @@ function createTabStore(api) {
       })
       const index = treeController.getCreateChildIndex(parentTabId, state.tabs)
       pendingNativeReconcileReason = 'create-child'
+      let targetWorkspaceId = state.outsideWorkspace ? null : (state.activeWorkspaceId ?? null)
+      if (targetWorkspaceId == null && !state.outsideWorkspace) {
+        const parentTab = getTabById(parentTabId)
+        if (parentTab && parentTab.workspaceId != null) {
+          targetWorkspaceId = Number(parentTab.workspaceId)
+        }
+      }
+
+      const effectiveState = {
+        ...state,
+        activeWorkspaceId: targetWorkspaceId,
+        outsideWorkspace: targetWorkspaceId == null && state.outsideWorkspace,
+      }
+
       api.createChildTab(state.windowId, parentTabId, {
         index,
-        vivExtData: getCreateVivExtDataForChild(state, parentTabId),
+        workspaceId: targetWorkspaceId,
+        vivExtData: getCreateVivExtDataForChild(effectiveState, parentTabId),
       })
     },
 
@@ -6907,9 +7012,24 @@ function createTabStore(api) {
       })
       const index = treeController.getCreateSiblingIndex(tabId, state.tabs)
       pendingNativeReconcileReason = 'create-sibling'
+      let targetWorkspaceId = state.outsideWorkspace ? null : (state.activeWorkspaceId ?? null)
+      if (targetWorkspaceId == null && !state.outsideWorkspace) {
+        const siblingTab = getTabById(tabId)
+        if (siblingTab && siblingTab.workspaceId != null) {
+          targetWorkspaceId = Number(siblingTab.workspaceId)
+        }
+      }
+
+      const effectiveState = {
+        ...state,
+        activeWorkspaceId: targetWorkspaceId,
+        outsideWorkspace: targetWorkspaceId == null && state.outsideWorkspace,
+      }
+
       api.createChildTab(state.windowId, tabId, {
         index,
-        vivExtData: getCreateVivExtDataForState(state),
+        workspaceId: targetWorkspaceId,
+        vivExtData: getCreateVivExtDataForState(effectiveState),
       })
     },
 
@@ -7013,7 +7133,13 @@ function createTabStore(api) {
     async moveSelectionToWorkspace(tabId, selectedIds, workspaceId) {
       const targetId = workspaceId == null || workspaceId === '' ? null : Number(workspaceId)
       if (targetId !== null && !Number.isFinite(targetId)) return
-      await moveTabsToWorkspace(getTreeActionTargetIds(tabId, selectedIds), targetId)
+      try {
+        await moveTabsToWorkspace(getTreeActionTargetIds(tabId, selectedIds), targetId)
+      } catch (error) {
+        console.error('[svb] moveSelectionToWorkspace failed', error)
+      } finally {
+        await syncTabs({ preserveContext: true }, 'move-workspace')
+      }
     },
 
     // Switch the panel (and the browser) to another workspace. Vivaldi has no
@@ -7043,29 +7169,35 @@ function createTabStore(api) {
 
       releaseContextLock()
       pendingActiveRepairTabId = null
-      const created = await api.createWorkspace(workspaceName)
+      try {
+        const created = await api.createWorkspace(workspaceName)
 
-      let newWorkspaceId = created && typeof created === 'object' && Number.isFinite(Number(created.id))
-        ? Number(created.id)
-        : null
+        let newWorkspaceId = created && typeof created === 'object' && Number.isFinite(Number(created.id))
+          ? Number(created.id)
+          : (typeof created === 'number' && Number.isFinite(created) ? created : null)
 
-      if (newWorkspaceId == null && api.getWorkspaces) {
-        for (let attempt = 0; attempt < 10; attempt++) {
-          const latest = await api.getWorkspaces()
-          const found = latest.find(w => !existingIds.has(Number(w.id)))
-          if (found && Number.isFinite(Number(found.id))) {
-            newWorkspaceId = Number(found.id)
-            break
+        if (newWorkspaceId == null && api.getWorkspaces) {
+          for (let attempt = 0; attempt < 10; attempt++) {
+            const latest = await api.getWorkspaces()
+            const found = latest.find(w => !existingIds.has(Number(w.id)))
+            if (found && Number.isFinite(Number(found.id))) {
+              newWorkspaceId = Number(found.id)
+              break
+            }
+            await new Promise(r => setTimeout(r, 50))
           }
-          await new Promise(r => setTimeout(r, 50))
         }
-      }
 
-      if (newWorkspaceId != null) {
-        await moveTabsToWorkspace(targetIds, newWorkspaceId)
-        if (api.activateWorkspace) {
-          api.activateWorkspace(state.windowId, newWorkspaceId)
+        if (newWorkspaceId != null) {
+          await moveTabsToWorkspace(targetIds, newWorkspaceId)
+          if (api.activateWorkspace) {
+            api.activateWorkspace(state.windowId, newWorkspaceId)
+          }
         }
+      } catch (error) {
+        console.error('[svb] createWorkspaceAndMoveSelection failed', error)
+      } finally {
+        await syncTabs({ preserveContext: true }, 'move-workspace')
       }
     },
 
@@ -7907,11 +8039,11 @@ module.exports = { createDragStore }
     },
     "adapters/vivaldi-bridge.js": function(require, module, exports) {
 const VIVALDI_TILING_MODULE_ID = 69787
-const VIVALDI_PAGE_STORE_MODULE_ID = 96951
+const VIVALDI_PAGE_STORE_MODULE_IDS = [26325, 96951]
 const VIVALDI_COLLECTION_MODULE_ID = 35369
-const VIVALDI_PAGE_ACTIONS_MODULE_ID = 59322
-const VIVALDI_WORKSPACE_STORE_MODULE_ID = 53454
-const VIVALDI_WORKSPACE_MANAGER_MODULE_ID = 29104
+const VIVALDI_PAGE_ACTIONS_MODULE_IDS = [67251, 59322]
+const VIVALDI_WORKSPACE_STORE_MODULE_IDS = [61685, 53454]
+const VIVALDI_WORKSPACE_MANAGER_MODULE_IDS = [87290, 29104]
 
 function createVivaldiBridge(options) {
   const {
@@ -8001,7 +8133,7 @@ function getVivaldiMainView() {
     const require = getMainViewWebpackRequire()
     if (!require) return null
 
-    const { knownModuleId, sourceKeywords } = options
+    const { knownModuleId, knownModuleIds, sourceKeywords } = options
 
     // 1. Inspect already cached modules in require.c (safe, fast, zero side effects)
     if (require.c) {
@@ -8015,14 +8147,17 @@ function getVivaldiMainView() {
       }
     }
 
-    // 2. If knownModuleId is specified and not yet in require.c, try loading it directly
-    if (knownModuleId != null) {
+    // 2. If knownModuleIds/knownModuleId is specified and not yet in require.c, try loading directly
+    const candidateIds = Array.isArray(knownModuleIds)
+      ? knownModuleIds
+      : (knownModuleId != null ? [knownModuleId] : [])
+    for (const candidateId of candidateIds) {
       try {
-        const mod = getVivaldiWebpackModule(knownModuleId)
+        const mod = getVivaldiWebpackModule(candidateId)
         const found = extractExport(mod, predicate)
         if (found) return found
       } catch {
-        // Fall through to keyword scan
+        // Fall through to next candidate or keyword scan
       }
     }
 
@@ -8058,7 +8193,7 @@ function getVivaldiMainView() {
         && typeof m.activateWorkspaceByIndex === 'function'
         && typeof m.setName === 'function',
       {
-        knownModuleId: VIVALDI_WORKSPACE_MANAGER_MODULE_ID,
+        knownModuleIds: VIVALDI_WORKSPACE_MANAGER_MODULE_IDS,
         sourceKeywords: ['addWorkspace', 'removeWorkspace'],
       }
     )
@@ -8070,7 +8205,7 @@ function getVivaldiMainView() {
     pageStore = findModuleByExports(
       m => typeof m.getPageById === 'function' && typeof m.getPages === 'function',
       {
-        knownModuleId: VIVALDI_PAGE_STORE_MODULE_ID,
+        knownModuleIds: VIVALDI_PAGE_STORE_MODULE_IDS,
         sourceKeywords: ['getPageById', 'getPages'],
       }
     )
@@ -8095,7 +8230,7 @@ function getVivaldiMainView() {
     pageActions = findModuleByExports(
       m => typeof m.detachPage === 'function' && (typeof m.setSelection === 'function' || typeof m.detachWorkspace === 'function'),
       {
-        knownModuleId: VIVALDI_PAGE_ACTIONS_MODULE_ID,
+        knownModuleIds: VIVALDI_PAGE_ACTIONS_MODULE_IDS,
         sourceKeywords: ['detachPage'],
       }
     )
@@ -8133,7 +8268,7 @@ function getVivaldiMainView() {
         typeof m.getActiveWorkspaceId === 'function' &&
         typeof m.addListener === 'function',
       {
-        knownModuleId: VIVALDI_WORKSPACE_STORE_MODULE_ID,
+        knownModuleIds: VIVALDI_WORKSPACE_STORE_MODULE_IDS,
         sourceKeywords: ['getWorkspaces', 'getActiveWorkspaceId'],
       }
     )
@@ -8202,16 +8337,76 @@ function getVivaldiMainView() {
       const store = getWorkspaceStore()
       if (!store || typeof store.getActiveWorkspaceId !== 'function') return undefined
       try {
-        const id = windowId != null ? store.getActiveWorkspaceId(windowId) : store.getActiveWorkspaceId()
+        let numWindowId = windowId != null ? Number(windowId) : null
+        if (!Number.isFinite(numWindowId) && typeof window !== 'undefined' && Number.isFinite(window.vivaldiWindowId)) {
+          numWindowId = window.vivaldiWindowId
+        }
+
+        let id = numWindowId != null ? store.getActiveWorkspaceId(numWindowId) : undefined
+        if (id === undefined && typeof store.getState === 'function') {
+          const state = store.getState()
+          const map = state && state.activeWorkspaces
+          if (map instanceof Map) {
+            if (numWindowId != null && map.has(numWindowId)) {
+              id = map.get(numWindowId)
+            } else if (map.size === 1) {
+              id = map.values().next().value
+            }
+          }
+        }
         return id == null ? null : Number(id)
       } catch (error) {
         return undefined
       }
     },
 
+    async newTab(windowId, url, options = {}) {
+      const actions = getPageActions()
+      if (!actions || typeof actions.newTab !== 'function') return null
+      const winId = windowId != null ? Number(windowId) : (typeof window !== 'undefined' ? window.vivaldiWindowId : null)
+      if (winId == null) return null
+      try {
+        const tabId = await actions.newTab(winId, url || null, {
+          index: Number.isFinite(options.index) ? options.index : undefined,
+          workspaceId: options.workspaceId != null ? Number(options.workspaceId) : undefined,
+          groupId: options.groupId || undefined,
+        })
+        return tabId || null
+      } catch (error) {
+        console.warn('[svb] PageActions.newTab failed:', error)
+        return null
+      }
+    },
+
+    async notifyActiveWorkspace(windowId, workspaceId) {
+      const winId = windowId != null ? Number(windowId) : (typeof window !== 'undefined' ? window.vivaldiWindowId : null)
+      if (winId == null) return false
+      const wsId = workspaceId != null ? Number(workspaceId) : 0
+
+      const tabsPrivate = (typeof vivaldi !== 'undefined' && vivaldi.tabsPrivate)
+        || (getVivaldiMainView()?.vivaldi?.tabsPrivate)
+      if (tabsPrivate && typeof tabsPrivate.notifyActiveWorkspace === 'function') {
+        try {
+          await promisifyChromeApi(tabsPrivate.notifyActiveWorkspace, winId, wsId)
+        } catch (e) {
+          console.warn('[svb] native notifyActiveWorkspace failed:', e)
+        }
+      }
+
+      const actions = getPageActions()
+      if (actions && typeof actions.setActiveWorkspace === 'function') {
+        try {
+          await actions.setActiveWorkspace(winId, wsId || undefined)
+        } catch (e) {
+          console.warn('[svb] native setActiveWorkspace failed:', e)
+        }
+      }
+      return true
+    },
+
     // Create a workspace via Vivaldi's own manager. It assigns the id, persists
     // it, and switches to the (empty) new workspace — same as native.
-    createWorkspace(name = 'New Workspace') {
+    async createWorkspace(name = 'New Workspace') {
       const manager = getWorkspaceManager()
       if (!manager || typeof manager.addWorkspace !== 'function') return false
       const store = getWorkspaceStore()
@@ -8225,10 +8420,11 @@ function getVivaldiMainView() {
       }
       try {
         const beforeIds = new Set((store && typeof store.getWorkspaces === 'function' ? store.getWorkspaces() : []).map(w => Number(w.id)))
-        const res = manager.addWorkspace(name, icon)
+        const res = await manager.addWorkspace(name, icon)
         const after = store && typeof store.getWorkspaces === 'function' ? store.getWorkspaces() : []
-        const created = after.find(w => !beforeIds.has(Number(w.id))) || (res && res.id ? res : null)
-        return created || true
+        const created = after.find(w => !beforeIds.has(Number(w.id)))
+          || (typeof res === 'number' ? { id: res, name } : (res && res.id ? res : null))
+        return created || (typeof res === 'number' ? { id: res, name } : true)
       } catch (error) {
         console.warn('[svb] native addWorkspace failed', error)
         return false
@@ -8312,6 +8508,53 @@ function getVivaldiMainView() {
         console.warn('[svb] native setName failed', error)
         return false
       }
+    },
+
+    async moveTabsToWorkspace(tabIds, workspaceId, windowId) {
+      const ids = Array.isArray(tabIds) ? tabIds.map(Number).filter(Number.isFinite) : []
+      if (ids.length === 0) return false
+      const targetWs = (workspaceId != null && workspaceId !== '') ? Number(workspaceId) : undefined
+
+      // 1. Try PageActions.moveToWorkspace if available
+      const actions = getPageActions()
+      const store = getPageStore()
+      const collection = getCollectionModule()
+      if (actions && typeof actions.moveToWorkspace === 'function' && store && typeof store.getPageById === 'function') {
+        try {
+          const pages = ids.map(id => store.getPageById(id)).filter(Boolean)
+          if (pages.length > 0 && (pages.length === 1 || (collection && typeof collection.of === 'function'))) {
+            const targetPages = pages.length === 1 ? pages[0] : collection.of(...pages)
+            await actions.moveToWorkspace(targetPages, targetWs)
+            return true
+          }
+        } catch (error) {
+          console.warn('[svb] PageActions.moveToWorkspace failed, falling back to tabsPrivate.move:', error)
+        }
+      }
+
+      // 2. Direct tabsPrivate.move fallback
+      const tabsPrivate = (typeof vivaldi !== 'undefined' && vivaldi.tabsPrivate)
+        || (getVivaldiMainView()?.vivaldi?.tabsPrivate)
+      if (tabsPrivate && typeof tabsPrivate.move === 'function') {
+        try {
+          const moveOptions = {
+            tabIds: ids,
+            target: 'last',
+            tweaks: ['do-not-reparent'],
+            workspaceId: targetWs || 'window',
+            debug: 'svb.moveTabsToWorkspace',
+          }
+          if (windowId != null) {
+            moveOptions.windowId = Number(windowId)
+          }
+          await promisifyChromeApi(tabsPrivate.move, moveOptions)
+          return true
+        } catch (error) {
+          console.warn('[svb] native tabsPrivate.move failed:', error)
+        }
+      }
+
+      return false
     },
 
     async tileTabs(tabIds, layout) {
@@ -8502,7 +8745,10 @@ const { settingsStore } = require('../store/settings-store.js')
 function promisifyChromeApi(fn, ...args) {
   return new Promise((resolve, reject) => {
     try {
-      fn(...args, result => {
+      let resolved = false
+      const maybePromise = fn(...args, result => {
+        if (resolved) return
+        resolved = true
         const runtimeError = chrome.runtime && chrome.runtime.lastError
         if (runtimeError) {
           reject(new Error(runtimeError.message))
@@ -8510,6 +8756,22 @@ function promisifyChromeApi(fn, ...args) {
         }
         resolve(result)
       })
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        maybePromise.then(
+          res => {
+            if (!resolved) {
+              resolved = true
+              resolve(res)
+            }
+          },
+          err => {
+            if (!resolved) {
+              resolved = true
+              reject(err)
+            }
+          }
+        )
+      }
     } catch (error) {
       reject(error)
     }
@@ -8779,8 +9041,19 @@ function createTabsApi() {
 
   return {
     async getCurrentWindowId() {
+      if (typeof window !== 'undefined' && Number.isFinite(window.vivaldiWindowId)) {
+        return window.vivaldiWindowId
+      }
       const win = await promisifyChromeApi(windowsApi.getCurrent, { populate: false })
       return win.id
+    },
+
+    async newTab(windowId, url, options = {}) {
+      return vivaldiBridge.newTab(windowId, url, options)
+    },
+
+    async notifyActiveWorkspace(windowId, workspaceId) {
+      return vivaldiBridge.notifyActiveWorkspace(windowId, workspaceId)
     },
 
     async getTabs(windowId) {
@@ -8818,6 +9091,10 @@ function createTabsApi() {
 
     onWorkspacesChanged(listener) {
       return vivaldiBridge.onWorkspacesChanged(listener)
+    },
+
+    async moveTabsToWorkspace(tabIds, workspaceId, windowId) {
+      return vivaldiBridge.moveTabsToWorkspace(tabIds, workspaceId, windowId)
     },
 
     async activateTab(tabId) {
@@ -9139,11 +9416,25 @@ function createTabsApi() {
 
     async createRestoredTab(windowId, options = {}) {
       if (windowId == null) return null
+      const targetWorkspaceId = options.workspaceId !== undefined
+        ? options.workspaceId
+        : (options.vivExtData && typeof options.vivExtData === 'object' && options.vivExtData.workspaceId !== undefined
+            ? options.vivExtData.workspaceId
+            : undefined)
+
+      if (targetWorkspaceId != null && vivaldiBridge.notifyActiveWorkspace) {
+        await vivaldiBridge.notifyActiveWorkspace(windowId, Number(targetWorkspaceId))
+      }
+
       const createProperties = {
         windowId,
         active: !!options.active,
         transition: 'auto_bookmark',
         ignoreLinkRouting: true,
+      }
+
+      if (targetWorkspaceId != null) {
+        createProperties.workspaceId = Number(targetWorkspaceId)
       }
 
       if (typeof options.url === 'string' && options.url) {
@@ -9176,40 +9467,116 @@ function createTabsApi() {
     createTab(windowId, options = {}) {
       tabsApi.query({ windowId }, async tabs => {
         const isTopMode = settingsStore.get('newTabPlacement') === 'top'
-        const pinnedCount = Array.isArray(tabs) ? tabs.filter(t => t.pinned).length : 0
-        const index = isTopMode ? pinnedCount : (Array.isArray(tabs) ? tabs.length : undefined)
-        const createProperties = {
-          windowId,
-          active: true,
-          index,
-          transition: 'auto_bookmark',
-          ignoreLinkRouting: true,
+        const targetWorkspaceId = options.workspaceId !== undefined
+          ? options.workspaceId
+          : (options.vivExtData && typeof options.vivExtData === 'object' && options.vivExtData.workspaceId !== undefined
+              ? options.vivExtData.workspaceId
+              : undefined)
+
+        let index
+        if (Number.isFinite(options.index)) {
+          index = options.index
+        } else if (targetWorkspaceId != null) {
+          const workspaceTabs = Array.isArray(tabs)
+            ? tabs.filter(t => {
+                const ws = t.workspaceId != null
+                  ? t.workspaceId
+                  : (parseVivExtData(t.vivExtData)?.workspaceId)
+                return ws != null && Number(ws) === Number(targetWorkspaceId)
+              })
+            : []
+          if (isTopMode) {
+            index = workspaceTabs.length > 0 ? workspaceTabs[0].index : undefined
+          } else {
+            index = workspaceTabs.length > 0 ? workspaceTabs[workspaceTabs.length - 1].index + 1 : undefined
+          }
+        } else {
+          const pinnedCount = Array.isArray(tabs) ? tabs.filter(t => t.pinned).length : 0
+          index = isTopMode ? pinnedCount : (Array.isArray(tabs) ? tabs.length : undefined)
         }
 
         const url = typeof options.url === 'string' && options.url
           ? options.url
           : await getConfiguredNewTabUrl()
+
+        const vivExtData = serializeVivExtData(options.vivExtData)
+
+        // Ensure Vivaldi knows about the active workspace before creating the tab
+        if (targetWorkspaceId != null && vivaldiBridge.notifyActiveWorkspace) {
+          await vivaldiBridge.notifyActiveWorkspace(windowId, Number(targetWorkspaceId))
+        }
+
+        // Try native PageActions.newTab first if available
+        if (vivaldiBridge.newTab) {
+          try {
+            const tabId = await vivaldiBridge.newTab(windowId, url || null, {
+              index: Number.isFinite(index) ? index : undefined,
+              workspaceId: targetWorkspaceId != null ? Number(targetWorkspaceId) : undefined,
+            })
+            if (tabId) {
+              if (vivExtData && typeof tabsApi.update === 'function') {
+                promisifyChromeApi(tabsApi.update, tabId, { vivExtData }).catch(() => {})
+              }
+              return
+            }
+          } catch (nativeError) {
+            console.warn('[svb] native newTab failed, falling back to chrome.tabs.create', nativeError)
+          }
+        }
+
+        const createProperties = {
+          windowId,
+          active: true,
+          transition: 'auto_bookmark',
+          ignoreLinkRouting: true,
+        }
+
+        if (Number.isFinite(index)) {
+          createProperties.index = index
+        }
+
+        if (targetWorkspaceId != null) {
+          createProperties.workspaceId = Number(targetWorkspaceId)
+        }
+
         if (url) {
           createProperties.url = url
         }
 
-        const vivExtData = serializeVivExtData(options.vivExtData)
         if (vivExtData) {
           createProperties.vivExtData = vivExtData
         }
 
-        tabsApi.create(createProperties)
+        tabsApi.create(createProperties, createdTab => {
+          if (createdTab && createdTab.id && vivExtData && typeof tabsApi.update === 'function') {
+            promisifyChromeApi(tabsApi.update, createdTab.id, { vivExtData }).catch(() => {})
+          }
+        })
       })
     },
 
     createChildTab(windowId, openerTabId, options = {}) {
       void (async () => {
+        const targetWorkspaceId = options.workspaceId !== undefined
+          ? options.workspaceId
+          : (options.vivExtData && typeof options.vivExtData === 'object' && options.vivExtData.workspaceId !== undefined
+              ? options.vivExtData.workspaceId
+              : undefined)
+
+        if (targetWorkspaceId != null && vivaldiBridge.notifyActiveWorkspace) {
+          await vivaldiBridge.notifyActiveWorkspace(windowId, Number(targetWorkspaceId))
+        }
+
         const createProperties = {
           windowId,
           active: true,
           openerTabId,
           transition: 'link',
           ignoreLinkRouting: true,
+        }
+
+        if (targetWorkspaceId != null) {
+          createProperties.workspaceId = Number(targetWorkspaceId)
         }
 
         const url = typeof options.url === 'string' && options.url
@@ -9228,7 +9595,11 @@ function createTabsApi() {
           createProperties.vivExtData = vivExtData
         }
 
-        tabsApi.create(createProperties)
+        tabsApi.create(createProperties, createdTab => {
+          if (createdTab && createdTab.id && vivExtData && typeof tabsApi.update === 'function') {
+            promisifyChromeApi(tabsApi.update, createdTab.id, { vivExtData }).catch(() => {})
+          }
+        })
       })()
     },
 

@@ -166,4 +166,123 @@ describe('Context menu - Move to workspaces', () => {
       store.dispose()
     }
   })
+
+  it('moveSelectionToWorkspace calls api.moveTabsToWorkspace with targetIds and targetWorkspaceId', async () => {
+    const movedNativeCalls = []
+
+    const mockTabs = [
+      {
+        id: 50,
+        index: 0,
+        windowId: 1,
+        pinned: false,
+        active: true,
+        workspaceId: 1,
+        vivExtData: {
+          workspaceId: 1,
+          svbTree: { contextKey: 'workspace:1', nodeId: 'node_50', order: 0 }
+        }
+      }
+    ]
+
+    const noopUnsub = () => () => {}
+    const mockApi = {
+      getCurrentWindowId: async () => 1,
+      getTabs: async () => mockTabs,
+      queryTabs: (query, cb) => cb(mockTabs),
+      updateTab: async () => {},
+      closeTabs: async () => {},
+      updateVivExtData: async () => {},
+      moveTabsToWorkspace: async (tabIds, wsId, winId) => {
+        movedNativeCalls.push({ tabIds, wsId, winId })
+      },
+      getWorkspaces: async () => [{ id: 1, name: 'Current' }, { id: 2, name: 'Work' }],
+      onCreated: noopUnsub,
+      onUpdated: noopUnsub,
+      onRemoved: noopUnsub,
+      onMoved: noopUnsub,
+      onAttached: noopUnsub,
+      onDetached: noopUnsub,
+      onActivated: noopUnsub,
+      onWindowFocusChanged: noopUnsub,
+      isVivaldi: () => true,
+    }
+
+    const store = createTabStore(mockApi)
+    try {
+      await store.init()
+
+      // Move to existing workspace 2
+      await store.moveSelectionToWorkspace(50, [50], 2)
+      assert.strictEqual(movedNativeCalls.length, 1)
+      assert.deepStrictEqual(movedNativeCalls[0].tabIds, [50])
+      assert.strictEqual(movedNativeCalls[0].wsId, 2)
+
+      // Move to Default area (null)
+      await store.moveSelectionToWorkspace(50, [50], '')
+      assert.strictEqual(movedNativeCalls.length, 2)
+      assert.deepStrictEqual(movedNativeCalls[1].tabIds, [50])
+      assert.strictEqual(movedNativeCalls[1].wsId, null)
+    } finally {
+      store.dispose()
+    }
+  })
+
+  it('createWorkspaceAndMoveSelection calls api.moveTabsToWorkspace with new workspace id', async () => {
+    const movedNativeCalls = []
+
+    const mockTabs = [
+      {
+        id: 100,
+        index: 0,
+        windowId: 1,
+        pinned: false,
+        active: true,
+        workspaceId: 1,
+        vivExtData: {
+          workspaceId: 1,
+          svbTree: { contextKey: 'workspace:1', nodeId: 'node_100', order: 0 }
+        }
+      }
+    ]
+
+    const noopUnsub = () => () => {}
+    const mockApi = {
+      getCurrentWindowId: async () => 1,
+      getTabs: async () => mockTabs,
+      queryTabs: (query, cb) => cb(mockTabs),
+      updateTab: async () => {},
+      closeTabs: async () => {},
+      updateVivExtData: async () => {},
+      getWorkspaces: async () => [{ id: 1, name: 'Current' }, { id: 2, name: 'Target' }],
+      createWorkspace: async (name) => {
+        return { id: 2, name }
+      },
+      activateWorkspace: () => {},
+      moveTabsToWorkspace: async (tabIds, wsId, winId) => {
+        movedNativeCalls.push({ tabIds, wsId, winId })
+      },
+      onCreated: noopUnsub,
+      onUpdated: noopUnsub,
+      onRemoved: noopUnsub,
+      onMoved: noopUnsub,
+      onAttached: noopUnsub,
+      onDetached: noopUnsub,
+      onActivated: noopUnsub,
+      onWindowFocusChanged: noopUnsub,
+      isVivaldi: () => true,
+    }
+
+    const store = createTabStore(mockApi)
+    try {
+      await store.init()
+      await store.createWorkspaceAndMoveSelection(100, [100], 'Projects')
+
+      assert.strictEqual(movedNativeCalls.length, 1)
+      assert.deepStrictEqual(movedNativeCalls[0].tabIds, [100])
+      assert.strictEqual(movedNativeCalls[0].wsId, 2)
+    } finally {
+      store.dispose()
+    }
+  })
 })

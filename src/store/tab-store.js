@@ -924,6 +924,10 @@ function createTabStore(api) {
       }
       return nextData
     })
+
+    if (api.moveTabsToWorkspace) {
+      await api.moveTabsToWorkspace(targetIds, targetWorkspaceId, state.windowId)
+    }
   }
 
   async function syncTabs(options = {}, reason = 'direct') {
@@ -1234,9 +1238,19 @@ function createTabStore(api) {
 
     const handleCreated = tab => {
       const pinnedIds = new Set(state.pinnedTabs.map(pinnedTab => pinnedTab.id))
-      treeController.capturePendingCreation(tab, state.activeTabId, {
+      const pendingRecord = treeController.capturePendingCreation(tab, state.activeTabId, {
         fromPinnedTab: pinnedIds.has(state.activeTabId) || pinnedIds.has(tab.openerTabId),
       })
+      if (!tab.pinned && state.activeWorkspaceId != null && !state.outsideWorkspace) {
+        if (tab.workspaceId == null || (pendingRecord && pendingRecord.expectedCreation)) {
+          tab.workspaceId = state.activeWorkspaceId
+          const nextVivExt = { ...(tab.vivExtData || {}), workspaceId: state.activeWorkspaceId }
+          tab.vivExtData = nextVivExt
+          if (api.updateVivExtData) {
+            api.updateVivExtData(tab.id, nextVivExt).catch(() => {})
+          }
+        }
+      }
       refreshPreservingContext(tab)
     }
 
@@ -1491,12 +1505,37 @@ function createTabStore(api) {
 
     closeTabIds,
 
-    createTab() {
+    createTab(arg1, arg2) {
       if (state.windowId == null) return
+      const options = (arg2 && typeof arg2 === 'object')
+        ? arg2
+        : (arg1 && typeof arg1 === 'object')
+          ? arg1
+          : (typeof arg1 === 'string' ? { url: arg1 } : {})
+
       treeController.registerExpectedCreation({ kind: 'root' })
       pendingNativeReconcileReason = 'create-root'
+      let targetWorkspaceId = state.outsideWorkspace ? null : (state.activeWorkspaceId ?? null)
+      if (targetWorkspaceId == null && !state.outsideWorkspace) {
+        const activeTab = (state.tabs || []).find(t => t.active) || (state.pinnedTabs || []).find(t => t.active)
+        if (activeTab && activeTab.workspaceId != null) {
+          targetWorkspaceId = Number(activeTab.workspaceId)
+        }
+      }
+
+      const effectiveState = {
+        ...state,
+        activeWorkspaceId: targetWorkspaceId,
+        outsideWorkspace: targetWorkspaceId == null && state.outsideWorkspace,
+      }
+
       api.createTab(state.windowId, {
-        vivExtData: getCreateVivExtDataForState(state),
+        url: options.url,
+        workspaceId: targetWorkspaceId,
+        vivExtData: {
+          ...getCreateVivExtDataForState(effectiveState),
+          ...(options.vivExtData || {}),
+        },
       })
     },
 
@@ -1517,12 +1556,27 @@ function createTabStore(api) {
           : treeController.getCreateSiblingIndex(targetId, state.tabs)
 
       pendingNativeReconcileReason = `create-${kind}-at`
+      let targetWorkspaceId = state.outsideWorkspace ? null : (state.activeWorkspaceId ?? null)
+      if (targetWorkspaceId == null && !state.outsideWorkspace) {
+        const targetTab = getTabById(targetId)
+        if (targetTab && targetTab.workspaceId != null) {
+          targetWorkspaceId = Number(targetTab.workspaceId)
+        }
+      }
+
+      const effectiveState = {
+        ...state,
+        activeWorkspaceId: targetWorkspaceId,
+        outsideWorkspace: targetWorkspaceId == null && state.outsideWorkspace,
+      }
+
       api.createChildTab(state.windowId, targetId, {
         url,
         index,
+        workspaceId: targetWorkspaceId,
         vivExtData: kind === 'child' 
-          ? getCreateVivExtDataForChild(state, targetId)
-          : getCreateVivExtDataForState(state),
+          ? getCreateVivExtDataForChild(effectiveState, targetId)
+          : getCreateVivExtDataForState(effectiveState),
       })
     },
 
@@ -1540,10 +1594,25 @@ function createTabStore(api) {
       
       treeController.registerExpectedCreation({ kind: 'root' })
       pendingNativeReconcileReason = 'create-root'
+      let targetWorkspaceId = state.outsideWorkspace ? null : (state.activeWorkspaceId ?? null)
+      if (targetWorkspaceId == null && !state.outsideWorkspace) {
+        const activeTab = (state.tabs || []).find(t => t.active) || (state.pinnedTabs || []).find(t => t.active)
+        if (activeTab && activeTab.workspaceId != null) {
+          targetWorkspaceId = Number(activeTab.workspaceId)
+        }
+      }
+
+      const effectiveState = {
+        ...state,
+        activeWorkspaceId: targetWorkspaceId,
+        outsideWorkspace: targetWorkspaceId == null && state.outsideWorkspace,
+      }
+
       api.createTab(state.windowId, {
         url,
+        workspaceId: targetWorkspaceId,
         vivExtData: {
-          ...getCreateVivExtDataForState(state),
+          ...getCreateVivExtDataForState(effectiveState),
           ...vivExtData
         }
       })
@@ -1576,11 +1645,26 @@ function createTabStore(api) {
           : treeController.getCreateSiblingIndex(targetId, state.tabs)
 
       pendingNativeReconcileReason = `create-${kind}-at`
+      let targetWorkspaceId = state.outsideWorkspace ? null : (state.activeWorkspaceId ?? null)
+      if (targetWorkspaceId == null && !state.outsideWorkspace) {
+        const targetTab = getTabById(targetId)
+        if (targetTab && targetTab.workspaceId != null) {
+          targetWorkspaceId = Number(targetTab.workspaceId)
+        }
+      }
+
+      const effectiveState = {
+        ...state,
+        activeWorkspaceId: targetWorkspaceId,
+        outsideWorkspace: targetWorkspaceId == null && state.outsideWorkspace,
+      }
+
       api.createChildTab(state.windowId, targetId, {
         url,
         index,
+        workspaceId: targetWorkspaceId,
         vivExtData: {
-          ...(kind === 'child' ? getCreateVivExtDataForChild(state, targetId) : getCreateVivExtDataForState(state)),
+          ...(kind === 'child' ? getCreateVivExtDataForChild(effectiveState, targetId) : getCreateVivExtDataForState(effectiveState)),
           ...vivExtData
         }
       })
@@ -1706,9 +1790,24 @@ function createTabStore(api) {
       })
       const index = treeController.getCreateChildIndex(parentTabId, state.tabs)
       pendingNativeReconcileReason = 'create-child'
+      let targetWorkspaceId = state.outsideWorkspace ? null : (state.activeWorkspaceId ?? null)
+      if (targetWorkspaceId == null && !state.outsideWorkspace) {
+        const parentTab = getTabById(parentTabId)
+        if (parentTab && parentTab.workspaceId != null) {
+          targetWorkspaceId = Number(parentTab.workspaceId)
+        }
+      }
+
+      const effectiveState = {
+        ...state,
+        activeWorkspaceId: targetWorkspaceId,
+        outsideWorkspace: targetWorkspaceId == null && state.outsideWorkspace,
+      }
+
       api.createChildTab(state.windowId, parentTabId, {
         index,
-        vivExtData: getCreateVivExtDataForChild(state, parentTabId),
+        workspaceId: targetWorkspaceId,
+        vivExtData: getCreateVivExtDataForChild(effectiveState, parentTabId),
       })
     },
 
@@ -1721,9 +1820,24 @@ function createTabStore(api) {
       })
       const index = treeController.getCreateSiblingIndex(tabId, state.tabs)
       pendingNativeReconcileReason = 'create-sibling'
+      let targetWorkspaceId = state.outsideWorkspace ? null : (state.activeWorkspaceId ?? null)
+      if (targetWorkspaceId == null && !state.outsideWorkspace) {
+        const siblingTab = getTabById(tabId)
+        if (siblingTab && siblingTab.workspaceId != null) {
+          targetWorkspaceId = Number(siblingTab.workspaceId)
+        }
+      }
+
+      const effectiveState = {
+        ...state,
+        activeWorkspaceId: targetWorkspaceId,
+        outsideWorkspace: targetWorkspaceId == null && state.outsideWorkspace,
+      }
+
       api.createChildTab(state.windowId, tabId, {
         index,
-        vivExtData: getCreateVivExtDataForState(state),
+        workspaceId: targetWorkspaceId,
+        vivExtData: getCreateVivExtDataForState(effectiveState),
       })
     },
 
@@ -1827,7 +1941,13 @@ function createTabStore(api) {
     async moveSelectionToWorkspace(tabId, selectedIds, workspaceId) {
       const targetId = workspaceId == null || workspaceId === '' ? null : Number(workspaceId)
       if (targetId !== null && !Number.isFinite(targetId)) return
-      await moveTabsToWorkspace(getTreeActionTargetIds(tabId, selectedIds), targetId)
+      try {
+        await moveTabsToWorkspace(getTreeActionTargetIds(tabId, selectedIds), targetId)
+      } catch (error) {
+        console.error('[svb] moveSelectionToWorkspace failed', error)
+      } finally {
+        await syncTabs({ preserveContext: true }, 'move-workspace')
+      }
     },
 
     // Switch the panel (and the browser) to another workspace. Vivaldi has no
@@ -1857,29 +1977,35 @@ function createTabStore(api) {
 
       releaseContextLock()
       pendingActiveRepairTabId = null
-      const created = await api.createWorkspace(workspaceName)
+      try {
+        const created = await api.createWorkspace(workspaceName)
 
-      let newWorkspaceId = created && typeof created === 'object' && Number.isFinite(Number(created.id))
-        ? Number(created.id)
-        : null
+        let newWorkspaceId = created && typeof created === 'object' && Number.isFinite(Number(created.id))
+          ? Number(created.id)
+          : (typeof created === 'number' && Number.isFinite(created) ? created : null)
 
-      if (newWorkspaceId == null && api.getWorkspaces) {
-        for (let attempt = 0; attempt < 10; attempt++) {
-          const latest = await api.getWorkspaces()
-          const found = latest.find(w => !existingIds.has(Number(w.id)))
-          if (found && Number.isFinite(Number(found.id))) {
-            newWorkspaceId = Number(found.id)
-            break
+        if (newWorkspaceId == null && api.getWorkspaces) {
+          for (let attempt = 0; attempt < 10; attempt++) {
+            const latest = await api.getWorkspaces()
+            const found = latest.find(w => !existingIds.has(Number(w.id)))
+            if (found && Number.isFinite(Number(found.id))) {
+              newWorkspaceId = Number(found.id)
+              break
+            }
+            await new Promise(r => setTimeout(r, 50))
           }
-          await new Promise(r => setTimeout(r, 50))
         }
-      }
 
-      if (newWorkspaceId != null) {
-        await moveTabsToWorkspace(targetIds, newWorkspaceId)
-        if (api.activateWorkspace) {
-          api.activateWorkspace(state.windowId, newWorkspaceId)
+        if (newWorkspaceId != null) {
+          await moveTabsToWorkspace(targetIds, newWorkspaceId)
+          if (api.activateWorkspace) {
+            api.activateWorkspace(state.windowId, newWorkspaceId)
+          }
         }
+      } catch (error) {
+        console.error('[svb] createWorkspaceAndMoveSelection failed', error)
+      } finally {
+        await syncTabs({ preserveContext: true }, 'move-workspace')
       }
     },
 

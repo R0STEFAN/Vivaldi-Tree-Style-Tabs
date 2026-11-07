@@ -1,9 +1,9 @@
 const VIVALDI_TILING_MODULE_ID = 69787
-const VIVALDI_PAGE_STORE_MODULE_ID = 96951
+const VIVALDI_PAGE_STORE_MODULE_IDS = [26325, 96951]
 const VIVALDI_COLLECTION_MODULE_ID = 35369
-const VIVALDI_PAGE_ACTIONS_MODULE_ID = 59322
-const VIVALDI_WORKSPACE_STORE_MODULE_ID = 53454
-const VIVALDI_WORKSPACE_MANAGER_MODULE_ID = 29104
+const VIVALDI_PAGE_ACTIONS_MODULE_IDS = [67251, 59322]
+const VIVALDI_WORKSPACE_STORE_MODULE_IDS = [61685, 53454]
+const VIVALDI_WORKSPACE_MANAGER_MODULE_IDS = [87290, 29104]
 
 function createVivaldiBridge(options) {
   const {
@@ -93,7 +93,7 @@ function getVivaldiMainView() {
     const require = getMainViewWebpackRequire()
     if (!require) return null
 
-    const { knownModuleId, sourceKeywords } = options
+    const { knownModuleId, knownModuleIds, sourceKeywords } = options
 
     // 1. Inspect already cached modules in require.c (safe, fast, zero side effects)
     if (require.c) {
@@ -107,14 +107,17 @@ function getVivaldiMainView() {
       }
     }
 
-    // 2. If knownModuleId is specified and not yet in require.c, try loading it directly
-    if (knownModuleId != null) {
+    // 2. If knownModuleIds/knownModuleId is specified and not yet in require.c, try loading directly
+    const candidateIds = Array.isArray(knownModuleIds)
+      ? knownModuleIds
+      : (knownModuleId != null ? [knownModuleId] : [])
+    for (const candidateId of candidateIds) {
       try {
-        const mod = getVivaldiWebpackModule(knownModuleId)
+        const mod = getVivaldiWebpackModule(candidateId)
         const found = extractExport(mod, predicate)
         if (found) return found
       } catch {
-        // Fall through to keyword scan
+        // Fall through to next candidate or keyword scan
       }
     }
 
@@ -150,7 +153,7 @@ function getVivaldiMainView() {
         && typeof m.activateWorkspaceByIndex === 'function'
         && typeof m.setName === 'function',
       {
-        knownModuleId: VIVALDI_WORKSPACE_MANAGER_MODULE_ID,
+        knownModuleIds: VIVALDI_WORKSPACE_MANAGER_MODULE_IDS,
         sourceKeywords: ['addWorkspace', 'removeWorkspace'],
       }
     )
@@ -162,7 +165,7 @@ function getVivaldiMainView() {
     pageStore = findModuleByExports(
       m => typeof m.getPageById === 'function' && typeof m.getPages === 'function',
       {
-        knownModuleId: VIVALDI_PAGE_STORE_MODULE_ID,
+        knownModuleIds: VIVALDI_PAGE_STORE_MODULE_IDS,
         sourceKeywords: ['getPageById', 'getPages'],
       }
     )
@@ -187,7 +190,7 @@ function getVivaldiMainView() {
     pageActions = findModuleByExports(
       m => typeof m.detachPage === 'function' && (typeof m.setSelection === 'function' || typeof m.detachWorkspace === 'function'),
       {
-        knownModuleId: VIVALDI_PAGE_ACTIONS_MODULE_ID,
+        knownModuleIds: VIVALDI_PAGE_ACTIONS_MODULE_IDS,
         sourceKeywords: ['detachPage'],
       }
     )
@@ -225,7 +228,7 @@ function getVivaldiMainView() {
         typeof m.getActiveWorkspaceId === 'function' &&
         typeof m.addListener === 'function',
       {
-        knownModuleId: VIVALDI_WORKSPACE_STORE_MODULE_ID,
+        knownModuleIds: VIVALDI_WORKSPACE_STORE_MODULE_IDS,
         sourceKeywords: ['getWorkspaces', 'getActiveWorkspaceId'],
       }
     )
@@ -294,16 +297,76 @@ function getVivaldiMainView() {
       const store = getWorkspaceStore()
       if (!store || typeof store.getActiveWorkspaceId !== 'function') return undefined
       try {
-        const id = windowId != null ? store.getActiveWorkspaceId(windowId) : store.getActiveWorkspaceId()
+        let numWindowId = windowId != null ? Number(windowId) : null
+        if (!Number.isFinite(numWindowId) && typeof window !== 'undefined' && Number.isFinite(window.vivaldiWindowId)) {
+          numWindowId = window.vivaldiWindowId
+        }
+
+        let id = numWindowId != null ? store.getActiveWorkspaceId(numWindowId) : undefined
+        if (id === undefined && typeof store.getState === 'function') {
+          const state = store.getState()
+          const map = state && state.activeWorkspaces
+          if (map instanceof Map) {
+            if (numWindowId != null && map.has(numWindowId)) {
+              id = map.get(numWindowId)
+            } else if (map.size === 1) {
+              id = map.values().next().value
+            }
+          }
+        }
         return id == null ? null : Number(id)
       } catch (error) {
         return undefined
       }
     },
 
+    async newTab(windowId, url, options = {}) {
+      const actions = getPageActions()
+      if (!actions || typeof actions.newTab !== 'function') return null
+      const winId = windowId != null ? Number(windowId) : (typeof window !== 'undefined' ? window.vivaldiWindowId : null)
+      if (winId == null) return null
+      try {
+        const tabId = await actions.newTab(winId, url || null, {
+          index: Number.isFinite(options.index) ? options.index : undefined,
+          workspaceId: options.workspaceId != null ? Number(options.workspaceId) : undefined,
+          groupId: options.groupId || undefined,
+        })
+        return tabId || null
+      } catch (error) {
+        console.warn('[svb] PageActions.newTab failed:', error)
+        return null
+      }
+    },
+
+    async notifyActiveWorkspace(windowId, workspaceId) {
+      const winId = windowId != null ? Number(windowId) : (typeof window !== 'undefined' ? window.vivaldiWindowId : null)
+      if (winId == null) return false
+      const wsId = workspaceId != null ? Number(workspaceId) : 0
+
+      const tabsPrivate = (typeof vivaldi !== 'undefined' && vivaldi.tabsPrivate)
+        || (getVivaldiMainView()?.vivaldi?.tabsPrivate)
+      if (tabsPrivate && typeof tabsPrivate.notifyActiveWorkspace === 'function') {
+        try {
+          await promisifyChromeApi(tabsPrivate.notifyActiveWorkspace, winId, wsId)
+        } catch (e) {
+          console.warn('[svb] native notifyActiveWorkspace failed:', e)
+        }
+      }
+
+      const actions = getPageActions()
+      if (actions && typeof actions.setActiveWorkspace === 'function') {
+        try {
+          await actions.setActiveWorkspace(winId, wsId || undefined)
+        } catch (e) {
+          console.warn('[svb] native setActiveWorkspace failed:', e)
+        }
+      }
+      return true
+    },
+
     // Create a workspace via Vivaldi's own manager. It assigns the id, persists
     // it, and switches to the (empty) new workspace — same as native.
-    createWorkspace(name = 'New Workspace') {
+    async createWorkspace(name = 'New Workspace') {
       const manager = getWorkspaceManager()
       if (!manager || typeof manager.addWorkspace !== 'function') return false
       const store = getWorkspaceStore()
@@ -317,10 +380,11 @@ function getVivaldiMainView() {
       }
       try {
         const beforeIds = new Set((store && typeof store.getWorkspaces === 'function' ? store.getWorkspaces() : []).map(w => Number(w.id)))
-        const res = manager.addWorkspace(name, icon)
+        const res = await manager.addWorkspace(name, icon)
         const after = store && typeof store.getWorkspaces === 'function' ? store.getWorkspaces() : []
-        const created = after.find(w => !beforeIds.has(Number(w.id))) || (res && res.id ? res : null)
-        return created || true
+        const created = after.find(w => !beforeIds.has(Number(w.id)))
+          || (typeof res === 'number' ? { id: res, name } : (res && res.id ? res : null))
+        return created || (typeof res === 'number' ? { id: res, name } : true)
       } catch (error) {
         console.warn('[svb] native addWorkspace failed', error)
         return false
@@ -404,6 +468,53 @@ function getVivaldiMainView() {
         console.warn('[svb] native setName failed', error)
         return false
       }
+    },
+
+    async moveTabsToWorkspace(tabIds, workspaceId, windowId) {
+      const ids = Array.isArray(tabIds) ? tabIds.map(Number).filter(Number.isFinite) : []
+      if (ids.length === 0) return false
+      const targetWs = (workspaceId != null && workspaceId !== '') ? Number(workspaceId) : undefined
+
+      // 1. Try PageActions.moveToWorkspace if available
+      const actions = getPageActions()
+      const store = getPageStore()
+      const collection = getCollectionModule()
+      if (actions && typeof actions.moveToWorkspace === 'function' && store && typeof store.getPageById === 'function') {
+        try {
+          const pages = ids.map(id => store.getPageById(id)).filter(Boolean)
+          if (pages.length > 0 && (pages.length === 1 || (collection && typeof collection.of === 'function'))) {
+            const targetPages = pages.length === 1 ? pages[0] : collection.of(...pages)
+            await actions.moveToWorkspace(targetPages, targetWs)
+            return true
+          }
+        } catch (error) {
+          console.warn('[svb] PageActions.moveToWorkspace failed, falling back to tabsPrivate.move:', error)
+        }
+      }
+
+      // 2. Direct tabsPrivate.move fallback
+      const tabsPrivate = (typeof vivaldi !== 'undefined' && vivaldi.tabsPrivate)
+        || (getVivaldiMainView()?.vivaldi?.tabsPrivate)
+      if (tabsPrivate && typeof tabsPrivate.move === 'function') {
+        try {
+          const moveOptions = {
+            tabIds: ids,
+            target: 'last',
+            tweaks: ['do-not-reparent'],
+            workspaceId: targetWs || 'window',
+            debug: 'svb.moveTabsToWorkspace',
+          }
+          if (windowId != null) {
+            moveOptions.windowId = Number(windowId)
+          }
+          await promisifyChromeApi(tabsPrivate.move, moveOptions)
+          return true
+        } catch (error) {
+          console.warn('[svb] native tabsPrivate.move failed:', error)
+        }
+      }
+
+      return false
     },
 
     async tileTabs(tabIds, layout) {

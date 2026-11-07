@@ -228,13 +228,19 @@ function createTreeController(api) {
         ? expectedCreations.shift()
         : null
 
-      pendingCreatedTabs.set(tab.id, {
+      const record = {
         openerTabId: tab.openerTabId,
         sourceActiveTabId,
         expectedCreation,
         fromPinnedTab: !(expectedCreation && expectedCreation.kind === 'root') && !!(meta && meta.fromPinnedTab),
         nativeIndex: tab.index,
-      })
+      }
+      pendingCreatedTabs.set(tab.id, record)
+      return record
+    },
+
+    hasExpectedCreations() {
+      return expectedCreations.length > 0
     },
 
     recordClosedTab(tab) {
