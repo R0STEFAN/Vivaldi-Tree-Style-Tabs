@@ -1,12 +1,10 @@
-# Release Notes (v2.3.5)
+# Release Notes (v2.3.6)
 
-## 🚀 What's Fixed in v2.3.5
+## 🚀 What's Fixed in v2.3.6
 
-* **Dropped Links**: Dropped links now open directly in the active workspace.
-* **Child and Sibling Tabs**: New child and sibling tabs now stay in the active workspace.
-* **Workspace Auto-Adoption**: Automatically moves newly opened tabs into the current workspace.
+* **Cross-Workspace Activation**: Follows active tab to its workspace to prevent bouncing back when opening settings or background tabs.
 
 ---
 
 ## 📦 Automated Tests
-* Full test suite passing with **133 automated unit and integration tests**.
+* Full test suite passing with **135 automated unit and integration tests**.
