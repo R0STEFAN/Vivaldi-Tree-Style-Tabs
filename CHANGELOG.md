@@ -1,3 +1,11 @@
+# Release Notes (v2.3.8)
+
+## 🛠️ Fixes & Improvements
+
+* **Tree Persistence**: Fix tree hierarchy persistence across browser restarts and prevent child tabs from losing parent relationships.
+
+---
+
 # Release Notes (v2.3.7)
 
 ## 🛠️ Fixes & Improvements

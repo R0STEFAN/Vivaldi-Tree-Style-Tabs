@@ -1,10 +1,10 @@
-# Release Notes (v2.3.7)
+# Release Notes (v2.3.8)
 
-## 🚀 What's Fixed in v2.3.7
+## 🚀 What's Fixed in v2.3.8
 
-* **Child Tab Order**: Promotes child tabs in place upon parent closure to prevent them from jumping to the bottom of the tab strip.
+* **Tree Persistence**: Fix tree hierarchy persistence across browser restarts and prevent child tabs from losing parent relationships.
 
 ---
 
 ## 📦 Automated Tests
-* Full test suite passing with **138 automated unit and integration tests**.
+* Full test suite passing with **142 automated unit and integration tests**.
