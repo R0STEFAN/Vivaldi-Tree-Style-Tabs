@@ -517,6 +517,14 @@ function createTreeController(api) {
         }
       }
 
+      // Closing tabs are also excluded from liveTabs. Promote their children in place.
+      for (const tabId of closingTabIds) {
+        if (treeStore.removeTab(tabId)) {
+          persistenceDirty = true
+          structuralDirty = true
+        }
+      }
+
       if (treeStore.repair(liveTabs.map(tab => tab.id))) {
         persistenceDirty = true
         structuralDirty = true

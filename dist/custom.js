@@ -2823,8 +2823,12 @@ function createTreeStore() {
       for (const tabId of Object.keys(state.nodesById)) {
         const normalizedTabId = normalizeTabId(tabId)
         if (normalizedTabId == null || !validSet.has(normalizedTabId)) {
-          deleteNode(tabId)
-          dirty = true
+          if (normalizedTabId != null && this.removeTab(normalizedTabId)) {
+            dirty = true
+          } else {
+            deleteNode(tabId)
+            dirty = true
+          }
         }
       }
 
@@ -4115,6 +4119,14 @@ function createTreeController(api) {
       // children in place before repair can treat them as orphaned roots.
       for (const tab of pinnedTabs) {
         if (treeStore.removeTab(tab.id)) {
+          persistenceDirty = true
+          structuralDirty = true
+        }
+      }
+
+      // Closing tabs are also excluded from liveTabs. Promote their children in place.
+      for (const tabId of closingTabIds) {
+        if (treeStore.removeTab(tabId)) {
           persistenceDirty = true
           structuralDirty = true
         }

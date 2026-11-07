@@ -119,4 +119,202 @@ describe('Tab Close - No Jump to Bottom', () => {
     assert.deepEqual(stateAfterClose.treeTabs.map(t => t.id), [10, 30])
     store.dispose()
   })
+
+  it('treeStore.repair promotes children in place when parent tab is missing from validTabIds', () => {
+    const treeStore = createTreeStore()
+    treeStore.load('window:1', {
+      rootIds: [10, 20, 30],
+      nodesById: {
+        10: { parentId: null, childIds: [] },
+        20: { parentId: null, childIds: [21, 22] },
+        21: { parentId: 20, childIds: [] },
+        22: { parentId: 20, childIds: [] },
+        30: { parentId: null, childIds: [] },
+      },
+    })
+
+    // Parent 20 is closed; valid tabs in browser are [10, 21, 22, 30]
+    treeStore.repair([10, 21, 22, 30])
+    const state = treeStore.exportState()
+
+    // Children 21 and 22 MUST be promoted in place at index 1 and 2, NOT pushed to the bottom!
+    assert.deepEqual(state.rootIds, [10, 21, 22, 30])
+    assert.equal(state.nodesById[21].parentId, null)
+    assert.equal(state.nodesById[22].parentId, null)
+  })
+
+  it('tabStore promotes child tab in place without jumping to bottom during native closure race', async () => {
+    function createTab(id, parentId, order, extra = {}) {
+      return {
+        id,
+        index: id,
+        windowId: 1,
+        title: `Tab ${id}`,
+        url: `https://example.com/${id}`,
+        pinned: false,
+        active: id === 20,
+        vivExtData: {
+          svbTree: {
+            contextKey: 'window:1',
+            nodeId: `n${id}`,
+            parentNodeId: parentId == null ? null : `n${parentId}`,
+            order,
+            collapsed: false,
+          },
+        },
+        ...extra,
+      }
+    }
+
+    let currentTabs = [
+      createTab(10, null, 0),
+      createTab(20, null, 1),
+      createTab(21, 20, 0),
+      createTab(30, null, 2),
+    ]
+
+    let onRemovedListener = null
+    let onActivatedListener = null
+
+    const mockApi = {
+      getCurrentWindowId: async () => 1,
+      getTabs: async () => JSON.parse(JSON.stringify(currentTabs)),
+      getActiveWorkspaceId: () => undefined,
+      getWorkspaces: async () => [],
+      isVivaldi: () => true,
+      updateTab: async (id, patch) => {
+        Object.assign(currentTabs.find(tab => tab.id === id) || {}, patch)
+      },
+      updateVivExtData: async (id, data) => {
+        const t = currentTabs.find(tab => tab.id === id)
+        if (t) t.vivExtData = data
+      },
+      activateTab: async (id) => {
+        for (const t of currentTabs) t.active = t.id === id
+        if (onActivatedListener) onActivatedListener({ tabId: id, windowId: 1 })
+      },
+      onCreated: () => () => {},
+      onUpdated: () => () => {},
+      onRemoved: (fn) => { onRemovedListener = fn; return () => {} },
+      onMoved: () => () => {},
+      onAttached: () => () => {},
+      onDetached: () => () => {},
+      onActivated: (fn) => { onActivatedListener = fn; return () => {} },
+      onWindowFocusChanged: () => () => {},
+    }
+
+    const store = createTabStore(mockApi)
+    await store.init()
+
+    assert.deepEqual(
+      store.getState().treeTabs.map(t => [t.id, t.depth]),
+      [[10, 0], [20, 0], [21, 1], [30, 0]]
+    )
+
+    // Simulate real browser race:
+    // Tab 20 is closed natively (e.g. Ctrl+W).
+    // 1. Tab 20 is removed from browser tab array.
+    currentTabs = currentTabs.filter(t => t.id !== 20)
+    currentTabs[0].active = true
+
+    // 2. Browser fires onActivated FIRST.
+    onActivatedListener({ tabId: 10, windowId: 1 })
+
+    // 3. Small async delay before onRemoved fires.
+    await new Promise(r => setTimeout(r, 20))
+    onRemovedListener(20)
+
+    // Wait for debounce/sync to settle.
+    await new Promise(r => setTimeout(r, 250))
+
+    const finalTabs = store.getState().treeTabs.map(t => [t.id, t.depth])
+    assert.deepEqual(
+      finalTabs,
+      [[10, 0], [21, 0], [30, 0]],
+      'Child tab 21 must be promoted in place between 10 and 30, not moved to the bottom'
+    )
+    store.dispose()
+  })
+
+  it('tabStore promotes child tab in place when parent is closed via store.closeTab', async () => {
+    function createTab(id, parentId, order, extra = {}) {
+      return {
+        id,
+        index: id,
+        windowId: 1,
+        title: `Tab ${id}`,
+        url: `https://example.com/${id}`,
+        pinned: false,
+        active: id === 10,
+        vivExtData: {
+          svbTree: {
+            contextKey: 'window:1',
+            nodeId: `n${id}`,
+            parentNodeId: parentId == null ? null : `n${parentId}`,
+            order,
+            collapsed: false,
+          },
+        },
+        ...extra,
+      }
+    }
+
+    let currentTabs = [
+      createTab(10, null, 0),
+      createTab(20, null, 1),
+      createTab(21, 20, 0),
+      createTab(30, null, 2),
+    ]
+
+    let onRemovedListener = null
+    let onActivatedListener = null
+
+    const mockApi = {
+      getCurrentWindowId: async () => 1,
+      getTabs: async () => JSON.parse(JSON.stringify(currentTabs)),
+      getActiveWorkspaceId: () => undefined,
+      getWorkspaces: async () => [],
+      isVivaldi: () => true,
+      updateTab: async (id, patch) => {
+        Object.assign(currentTabs.find(tab => tab.id === id) || {}, patch)
+      },
+      updateVivExtData: async (id, data) => {
+        const t = currentTabs.find(tab => tab.id === id)
+        if (t) t.vivExtData = data
+      },
+      activateTab: async (id) => {
+        for (const t of currentTabs) t.active = t.id === id
+        if (onActivatedListener) onActivatedListener({ tabId: id, windowId: 1 })
+      },
+      closeTab: async (id) => {
+        currentTabs = currentTabs.filter(t => t.id !== id)
+        if (onRemovedListener) onRemovedListener(id)
+      },
+      onCreated: () => () => {},
+      onUpdated: () => () => {},
+      onRemoved: (fn) => { onRemovedListener = fn; return () => {} },
+      onMoved: () => () => {},
+      onAttached: () => () => {},
+      onDetached: () => () => {},
+      onActivated: (fn) => { onActivatedListener = fn; return () => {} },
+      onWindowFocusChanged: () => () => {},
+    }
+
+    const store = createTabStore(mockApi)
+    await store.init()
+
+    // Close tab 20 via panel UI
+    await store.closeTab(20)
+
+    // Wait for debounce/sync to settle.
+    await new Promise(r => setTimeout(r, 250))
+
+    const finalTabs = store.getState().treeTabs.map(t => [t.id, t.depth])
+    assert.deepEqual(
+      finalTabs,
+      [[10, 0], [21, 0], [30, 0]],
+      'Child tab 21 must be promoted in place between 10 and 30'
+    )
+    store.dispose()
+  })
 })

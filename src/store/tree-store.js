@@ -447,8 +447,12 @@ function createTreeStore() {
       for (const tabId of Object.keys(state.nodesById)) {
         const normalizedTabId = normalizeTabId(tabId)
         if (normalizedTabId == null || !validSet.has(normalizedTabId)) {
-          deleteNode(tabId)
-          dirty = true
+          if (normalizedTabId != null && this.removeTab(normalizedTabId)) {
+            dirty = true
+          } else {
+            deleteNode(tabId)
+            dirty = true
+          }
         }
       }
 
