@@ -161,12 +161,60 @@ describe('tab detach & new window workspace reconciliation', () => {
     const result = await api.moveTabsToNewWindow([101])
     assert.ok(result)
     assert.strictEqual(result.windowId, 88)
-    assert.strictEqual(movedTabs.length, 1)
-    assert.strictEqual(movedTabs[0].id, 101)
-    assert.strictEqual(movedTabs[0].windowId, 88)
+    assert.strictEqual(createdWindows[0].tabId, 101)
+    assert.strictEqual(movedTabs.length, 0)
     // Verify workspaceId was cleaned from vivExtData
     const vivExtUpdate = updatedTabs.find(u => u.vivExtData)
     assert.ok(vivExtUpdate)
     assert.strictEqual(JSON.parse(vivExtUpdate.vivExtData).workspaceId, undefined)
+  })
+
+  it('detaches the original tab when a cross-window tabs.move is ignored', async () => {
+    let windowId = 1
+    const tabsApi = {
+      get: (id, cb) => cb({ id, windowId, url: 'https://example.com' }),
+      update: (id, props, cb) => cb({ id, windowId }),
+      move: (id, props, cb) => cb({ id, windowId }), // Vivaldi can report success without moving it
+      query: (props, cb) => cb([{ id: 101, windowId }]),
+      remove: (ids, cb) => cb(),
+    }
+    const windowsApi = {
+      create: (props, cb) => {
+        if (props.tabId === 101) windowId = 88
+        cb({ id: 88 })
+      },
+    }
+    global.chrome = { runtime: { lastError: null }, tabs: tabsApi, windows: windowsApi }
+
+    const result = await createTabsApi().moveTabsToNewWindow([101])
+
+    assert.strictEqual(result.windowId, 88)
+    assert.strictEqual(windowId, 88)
+  })
+
+  it('uses Vivaldi detach before the Chrome fallback', async () => {
+    const page = { id: 101 }
+    let detached = null
+    let created = false
+    const webpackRequire = () => null
+    webpackRequire.c = {
+      actions: { exports: { detachPage: target => { detached = target }, setSelection: () => {} } },
+      store: { exports: { getPageById: id => id === 101 ? page : null, getPages: () => [page] } },
+    }
+    global.chrome = {
+      extension: { getViews: () => [{
+        document: {},
+        location: { href: 'chrome-extension://vivaldi/main.html' },
+        webpackChunkgapp_browser_react: { push: entry => entry[2](webpackRequire) },
+      }] },
+      windows: { create: (props, cb) => { created = true; cb({ id: 88 }) } },
+      tabs: {},
+    }
+
+    const result = await createTabsApi().moveTabsToNewWindow([101])
+
+    assert.deepStrictEqual(result, { native: true })
+    assert.strictEqual(detached, page)
+    assert.strictEqual(created, false)
   })
 })

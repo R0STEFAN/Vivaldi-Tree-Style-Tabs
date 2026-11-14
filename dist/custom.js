@@ -8696,7 +8696,7 @@ function getVivaldiMainView() {
       const detachPage = actions && typeof actions.detachPage === 'function' ? actions.detachPage : null
       const getPageById = store && typeof store.getPageById === 'function' ? store.getPageById.bind(store) : null
       
-      if (!detachPage || !getPageById || !collection) {
+      if (!detachPage || !getPageById || (ids.length > 1 && !collection)) {
         console.warn('[svb] bridge modules missing for detach:', { 
           hasActions: !!actions, 
           hasDetach: !!detachPage, 
@@ -8710,7 +8710,7 @@ function getVivaldiMainView() {
         .map(tabId => getPageById(tabId))
         .filter(Boolean)
 
-      if (pages.length === 0) {
+      if (pages.length !== ids.length) {
         console.warn('[svb] no native pages found for ids:', ids)
         return false
       }
@@ -9411,6 +9411,8 @@ function createTabsApi() {
     async moveTabsToNewWindow(tabIds) {
       const ids = Array.isArray(tabIds) ? tabIds.filter(Number.isFinite) : []
       if (ids.length === 0) return null
+
+      if (await vivaldiBridge.detachTabsToNewWindow(ids)) return { native: true }
       if (!windowsApi || typeof windowsApi.create !== 'function') return null
 
       // 1. Strip workspaceId from metadata on tabs so Vivaldi allows cross-window transfer
@@ -9429,12 +9431,12 @@ function createTabsApi() {
 
       // 2. Try moving live tabs to a new window (keeps video playing, webview state, history)
       try {
-        const newWindow = await promisifyChromeApi(windowsApi.create, {})
+        const newWindow = await promisifyChromeApi(windowsApi.create, { tabId: ids[0] })
         if (newWindow && newWindow.id) {
           const newWindowId = newWindow.id
 
           // Move the existing live tabs into the new window
-          for (let i = 0; i < ids.length; i++) {
+          for (let i = 1; i < ids.length; i++) {
             await new Promise(resolve => setTimeout(resolve, 80))
             await promisifyChromeApi(tabsApi.move, ids[i], {
               windowId: newWindowId,

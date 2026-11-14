@@ -563,7 +563,7 @@ function getVivaldiMainView() {
       const detachPage = actions && typeof actions.detachPage === 'function' ? actions.detachPage : null
       const getPageById = store && typeof store.getPageById === 'function' ? store.getPageById.bind(store) : null
       
-      if (!detachPage || !getPageById || !collection) {
+      if (!detachPage || !getPageById || (ids.length > 1 && !collection)) {
         console.warn('[svb] bridge modules missing for detach:', { 
           hasActions: !!actions, 
           hasDetach: !!detachPage, 
@@ -577,7 +577,7 @@ function getVivaldiMainView() {
         .map(tabId => getPageById(tabId))
         .filter(Boolean)
 
-      if (pages.length === 0) {
+      if (pages.length !== ids.length) {
         console.warn('[svb] no native pages found for ids:', ids)
         return false
       }
