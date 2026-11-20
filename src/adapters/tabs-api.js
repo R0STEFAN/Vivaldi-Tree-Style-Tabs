@@ -84,6 +84,13 @@ function parseVivExtData(value) {
   }
 }
 
+// Vivaldi backs web panels (and dashboard web widgets) with real tabs tagged
+// with vivExtData.panelId; its own tab strip hides them, so we must too.
+function isPanelTab(tab) {
+  const vivExtData = parseVivExtData(tab && tab.vivExtData)
+  return !!(vivExtData && vivExtData.panelId)
+}
+
 function getUrlFallbackTitle(url) {
   if (!url) return 'Untitled'
   const internalTitle = getInternalPageTitle(url)
@@ -323,7 +330,7 @@ function createTabsApi() {
 
     async getTabs(windowId) {
       const tabs = await promisifyChromeApi(tabsApi.query, { windowId })
-      return tabs.map(normalizeTab)
+      return tabs.filter(tab => !isPanelTab(tab)).map(normalizeTab)
     },
 
     async getWorkspaces() {
@@ -619,7 +626,7 @@ function createTabsApi() {
           // Close any default blank startpage tab created alongside the new window
           try {
             const newWinTabs = await promisifyChromeApi(tabsApi.query, { windowId: newWindowId })
-            const dummyTabs = newWinTabs.filter(t => !ids.includes(t.id))
+            const dummyTabs = newWinTabs.filter(t => !ids.includes(t.id) && !isPanelTab(t))
             if (dummyTabs.length > 0 && newWinTabs.length > dummyTabs.length) {
               await promisifyChromeApi(tabsApi.remove, dummyTabs.map(t => t.id))
             }
@@ -916,13 +923,19 @@ function createTabsApi() {
     },
 
     onCreated(listener) {
-      const wrapped = tab => listener(normalizeTab(tab))
+      const wrapped = tab => {
+        if (isPanelTab(tab)) return
+        listener(normalizeTab(tab))
+      }
       tabsApi.onCreated.addListener(wrapped)
       return () => tabsApi.onCreated.removeListener(wrapped)
     },
 
     onUpdated(listener) {
-      const wrapped = (tabId, changeInfo, tab) => listener(tabId, changeInfo, normalizeTab(tab))
+      const wrapped = (tabId, changeInfo, tab) => {
+        if (isPanelTab(tab)) return
+        listener(tabId, changeInfo, normalizeTab(tab))
+      }
       tabsApi.onUpdated.addListener(wrapped)
       return () => tabsApi.onUpdated.removeListener(wrapped)
     },
@@ -988,4 +1001,5 @@ module.exports = {
   normalizeCustomUrl,
   parseVivExtData,
   serializeVivExtData,
+  isPanelTab,
 }
