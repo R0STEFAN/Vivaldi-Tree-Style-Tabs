@@ -1221,6 +1221,10 @@ function createTabStore(api) {
     finalizeScheduledSync(null)
   }
 
+  function isForeignWindowEvent(eventWindowId) {
+    return Number.isFinite(eventWindowId) && Number.isFinite(state.windowId) && eventWindowId !== state.windowId
+  }
+
   function bindEvents() {
     resetListeners()
 
@@ -1230,7 +1234,9 @@ function createTabStore(api) {
     }
 
     const handleUpdated = (tabId, changeInfo, tab) => {
-      void tab
+      if (tab && isForeignWindowEvent(tab.windowId)) {
+        return
+      }
       if (api.isOwnVivExtUpdate && api.isOwnVivExtUpdate(tabId, changeInfo)) {
         return
       }
@@ -1252,6 +1258,9 @@ function createTabStore(api) {
     }
 
     const refreshFromActiveTab = (activeInfo) => {
+      if (activeInfo && isForeignWindowEvent(activeInfo.windowId)) {
+        return
+      }
       const prevActiveId = state.activeTabId
       scheduleSync({ preserveContext: false }, 'event-active', 0).catch(error => console.error('[svb] sync failed', error))
 
@@ -1285,6 +1294,9 @@ function createTabStore(api) {
     }
 
     const handleCreated = tab => {
+      if (!tab || isForeignWindowEvent(tab.windowId)) {
+        return
+      }
       const pinnedIds = new Set(state.pinnedTabs.map(pinnedTab => pinnedTab.id))
       const pendingRecord = treeController.capturePendingCreation(tab, state.activeTabId, {
         fromPinnedTab: pinnedIds.has(state.activeTabId) || pinnedIds.has(tab.openerTabId),
@@ -1316,7 +1328,10 @@ function createTabStore(api) {
       refreshPreservingContext(tab)
     }
 
-    const handleRemoved = tabId => {
+    const handleRemoved = (tabId, removeInfo) => {
+      if (removeInfo && isForeignWindowEvent(removeInfo.windowId)) {
+        return
+      }
       if (typeof treeController.markClosingTab === 'function') {
         treeController.markClosingTab(tabId)
       }
@@ -1358,11 +1373,12 @@ function createTabStore(api) {
       api.onRemoved(handleRemoved),
       api.onReplaced ? api.onReplaced(handleReplaced) : () => {},
       api.onMoved((tabId, moveInfo) => {
-        void moveInfo
+        if (moveInfo && isForeignWindowEvent(moveInfo.windowId)) return
         nativeReconcile.isOwnMove(tabId)
         refreshPreservingContext(tabId, moveInfo)
       }),
-      api.onAttached(async (tabId) => {
+      api.onAttached(async (tabId, attachInfo) => {
+        if (attachInfo && isForeignWindowEvent(attachInfo.newWindowId)) return
         try {
           const allTabs = await api.getTabs(state.windowId)
           const attachedTab = allTabs.find(t => t.id === tabId)
@@ -1385,7 +1401,10 @@ function createTabStore(api) {
         }
         refreshPreservingContext(tabId)
       }),
-      api.onDetached(refreshPreservingContext),
+      api.onDetached((tabId, detachInfo) => {
+        if (detachInfo && isForeignWindowEvent(detachInfo.oldWindowId)) return
+        refreshPreservingContext(tabId, detachInfo)
+      }),
       api.onActivated(refreshFromActiveTab),
       api.onWorkspacesChanged ? api.onWorkspacesChanged(() => {
         scheduleSync({ preserveContext: true }, 'workspaces', 12).catch(error => console.error('[svb] sync failed', error))

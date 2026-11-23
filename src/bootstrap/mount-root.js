@@ -11,6 +11,14 @@ function ensureStyleTag() {
   return style
 }
 
+function shouldMountInCurrentWindow(doc = typeof document !== 'undefined' ? document : null) {
+  if (!doc || typeof doc.querySelector !== 'function') return false
+  const browser = doc.querySelector('#browser')
+  if (!browser || !browser.classList) return false
+  if (browser.classList.contains('popup')) return false
+  return true
+}
+
 function mountRoot(id) {
   ensureStyleTag()
 
@@ -61,4 +69,4 @@ function mountRoot(id) {
   return { root, host, trigger, dragShield }
 }
 
-module.exports = { mountRoot }
+module.exports = { mountRoot, shouldMountInCurrentWindow }

@@ -1,5 +1,5 @@
 const { waitForBrowser } = require('./bootstrap/wait-for-browser.js')
-const { mountRoot } = require('./bootstrap/mount-root.js')
+const { mountRoot, shouldMountInCurrentWindow } = require('./bootstrap/mount-root.js')
 const { createTabStore } = require('./store/tab-store.js')
 const { createPanelStore } = require('./store/panel-store.js')
 const { createSelectionStore } = require('./store/selection-store.js')
@@ -48,13 +48,6 @@ function createTabLookupCache() {
   }
 }
 
-function shouldMountInCurrentWindow() {
-  const browser = document.querySelector('#browser')
-  if (!browser) return false
-  if (browser.classList.contains('popup') && browser.classList.contains('is-settingspage')) return false
-  return true
-}
-
 async function main() {
   if (window.__svbInitialized) return
   window.__svbInitialized = true
@@ -62,6 +55,19 @@ async function main() {
   await waitForBrowser()
 
   if (!shouldMountInCurrentWindow()) return
+
+  if (typeof chrome !== 'undefined' && chrome.windows && typeof chrome.windows.getCurrent === 'function') {
+    const currentWindow = await new Promise(resolve => {
+      try {
+        chrome.windows.getCurrent({ populate: false }, win => resolve(win || null))
+      } catch (_error) {
+        resolve(null)
+      }
+    })
+    if (currentWindow && (currentWindow.type === 'popup' || currentWindow.type === 'devtools')) {
+      return
+    }
+  }
 
   const mount = mountRoot(APP_ID)
   if (!mount) {

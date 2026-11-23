@@ -2189,6 +2189,14 @@ function ensureStyleTag() {
   return style
 }
 
+function shouldMountInCurrentWindow(doc = typeof document !== 'undefined' ? document : null) {
+  if (!doc || typeof doc.querySelector !== 'function') return false
+  const browser = doc.querySelector('#browser')
+  if (!browser || !browser.classList) return false
+  if (browser.classList.contains('popup')) return false
+  return true
+}
+
 function mountRoot(id) {
   ensureStyleTag()
 
@@ -2239,7 +2247,7 @@ function mountRoot(id) {
   return { root, host, trigger, dragShield }
 }
 
-module.exports = { mountRoot }
+module.exports = { mountRoot, shouldMountInCurrentWindow }
 
     },
     "store/settings-store.js": function(require, module, exports) {
@@ -6434,6 +6442,10 @@ function createTabStore(api) {
     finalizeScheduledSync(null)
   }
 
+  function isForeignWindowEvent(eventWindowId) {
+    return Number.isFinite(eventWindowId) && Number.isFinite(state.windowId) && eventWindowId !== state.windowId
+  }
+
   function bindEvents() {
     resetListeners()
 
@@ -6443,7 +6455,9 @@ function createTabStore(api) {
     }
 
     const handleUpdated = (tabId, changeInfo, tab) => {
-      void tab
+      if (tab && isForeignWindowEvent(tab.windowId)) {
+        return
+      }
       if (api.isOwnVivExtUpdate && api.isOwnVivExtUpdate(tabId, changeInfo)) {
         return
       }
@@ -6465,6 +6479,9 @@ function createTabStore(api) {
     }
 
     const refreshFromActiveTab = (activeInfo) => {
+      if (activeInfo && isForeignWindowEvent(activeInfo.windowId)) {
+        return
+      }
       const prevActiveId = state.activeTabId
       scheduleSync({ preserveContext: false }, 'event-active', 0).catch(error => console.error('[svb] sync failed', error))
 
@@ -6498,6 +6515,9 @@ function createTabStore(api) {
     }
 
     const handleCreated = tab => {
+      if (!tab || isForeignWindowEvent(tab.windowId)) {
+        return
+      }
       const pinnedIds = new Set(state.pinnedTabs.map(pinnedTab => pinnedTab.id))
       const pendingRecord = treeController.capturePendingCreation(tab, state.activeTabId, {
         fromPinnedTab: pinnedIds.has(state.activeTabId) || pinnedIds.has(tab.openerTabId),
@@ -6529,7 +6549,10 @@ function createTabStore(api) {
       refreshPreservingContext(tab)
     }
 
-    const handleRemoved = tabId => {
+    const handleRemoved = (tabId, removeInfo) => {
+      if (removeInfo && isForeignWindowEvent(removeInfo.windowId)) {
+        return
+      }
       if (typeof treeController.markClosingTab === 'function') {
         treeController.markClosingTab(tabId)
       }
@@ -6571,11 +6594,12 @@ function createTabStore(api) {
       api.onRemoved(handleRemoved),
       api.onReplaced ? api.onReplaced(handleReplaced) : () => {},
       api.onMoved((tabId, moveInfo) => {
-        void moveInfo
+        if (moveInfo && isForeignWindowEvent(moveInfo.windowId)) return
         nativeReconcile.isOwnMove(tabId)
         refreshPreservingContext(tabId, moveInfo)
       }),
-      api.onAttached(async (tabId) => {
+      api.onAttached(async (tabId, attachInfo) => {
+        if (attachInfo && isForeignWindowEvent(attachInfo.newWindowId)) return
         try {
           const allTabs = await api.getTabs(state.windowId)
           const attachedTab = allTabs.find(t => t.id === tabId)
@@ -6598,7 +6622,10 @@ function createTabStore(api) {
         }
         refreshPreservingContext(tabId)
       }),
-      api.onDetached(refreshPreservingContext),
+      api.onDetached((tabId, detachInfo) => {
+        if (detachInfo && isForeignWindowEvent(detachInfo.oldWindowId)) return
+        refreshPreservingContext(tabId, detachInfo)
+      }),
       api.onActivated(refreshFromActiveTab),
       api.onWorkspacesChanged ? api.onWorkspacesChanged(() => {
         scheduleSync({ preserveContext: true }, 'workspaces', 12).catch(error => console.error('[svb] sync failed', error))
@@ -13949,7 +13976,7 @@ module.exports = { createActivationTrace, installTraceDownload }
     },
     "entry.js": function(require, module, exports) {
 const { waitForBrowser } = require('./bootstrap/wait-for-browser.js')
-const { mountRoot } = require('./bootstrap/mount-root.js')
+const { mountRoot, shouldMountInCurrentWindow } = require('./bootstrap/mount-root.js')
 const { createTabStore } = require('./store/tab-store.js')
 const { createPanelStore } = require('./store/panel-store.js')
 const { createSelectionStore } = require('./store/selection-store.js')
@@ -13998,13 +14025,6 @@ function createTabLookupCache() {
   }
 }
 
-function shouldMountInCurrentWindow() {
-  const browser = document.querySelector('#browser')
-  if (!browser) return false
-  if (browser.classList.contains('popup') && browser.classList.contains('is-settingspage')) return false
-  return true
-}
-
 async function main() {
   if (window.__svbInitialized) return
   window.__svbInitialized = true
@@ -14012,6 +14032,19 @@ async function main() {
   await waitForBrowser()
 
   if (!shouldMountInCurrentWindow()) return
+
+  if (typeof chrome !== 'undefined' && chrome.windows && typeof chrome.windows.getCurrent === 'function') {
+    const currentWindow = await new Promise(resolve => {
+      try {
+        chrome.windows.getCurrent({ populate: false }, win => resolve(win || null))
+      } catch (_error) {
+        resolve(null)
+      }
+    })
+    if (currentWindow && (currentWindow.type === 'popup' || currentWindow.type === 'devtools')) {
+      return
+    }
+  }
 
   const mount = mountRoot(APP_ID)
   if (!mount) {
