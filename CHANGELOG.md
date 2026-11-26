@@ -1,3 +1,13 @@
+# Release Notes (v2.3.9)
+
+## 🛠️ Fixes & Improvements
+
+* **Detach Tabs to New Window**: Detach tabs into new windows via the native Vivaldi API and fix multi-tab fallback creation.
+* **Web Panel Tabs**: Hide Vivaldi web panel tabs (`panelId`) from the tab tree and preserve them during new-window cleanup.
+* **Popup & Window Isolation**: Skip mounting in popup/DevTools windows and filter tab events by `windowId`.
+
+---
+
 # Release Notes (v2.3.8)
 
 ## 🛠️ Fixes & Improvements
